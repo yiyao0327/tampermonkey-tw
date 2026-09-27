@@ -4,4 +4,19 @@
     "name": "[银河奶牛]显示战斗升级所需时间",
     "upstream": "https://update.greasyfork.org/scripts/556360/%5B%E9%93%B6%E6%B2%B3%E5%A5%B6%E7%89%9B%5D%E6%98%BE%E7%A4%BA%E6%88%98%E6%96%97%E5%8D%87%E7%BA%A7%E6%89%80%E9%9C%80%E6%97%B6%E9%97%B4.user.js"
   }
+  {
+    "id": "my-script-1",
+    "name": "MWI Sunrishe 工具箱",
+    "upstream": "https://update.greasyfork.org/scripts/574037/MWI%20Sunrishe%20Toolkit.user.js"
+  }
+  {
+    "id": "my-script-1",
+    "name": "MWITools",
+    "upstream": "https://js.nainai.eu.org/proxy/https://update.greasyfork.org/scripts/494467/MWITools.user.js"
+  }
+  {
+    "id": "my-script-1",
+    "name": "MWI-Hit-Tracker",
+    "upstream": "https://update.greasyfork.org/scripts/535181/MWI-Hit-Tracker.user.js"
+  }
 ]
