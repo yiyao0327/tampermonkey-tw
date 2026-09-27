@@ -1,0 +1,39 @@
+name: Sync & Convert Scripts to Traditional Chinese
+
+on:
+  schedule:
+    # 每天台灣時間凌晨 02:00 自動執行
+    - cron: '0 18 * * *'
+  workflow_dispatch: # 支援在網頁上隨時手動點按執行
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 檢出儲存庫代碼
+        uses: actions/checkout@v4
+
+      - name: 設定 Python 環境
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 安裝 opencc 套件
+        run: pip install opencc
+
+      - name: 執行轉換排程
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: python sync.py
+
+      - name: 提交並推送更新
+        run: |
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git add dist/
+          if git diff --staged --quiet; then
+            echo "沒有任何更新，略過提交。"
+          else
+            git commit -m "chore: 自動更新繁體腳本 [skip ci]"
+            git push
+          fi
