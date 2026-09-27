@@ -4,11 +4,12 @@ on:
   schedule:
     # 每天台灣時間凌晨 02:00 自動執行
     - cron: '0 18 * * *'
-  workflow_dispatch: # 支援在網頁上隨時手動點按執行
+  workflow_dispatch: # 支援在網頁上手動點按執行
 
 jobs:
   sync:
-    runs-on: ubuntu-latest
+    # 明確指定版本，避免觸發 ubuntu-latest 的遷移提示
+    runs-on: ubuntu-24.04
     steps:
       - name: 檢出儲存庫代碼
         uses: actions/checkout@v4
