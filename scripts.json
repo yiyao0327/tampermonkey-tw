@@ -1,0 +1,7 @@
+[
+  {
+    "id": "my-script-1",
+    "name": "示範腳本",
+    "upstream": "https://greasyfork.org/scripts/xxxxx/code.user.js"
+  }
+]
