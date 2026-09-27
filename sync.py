@@ -4,7 +4,7 @@ import json
 import urllib.request
 import opencc
 
-# 採用臺灣正體模式 (包含詞彙轉換：軟件->軟體、內存->記憶體)
+# 採用臺灣正體模式 (包含詞彙轉換)
 converter = opencc.OpenCC('s2twp')
 
 GITHUB_REPOSITORY = os.environ.get('GITHUB_REPOSITORY', 'username/repo')
@@ -24,34 +24,43 @@ def process_scripts():
         output_file = f"dist/{script_id}.user.js"
         target_raw_url = f"{RAW_BASE_URL}/{script_id}.user.js"
 
-        print(f"[*] 正在處理: {item.get('name', script_id)}")
+        print(f"[*] 正在處理: {item.get('name', script_id)} ({upstream_url})")
 
         try:
             req = urllib.request.Request(
                 upstream_url,
-                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+                headers={
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                }
             )
             with urllib.request.urlopen(req, timeout=30) as res:
                 content = res.read().decode('utf-8', errors='ignore')
 
-            # 簡轉繁
+            if not content.strip():
+                print(f"[!] 警告: 從 {upstream_url} 下載到的內容為空！")
+                continue
+
+            # 1. 簡轉繁轉換
             tw_content = converter.convert(content)
 
-            # 改寫或補齊 @updateURL 與 @downloadURL
-            if re.search(r'@updateURL\s+', tw_content):
-                tw_content = re.sub(r'(@updateURL\s+)[^\r\n]+', rf'\g<1>{target_raw_url}', tw_content)
+            # 2. 安全替換/插入 @updateURL 與 @downloadURL
+            # 先檢查是否有更新網址，若有則直接替換該行
+            if re.search(r'//\s*@updateURL\b', tw_content):
+                tw_content = re.sub(r'(//\s*@updateURL\s+)[^\r\n]+', rf'\g<1>{target_raw_url}', tw_content)
             else:
-                tw_content = re.sub(r'(\/\/\s*==\/UserScript==)', f'// @updateURL    {target_raw_url}\n\\1', tw_content)
+                # 若無，精準插入在 ==/UserScript== 之前的一行
+                tw_content = re.sub(r'(\n//\s*==/UserScript==)', f'\n// @updateURL    {target_raw_url}\\1', tw_content, count=1)
 
-            if re.search(r'@downloadURL\s+', tw_content):
-                tw_content = re.sub(r'(@downloadURL\s+)[^\r\n]+', rf'\g<1>{target_raw_url}', tw_content)
+            if re.search(r'//\s*@downloadURL\b', tw_content):
+                tw_content = re.sub(r'(//\s*@downloadURL\s+)[^\r\n]+', rf'\g<1>{target_raw_url}', tw_content)
             else:
-                tw_content = re.sub(r'(\/\/\s*==\/UserScript==)', f'// @downloadURL  {target_raw_url}\n\\1', tw_content)
+                tw_content = re.sub(r'(\n//\s*==/UserScript==)', f'\n// @downloadURL  {target_raw_url}\\1', tw_content, count=1)
 
+            # 3. 寫入檔案
             with open(output_file, 'w', encoding='utf-8') as f:
                 f.write(tw_content)
 
-            print(f"[✓] 成功轉換: {output_file}")
+            print(f"[✓] 成功轉換並輸出，檔案大小: {len(tw_content)} 字元 -> {output_file}")
 
         except Exception as e:
             print(f"[!] 處理 {script_id} 失敗: {e}")
