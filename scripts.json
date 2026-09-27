@@ -18,5 +18,15 @@
     "id": "mwi-hit-tracker",
     "name": "MWI-Hit-Tracker",
     "upstream": "https://update.greasyfork.org/scripts/535181/MWI-Hit-Tracker.user.js"
+  },
+  {
+    "id": "Milky Way Idle Guild Assistant",
+    "name": "公会助手",
+    "upstream": "https://update.greasyfork.org/scripts/586873/%E5%85%AC%E4%BC%9A%E5%8A%A9%E6%89%8B.user.js"
+  },
+  {
+    "id": "Edible Tools",
+    "name": "[银河奶牛]食用工具",
+    "upstream": "https://update.greasyfork.org/scripts/499963/%5B%E9%93%B6%E6%B2%B3%E5%A5%B6%E7%89%9B%5D%E9%A3%9F%E7%94%A8%E5%B7%A5%E5%85%B7.user.js"
   }
 ]
