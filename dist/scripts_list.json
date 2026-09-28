@@ -1,0 +1,52 @@
+[
+  {
+    "id": "mwi-battle-time",
+    "name": "[銀河奶牛]顯示戰鬥升級所需時間",
+    "install_url": "https://raw.githubusercontent.com/yiyao0327/tampermonkey-tw/main/dist/mwi-battle-time.user.js"
+  },
+  {
+    "id": "mwi-sunrishe-toolkit",
+    "name": "MWI Sunrishe Toolkit",
+    "install_url": "https://raw.githubusercontent.com/yiyao0327/tampermonkey-tw/main/dist/mwi-sunrishe-toolkit.user.js"
+  },
+  {
+    "id": "mwi-tools",
+    "name": "MWITools",
+    "install_url": "https://raw.githubusercontent.com/yiyao0327/tampermonkey-tw/main/dist/mwi-tools.user.js"
+  },
+  {
+    "id": "mwi-hit-tracker",
+    "name": "MWI-Hit-Tracker",
+    "install_url": "https://raw.githubusercontent.com/yiyao0327/tampermonkey-tw/main/dist/mwi-hit-tracker.user.js"
+  },
+  {
+    "id": "Milky Way Idle Guild Assistant",
+    "name": "公會助手",
+    "install_url": "https://raw.githubusercontent.com/yiyao0327/tampermonkey-tw/main/dist/Milky Way Idle Guild Assistant.user.js"
+  },
+  {
+    "id": "Edible Tools",
+    "name": "[銀河奶牛]食用工具",
+    "install_url": "https://raw.githubusercontent.com/yiyao0327/tampermonkey-tw/main/dist/Edible Tools.user.js"
+  },
+  {
+    "id": "Collection plugin",
+    "name": "收藏外掛",
+    "install_url": "https://raw.githubusercontent.com/yiyao0327/tampermonkey-tw/main/dist/Collection plugin.user.js"
+  },
+  {
+    "id": "Milkonomy",
+    "name": "利潤網助手 (Milkonomy Assistant)",
+    "install_url": "https://raw.githubusercontent.com/yiyao0327/tampermonkey-tw/main/dist/Milkonomy.user.js"
+  },
+  {
+    "id": "Labyrinth Clear Rate Calculator",
+    "name": "迷宮勝率計算器",
+    "install_url": "https://raw.githubusercontent.com/yiyao0327/tampermonkey-tw/main/dist/Labyrinth Clear Rate Calculator.user.js"
+  },
+  {
+    "id": "MWI Combat Simulator",
+    "name": "MWI Combat Simulator 主站一鍵匯入",
+    "install_url": "https://raw.githubusercontent.com/yiyao0327/tampermonkey-tw/main/dist/MWI Combat Simulator.user.js"
+  }
+]
