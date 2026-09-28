@@ -103,7 +103,7 @@ def generate_catalog(scripts_data):
     # 1. 寫入到專案根目錄的 README.md
     root_md_file = 'README.md'
     with open(root_md_file, 'w', encoding='utf-8') as f:
-        f.write("# 繁體化 UserScript 腳本安裝清單\n\n")
+        f.write("# 繁體化 銀河奶牛 腳本安裝清單\n\n")
         f.write("此儲存庫由 GitHub Actions 自動同步並轉換為繁體中文。\n\n")
         f.write("| 腳本名稱 | 安裝連結 |\n")
         f.write("| :--- | :--- |\n")
