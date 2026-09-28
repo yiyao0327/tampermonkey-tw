@@ -14,3 +14,4 @@
 | **利潤網助手 (Milkonomy Assistant)** | [點擊安裝](https://raw.githubusercontent.com/yiyao0327/tampermonkey-tw/main/dist/Milkonomy.user.js) |
 | **迷宮勝率計算器** | [點擊安裝](https://raw.githubusercontent.com/yiyao0327/tampermonkey-tw/main/dist/Labyrinth%20Clear%20Rate%20Calculator.user.js) |
 | **MWI Combat Simulator 主站一鍵匯入** | [點擊安裝](https://raw.githubusercontent.com/yiyao0327/tampermonkey-tw/main/dist/MWI%20Combat%20Simulator.user.js) |
+| **mooket** | [點擊安裝](https://raw.githubusercontent.com/yiyao0327/tampermonkey-tw/main/dist/mooket.user.js) |

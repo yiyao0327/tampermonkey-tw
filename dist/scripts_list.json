@@ -48,5 +48,10 @@
     "id": "MWI Combat Simulator",
     "name": "MWI Combat Simulator 主站一鍵匯入",
     "install_url": "https://raw.githubusercontent.com/yiyao0327/tampermonkey-tw/main/dist/MWI Combat Simulator.user.js"
+  },
+  {
+    "id": "mooket",
+    "name": "mooket",
+    "install_url": "https://raw.githubusercontent.com/yiyao0327/tampermonkey-tw/main/dist/mooket.user.js"
   }
 ]
