@@ -48,5 +48,10 @@
     "id": "MWI Combat Simulator",
     "name": "MWI Combat Simulator 主站一键导入",
     "upstream": "https://update.greasyfork.org/scripts/568613/MWI%20Combat%20Simulator%20%E4%B8%BB%E7%AB%99%E4%B8%80%E9%94%AE%E5%AF%BC%E5%85%A5.user.js"
+  },
+  {
+    "id": "mooket",
+    "name": "mooket银河奶牛历史价格",
+    "upstream": "https://update.greasyfork.org/scripts/530316/mooket.user.js"
   }
 ]
