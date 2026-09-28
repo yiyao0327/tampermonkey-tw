@@ -17,6 +17,9 @@ def process_scripts():
     with open('scripts.json', 'r', encoding='utf-8') as f:
         scripts = json.load(f)
 
+    # 用於收集成功處理的腳本清單
+    successful_scripts = []
+
     for item in scripts:
         script_id = item['id']
         upstream_url = item['upstream']
@@ -71,10 +74,49 @@ def process_scripts():
             with open(output_file, 'w', encoding='utf-8') as f:
                 f.write(tw_content)
 
+            # 從轉換後的腳本中提取 @name，若無則依序取 scripts.json 的 name 或 id
+            name_match = re.search(r'//\s*@name\s+([^\r\n]+)', tw_content)
+            if name_match:
+                script_name = name_match.group(1).strip()
+            else:
+                script_name = converter.convert(item.get('name', script_id))
+
+            successful_scripts.append({
+                'id': script_id,
+                'name': script_name,
+                'install_url': target_raw_url
+            })
+
             print(f"[✓] 轉換成功！總大小: {len(tw_content)} 字元 -> {output_file}")
 
         except Exception as e:
             print(f"[!] 處理 {script_id} 失敗: {e}")
+
+    # 輸出整理好的清單
+    generate_catalog(successful_scripts)
+
+def generate_catalog(scripts_data):
+    if not scripts_data:
+        print("[!] 無任何成功轉換的腳本，略過生成清單。")
+        return
+
+    # 1. 輸出 Markdown 清單（適合直接放在 GitHub README / dist/README.md）
+    md_file = 'dist/README.md'
+    with open(md_file, 'w', encoding='utf-8') as f:
+        f.write("# 繁體化 UserScript 腳本安裝清單\n\n")
+        f.write("| 腳本名稱 | 安裝連結 |\n")
+        f.write("| :--- | :--- |\n")
+        for s in scripts_data:
+            f.write(f"| **{s['name']}** | [點擊安裝]({s['install_url']}) |\n")
+
+    # 2. 輸出 JSON 清單（方便後續網頁渲染或自動化流程調用）
+    json_file = 'dist/scripts_list.json'
+    with open(json_file, 'w', encoding='utf-8') as f:
+        json.dump(scripts_data, f, ensure_ascii=False, indent=2)
+
+    print(f"\n[★] 已成功建立腳本清單：")
+    print(f"    - Markdown: {md_file}")
+    print(f"    - JSON:     {json_file}")
 
 if __name__ == '__main__':
     process_scripts()
