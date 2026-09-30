@@ -3,7 +3,7 @@
 // @name:en      Labyrinth Clear Rate Calculator
 // @name:zh-CN   迷宮勝率計算器
 // @namespace    http://tampermonkey.net/
-// @version      1.5.13
+// @version      1.5.14
 // @description  Show skilling/combat room clear chance and expected clear seconds (including failed runs) on each labyrinth tile.
 // @description:en  Show skilling/combat room clear chance and expected clear seconds (including failed runs) on each labyrinth tile.
 // @description:zh-CN  在迷宮每個房間格子上顯示生活/戰鬥房間勝率與期望耗時（包含失敗場次）。
@@ -67,10 +67,10 @@
         "/equipment_types/ring",
         "/equipment_types/charm",
     ]);
-    const COMBAT_SIM_CHUNK_CACHE_BUST = "20260309-1.5.7";
+    const COMBAT_SIM_CHUNK_CACHE_BUST = "20260930-native-lab-guild";
     const COMBAT_SIM_VENDOR_CHUNK_URL = `https://shykai.github.io/MWICombatSimulatorTest/dist/vendors-node_modules_heap-js_dist_heap-js_es5_js.bundle.js?v=${COMBAT_SIM_CHUNK_CACHE_BUST}`;
     const COMBAT_SIM_WORKER_CHUNK_URL = `https://shykai.github.io/MWICombatSimulatorTest/dist/src_worker_js.bundle.js?v=${COMBAT_SIM_CHUNK_CACHE_BUST}`;
-    const COMBAT_MODEL_SIGNATURE = "official-simulator-core-v3";
+    const COMBAT_MODEL_SIGNATURE = "official-simulator-core-v4-native-lab-guild";
     const LABYRINTH_ABILITY_NAME_ZH_MAP = {
         "/abilities/critical_aura": "暴擊光環",
         "/abilities/elusiveness": "閃避",
@@ -148,12 +148,6 @@
     const STYLE_ID = "mwi-lab-clear-rate-style";
     const CONTROL_ID = "mwi-lab-clear-rate-control";
     const CONTROL_CLASS = "mwi-lab-clear-rate-control";
-    const CONTROL_LOAN_TOGGLE_CLASS = "mwi-lab-clear-rate-control__loan-toggle";
-    const CONTROL_LOAN_PANEL_CLASS = "mwi-lab-clear-rate-control__loan-panel";
-    const CONTROL_LOAN_LIST_CLASS = "mwi-lab-clear-rate-control__loan-list";
-    const CONTROL_LOAN_ITEM_CLASS = "mwi-lab-clear-rate-control__loan-item";
-    const CONTROL_LOAN_ITEM_STATUS_CLASS = "mwi-lab-clear-rate-control__loan-item-status";
-    const CONTROL_LOAN_CALC_CLASS = "mwi-lab-clear-rate-control__loan-calc";
     const CONTROL_LOG_TOGGLE_CLASS = "mwi-lab-clear-rate-control__log-toggle";
     const CONTROL_LOG_PANEL_CLASS = "mwi-lab-clear-rate-control__log-panel";
     const CONTROL_LOG_LIST_CLASS = "mwi-lab-clear-rate-control__log-list";
@@ -338,96 +332,6 @@
         alchemy: "Alchemy",
         enhancing: "Enhancing",
     };
-    const LABYRINTH_LOAN_SEAL_EFFECTS = [
-        {
-            itemHrid: "/items/seal_of_efficiency",
-            buffTypeHrid: "/buff_types/efficiency",
-            amount: 0.14,
-            boostMode: "flat",
-            isCombat: false,
-        },
-        {
-            itemHrid: "/items/seal_of_action_speed",
-            buffTypeHrid: "/buff_types/action_speed",
-            amount: 0.15,
-            boostMode: "flat",
-            isCombat: false,
-        },
-        {
-            itemHrid: "/items/seal_of_gourmet",
-            buffTypeHrid: "/buff_types/gourmet",
-            amount: 0.1,
-            boostMode: "flat",
-            isCombat: false,
-        },
-        {
-            itemHrid: "/items/seal_of_gathering",
-            buffTypeHrid: "/buff_types/gathering",
-            amount: 0.18,
-            boostMode: "flat",
-            isCombat: false,
-        },
-        {
-            itemHrid: "/items/seal_of_damage",
-            buffTypeHrid: "/buff_types/damage",
-            amount: 0.08,
-            boostMode: "ratio",
-            isCombat: true,
-        },
-        {
-            itemHrid: "/items/seal_of_attack_speed",
-            buffTypeHrid: "/buff_types/attack_speed",
-            amount: 0.15,
-            boostMode: "ratio",
-            isCombat: true,
-        },
-        {
-            itemHrid: "/items/seal_of_cast_speed",
-            buffTypeHrid: "/buff_types/cast_speed",
-            amount: 0.15,
-            boostMode: "flat",
-            isCombat: true,
-        },
-        {
-            itemHrid: "/items/seal_of_critical_rate",
-            buffTypeHrid: "/buff_types/critical_rate",
-            amount: 0.1,
-            boostMode: "flat",
-            isCombat: true,
-        },
-    ];
-    const SIMULATOR_PERSONAL_BUFF_ITEM_HRIDS = new Set([
-        "/items/seal_of_combat_drop",
-        "/items/seal_of_attack_speed",
-        "/items/seal_of_cast_speed",
-        "/items/seal_of_damage",
-        "/items/seal_of_critical_rate",
-        "/items/seal_of_wisdom",
-        "/items/seal_of_rare_find",
-    ]);
-    const SIMULATOR_COMBAT_PERSONAL_SEAL_ITEM_HRIDS = new Set([
-        "/items/seal_of_combat_drop",
-        "/items/seal_of_attack_speed",
-        "/items/seal_of_cast_speed",
-        "/items/seal_of_damage",
-        "/items/seal_of_critical_rate",
-        "/items/seal_of_wisdom",
-        "/items/seal_of_rare_find",
-    ]);
-    const LABYRINTH_SEAL_NAME_ZH_BY_ITEM_HRID = {
-        "/items/seal_of_gathering": "卷軸·採集",
-        "/items/seal_of_gourmet": "卷軸·美食",
-        "/items/seal_of_processing": "卷軸·加工",
-        "/items/seal_of_efficiency": "卷軸·效率",
-        "/items/seal_of_action_speed": "卷軸·行動速度",
-        "/items/seal_of_combat_drop": "卷軸·戰利品",
-        "/items/seal_of_attack_speed": "卷軸·攻擊速度",
-        "/items/seal_of_cast_speed": "卷軸·施法速度",
-        "/items/seal_of_damage": "卷軸·傷害",
-        "/items/seal_of_critical_rate": "卷軸·暴擊率",
-        "/items/seal_of_wisdom": "卷軸·智慧",
-        "/items/seal_of_rare_find": "卷軸·稀有掉落",
-    };
     const SIMULATOR_BRIDGE_URL_STORAGE_KEY = "mwi_lab_simulator_bridge_url";
     const SIMULATOR_BRIDGE_DEFAULT_URL = "https://shykai.github.io/MWICombatSimulatorTest/dist/";
     const SIMULATOR_BRIDGE_LEGACY_URL_PREFIXES = [
@@ -528,13 +432,6 @@
             skipRoom: "Skip Room",
             calcFailed: "Calculation failed",
             calcDone: "Calculation complete",
-            calcDoneWithPersonalBuffs: "Calculation complete (including personal buffs)",
-            loanSeal: "Scroll Loan",
-            loanPanelTitle: "Available Scroll Effects",
-            loanCalc: "Loan Calculate",
-            loanNoOptions: "No usable scrolls",
-            loanAlreadyActive: "Active",
-            loanCannotApply: "No effect data",
             roomLog: "Logs",
             roomLogTitleFmt: "Room Logs (Last {count})",
             roomLogEmpty: "No logs yet",
@@ -670,13 +567,6 @@
             skipRoom: "跳過房間",
             calcFailed: "計算失敗",
             calcDone: "計算完成",
-            calcDoneWithPersonalBuffs: "計算完成（包含個人增益）",
-            loanSeal: "貸款卷軸",
-            loanPanelTitle: "可用卷軸效果",
-            loanCalc: "貸款計算",
-            loanNoOptions: "沒有可用卷軸",
-            loanAlreadyActive: "已生效",
-            loanCannotApply: "無效果資料",
             roomLog: "日誌",
             roomLogTitleFmt: "房間日誌（最近{count}場）",
             roomLogEmpty: "暫無日誌",
@@ -811,8 +701,6 @@
     let automationRecommendColumnEnabled = false;
     let automationWideLayoutNodes = [];
     let lastLabyrinthCalcDoneMessage = "";
-    let loanSealSelectionByItemHrid = new Map();
-    let activeLoanSimulationOptions = null;
     let latestLabyrinthUpgradeLevels = null;
     let roomLogSessions = [];
     let activeRoomLogSession = null;
@@ -2546,260 +2434,8 @@
         );
     }
 
-    function hasActivePersonalSkillingBuffForRoom(state, room) {
-        if (!state || !room || room.roomType !== LABYRINTH_SKILLING_ROOM_TYPE || !room.skillHrid) {
-            return false;
-        }
-        const skillId = skillHridToSkillId(room.skillHrid);
-        if (!skillId) {
-            return false;
-        }
-        const actionTypeHrid = skillIdToActionTypeHrid(skillId);
-        const personalBuffs = state?.personalActionTypeBuffsDict?.[actionTypeHrid];
-        if (!Array.isArray(personalBuffs) || personalBuffs.length === 0) {
-            return false;
-        }
-        return hasMeaningfulSkillingMetrics(getSkillingBuffMetrics(skillId, personalBuffs));
-    }
-
-    function hasActivePersonalCombatBuff(state) {
-        const personalBuffs = state?.personalActionTypeBuffsDict?.["/action_types/combat"];
-        if (!Array.isArray(personalBuffs) || personalBuffs.length === 0) {
-            return false;
-        }
-        const epsilon = 1e-9;
-        for (const buff of personalBuffs) {
-            if (Math.abs(getBuffAmount(buff)) > epsilon) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     function buildLabyrinthCalcDoneMessage(state, flatRooms, targetIndexes) {
         return t("calcDone");
-    }
-
-    function getCharacterItemValues(state) {
-        const itemMap = state?.characterItemMap;
-        if (itemMap instanceof Map) {
-            return Array.from(itemMap.values());
-        }
-        if (itemMap && typeof itemMap === "object") {
-            return Object.values(itemMap);
-        }
-        return [];
-    }
-
-    function formatLoanSealPercent(amount) {
-        const percent = Math.max(0, finiteNumber(amount, 0)) * 100;
-        if (Math.abs(percent - Math.round(percent)) < 1e-9) {
-            return `${Math.round(percent)}`;
-        }
-        return percent.toFixed(1).replace(/\.0$/, "");
-    }
-
-    function getPersonalBuffHridFromSealItemHrid(itemHrid) {
-        const tail = String(itemHrid || "").split("/").pop() || "";
-        if (!tail.startsWith("seal_of_")) {
-            return "";
-        }
-        return `/personal_buff_types/${tail.slice("seal_of_".length)}`;
-    }
-
-    function getActivePersonalBuffByHrid(state) {
-        const result = new Map();
-        const buffs = Array.isArray(state?.characterBuffs) ? state.characterBuffs : [];
-        for (const buff of buffs) {
-            const hrid = String(buff?.hrid || "");
-            if (!hrid.startsWith("/personal_buff_types/")) {
-                continue;
-            }
-            result.set(hrid, buff);
-        }
-        return result;
-    }
-
-    function formatLoanSealDisplayName(name) {
-        const rawName = String(name || "").trim();
-        if (!rawName) {
-            return "";
-        }
-        return rawName.replace(/^卷軸[·.．]/, "");
-    }
-
-    function buildLoanSealEffectCatalog(state, initClientData = null) {
-        const itemDetails = state?.itemDetailDict || initClientData?.itemDetailMap || {};
-        const buffTypeDetails = state?.buffTypeDetailDict || initClientData?.buffTypeDetailMap || {};
-        const itemCountByHrid = new Map();
-        for (const item of getCharacterItemValues(state)) {
-            const itemHrid = String(item?.itemHrid || item?.hrid || "");
-            if (!itemHrid.startsWith("/items/seal_of_")) {
-                continue;
-            }
-            const count = Math.max(0, Math.floor(finiteNumber(item?.count ?? item?.quantity ?? item?.amount, 0)));
-            itemCountByHrid.set(itemHrid, (itemCountByHrid.get(itemHrid) || 0) + count);
-        }
-
-        const activePersonalBuffByHrid = getActivePersonalBuffByHrid(state);
-        const catalog = [];
-        for (const effect of LABYRINTH_LOAN_SEAL_EFFECTS) {
-            const itemHrid = String(effect?.itemHrid || "");
-            const quantity = Math.max(0, Math.floor(finiteNumber(itemCountByHrid.get(itemHrid), 0)));
-
-            const itemDetail = getContainerValue(itemDetails, itemHrid) || null;
-            const buffTypeHrid = String(effect?.buffTypeHrid || "");
-            const buffTypeDetail = buffTypeHrid ? getContainerValue(buffTypeDetails, buffTypeHrid) : null;
-            const personalBuffHrid = getPersonalBuffHridFromSealItemHrid(itemHrid);
-            const activeBuff = personalBuffHrid ? activePersonalBuffByHrid.get(personalBuffHrid) || null : null;
-            const localizedName = isChineseUi() ? LABYRINTH_SEAL_NAME_ZH_BY_ITEM_HRID[itemHrid] || "" : "";
-            const displayName = formatLoanSealDisplayName(
-                localizedName || itemDetail?.name || buffTypeDetail?.name || itemHrid.split("/").pop() || itemHrid
-            );
-            const sortIndex = Math.max(0, Math.floor(finiteNumber(itemDetail?.sortIndex, 9999)));
-            const amount = Math.max(0, finiteNumber(effect?.amount, 0));
-
-            catalog.push({
-                itemHrid,
-                displayName,
-                sortIndex,
-                quantity,
-                buffTypeHrid,
-                amount,
-                boostMode: String(effect?.boostMode || "flat") === "ratio" ? "ratio" : "flat",
-                isCombat: effect?.isCombat === true,
-                personalBuffHrid,
-                isActive: Boolean(activeBuff),
-                activeBuff,
-                canApply: Boolean(buffTypeHrid) && amount > 0,
-                labelText: `${displayName} (+${formatLoanSealPercent(amount)}%)`,
-            });
-        }
-
-        catalog.sort((a, b) => {
-            if (a.sortIndex !== b.sortIndex) {
-                return a.sortIndex - b.sortIndex;
-            }
-            return a.displayName.localeCompare(b.displayName);
-        });
-        return catalog;
-    }
-
-    function createLoanSealBuffEntry(effect, index = 0) {
-        const amount = Math.max(0, finiteNumber(effect?.amount, 0));
-        if (!effect?.buffTypeHrid || amount <= 0) {
-            return null;
-        }
-        const useRatio = effect?.boostMode === "ratio";
-        return {
-            uniqueHrid: `/buff_uniques/loan_seal_${String(effect.itemHrid || "").split("/").pop() || index}`,
-            typeHrid: String(effect.buffTypeHrid),
-            ratioBoost: useRatio ? amount : 0,
-            ratioBoostLevelBonus: 0,
-            flatBoost: useRatio ? 0 : amount,
-            flatBoostLevelBonus: 0,
-            startTime: "0001-01-01T00:00:00Z",
-            duration: 0,
-        };
-    }
-
-    function getLoanSkillingActionTypeHrids(state) {
-        const source = state?.personalActionTypeBuffsDict || state?.skillingActionTypeBuffsDict || {};
-        const values = [];
-        for (const key of Object.keys(source)) {
-            const actionType = String(key || "");
-            if (!actionType.startsWith("/action_types/")) {
-                continue;
-            }
-            if (
-                actionType === "/action_types/combat" ||
-                actionType === "/action_types/labyrinth" ||
-                actionType === "/action_types/special"
-            ) {
-                continue;
-            }
-            values.push(actionType);
-        }
-        if (values.length > 0) {
-            values.sort();
-            return values;
-        }
-        return LABYRINTH_AUTOMATION_SKILL_ROOM_TYPES.map((entry) => `/action_types/${entry.key}`);
-    }
-
-    function buildLoanSimulationOptions(state, catalog, selectedItemHrids) {
-        if (!Array.isArray(catalog) || catalog.length === 0 || !Array.isArray(selectedItemHrids) || selectedItemHrids.length === 0) {
-            return null;
-        }
-        const selectedSet = new Set(selectedItemHrids.map((itemHrid) => String(itemHrid || "")));
-        const selectedEffects = catalog.filter(
-            (effect) => selectedSet.has(String(effect?.itemHrid || "")) && !effect?.isActive && effect?.canApply
-        );
-        if (!selectedEffects.length) {
-            return null;
-        }
-
-        const skillingActionTypes = getLoanSkillingActionTypeHrids(state);
-        const loanPersonalActionTypeBuffsDict = {};
-
-        for (let i = 0; i < selectedEffects.length; i += 1) {
-            const effect = selectedEffects[i];
-            if (effect.isCombat) {
-                continue;
-            }
-            const buffEntry = createLoanSealBuffEntry(effect, i);
-            if (!buffEntry) {
-                continue;
-            }
-
-            for (const actionTypeHrid of skillingActionTypes) {
-                if (!loanPersonalActionTypeBuffsDict[actionTypeHrid]) {
-                    loanPersonalActionTypeBuffsDict[actionTypeHrid] = [];
-                }
-                loanPersonalActionTypeBuffsDict[actionTypeHrid].push({
-                    ...buffEntry,
-                });
-            }
-        }
-
-        return {
-            loanPersonalActionTypeBuffsDict,
-            selectedSealItemHrids: selectedEffects.map((effect) => String(effect?.itemHrid || "")).filter(Boolean),
-            selectedEffects,
-        };
-    }
-
-    function normalizeLoanSimulationOptions(rawOptions) {
-        return null;
-    }
-
-    function getActivePersonalSealItemHrids(state) {
-        const result = [];
-        const buffs = Array.isArray(state?.characterBuffs) ? state.characterBuffs : [];
-        for (const buff of buffs) {
-            const hrid = String(buff?.hrid || "");
-            if (!hrid.startsWith("/personal_buff_types/")) {
-                continue;
-            }
-            const tail = hrid.slice("/personal_buff_types/".length);
-            if (!tail) {
-                continue;
-            }
-            const itemHrid = `/items/seal_of_${tail}`;
-            if (!SIMULATOR_PERSONAL_BUFF_ITEM_HRIDS.has(itemHrid)) {
-                continue;
-            }
-            result.push(itemHrid);
-        }
-        return Array.from(new Set(result));
-    }
-
-    function getSimulatorPersonalBuffItemHrids(state) {
-        return [];
-    }
-
-    function getCombatSimulatorPersonalSealItemHrids(state, options = {}) {
-        return [];
     }
 
     function getSkillLevel(skillMap, skillHrid) {
@@ -2837,35 +2473,28 @@
         };
     }
 
-    function createLabyrinthCombatBuff(uniqueKey, typeHrid, level, valueKey) {
-        const normalizedLevel = Math.max(0, Math.floor(finiteNumber(level, 0)));
-        if (!typeHrid || normalizedLevel <= 0) {
-            return null;
-        }
-        return normalizeCombatBuffEntry({
-            uniqueHrid: `/buff_uniques/labyrinth_upgrade_${uniqueKey}`,
-            typeHrid,
-            [valueKey]: normalizedLevel * LABYRINTH_UPGRADE_STEP_RATIO,
-            startTime: "0001-01-01T00:00:00Z",
-            duration: 0,
-        });
+    function buildSimulatorLabyrinthUpgrades(levels) {
+        return {
+            "/buff_uniques/labyrinth_upgrade_combat_damage": getLabyrinthUpgradeLevel(levels, LABYRINTH_UPGRADE_KEY_COMBAT_DAMAGE),
+            "/buff_uniques/labyrinth_upgrade_attack_speed": getLabyrinthUpgradeLevel(levels, LABYRINTH_UPGRADE_KEY_ATTACK_SPEED),
+            "/buff_uniques/labyrinth_upgrade_cast_speed": getLabyrinthUpgradeLevel(levels, LABYRINTH_UPGRADE_KEY_CAST_SPEED),
+            "/buff_uniques/labyrinth_upgrade_critical_rate": getLabyrinthUpgradeLevel(levels, LABYRINTH_UPGRADE_KEY_CRITICAL_RATE),
+            "/buff_uniques/labyrinth_upgrade_experience": getLabyrinthUpgradeLevel(levels, LABYRINTH_UPGRADE_KEY_LABYRINTH_EXPERIENCE),
+        };
     }
 
-    function buildLabyrinthCombatBuffs(levels) {
-        const buffs = [];
-        const definitions = [
-            [LABYRINTH_UPGRADE_KEY_COMBAT_DAMAGE, "combat_damage", "/buff_types/damage", "ratioBoost"],
-            [LABYRINTH_UPGRADE_KEY_ATTACK_SPEED, "attack_speed", "/buff_types/attack_speed", "ratioBoost"],
-            [LABYRINTH_UPGRADE_KEY_CAST_SPEED, "cast_speed", "/buff_types/cast_speed", "flatBoost"],
-            [LABYRINTH_UPGRADE_KEY_CRITICAL_RATE, "critical_rate", "/buff_types/critical_rate", "flatBoost"],
-        ];
-        for (const [upgradeKey, uniqueKey, typeHrid, valueKey] of definitions) {
-            const buff = createLabyrinthCombatBuff(uniqueKey, typeHrid, getLabyrinthUpgradeLevel(levels, upgradeKey), valueKey);
-            if (buff) {
-                buffs.push(buff);
-            }
+    function buildSimulatorLabyrinthImportLevels(upgrades) {
+        const result = {};
+        for (const [hrid, key] of [
+            ["/buff_uniques/labyrinth_upgrade_attack_speed", "labyrinthAttackSpeedLevel"],
+            ["/buff_uniques/labyrinth_upgrade_cast_speed", "labyrinthCastSpeedLevel"],
+            ["/buff_uniques/labyrinth_upgrade_combat_damage", "labyrinthCombatDamageLevel"],
+            ["/buff_uniques/labyrinth_upgrade_critical_rate", "labyrinthCriticalRateLevel"],
+            ["/buff_uniques/labyrinth_upgrade_experience", "labyrinthExperienceLevel"],
+        ]) {
+            result[key] = upgrades?.[hrid] || 0;
         }
-        return buffs;
+        return result;
     }
 
     function appendNormalizedCombatBuffs(target, seen, rawBuffs) {
@@ -2895,39 +2524,16 @@
         return target;
     }
 
-    function getCombatPersonalBuffs(state) {
-        const actionTypeHrid = "/action_types/combat";
-        const personalBuffs = state?.personalActionTypeBuffsDict?.[actionTypeHrid];
-        const combatBuffs = [];
-        appendNormalizedCombatBuffs(combatBuffs, new Set(), Array.isArray(personalBuffs) ? personalBuffs : []);
-        return combatBuffs;
-    }
-
-    function getActiveGuildCombatBuffs(state) {
-        // This is the character's effective selection; guildBuildingLevelDict only describes the guild-wide cap.
-        const guildBuffs = state?.guildActionTypeBuffsDict?.["/action_types/combat"];
-        const combatBuffs = [];
-        appendNormalizedCombatBuffs(combatBuffs, new Set(), Array.isArray(guildBuffs) ? guildBuffs : []);
-        return combatBuffs;
-    }
-
     function getActiveGuildCombatShrineLevels(state) {
         const activeBuffs = state?.characterGuildBuffDict || {};
         const readLevel = (hrid) => Math.max(0, Math.floor(finiteNumber(activeBuffs?.[hrid]?.level, 0)));
         return {
-            force: readLevel("/guild_buffs/force_combat"),
-            spirit: readLevel("/guild_buffs/spirit_combat"),
-            tempo: readLevel("/guild_buffs/tempo_combat"),
+            "/guild_buffs/force_combat": readLevel("/guild_buffs/force_combat"),
+            "/guild_buffs/rarity_combat": readLevel("/guild_buffs/rarity_combat"),
+            "/guild_buffs/scholar_combat": readLevel("/guild_buffs/scholar_combat"),
+            "/guild_buffs/spirit_combat": readLevel("/guild_buffs/spirit_combat"),
+            "/guild_buffs/tempo_combat": readLevel("/guild_buffs/tempo_combat"),
         };
-    }
-
-    function getCombatBuffValueByType(buffs, typeHrid, valueKey) {
-        return (Array.isArray(buffs) ? buffs : []).reduce((total, buff) => {
-            if (buff?.typeHrid !== typeHrid) {
-                return total;
-            }
-            return total + finiteNumber(buff?.[valueKey], 0);
-        }, 0);
     }
 
     function isLabyrinthRunActiveForCrateSelection(state) {
@@ -3248,107 +2854,6 @@
 .${CONTROL_CLASS}__button:disabled {
   opacity: 0.75;
   cursor: wait;
-}
-.${CONTROL_LOAN_TOGGLE_CLASS} {
-  min-width: 74px;
-  width: auto;
-  padding: 0 10px;
-  height: 18px;
-  border: 0;
-  border-radius: 5px;
-  background: rgba(84, 126, 224, 0.95);
-  color: #ffffff;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1;
-  white-space: nowrap;
-  cursor: pointer;
-  flex: 0 0 auto;
-  margin-left: auto;
-}
-.${CONTROL_LOAN_TOGGLE_CLASS}:disabled {
-  opacity: 0.75;
-  cursor: wait;
-}
-.${CONTROL_LOAN_PANEL_CLASS} {
-  position: absolute;
-  top: 0;
-  left: calc(100% + 8px);
-  width: 250px;
-  max-height: 320px;
-  box-sizing: border-box;
-  padding: 8px;
-  border: 1px solid rgba(128, 170, 255, 0.45);
-  border-radius: 6px;
-  background: rgba(12, 16, 24, 0.96);
-  color: #f2f7ff;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
-  z-index: 2147483645;
-  pointer-events: auto;
-}
-.${CONTROL_LOAN_PANEL_CLASS}[hidden] {
-  display: none !important;
-}
-.${CONTROL_LOAN_PANEL_CLASS} * {
-  pointer-events: auto;
-}
-.${CONTROL_LOAN_PANEL_CLASS}__title {
-  margin-bottom: 6px;
-  font-size: 12px;
-  font-weight: 700;
-  color: #9ec4ff;
-}
-.${CONTROL_LOAN_LIST_CLASS} {
-  max-height: 230px;
-  overflow-y: auto;
-  overflow-x: hidden;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding-right: 2px;
-}
-.${CONTROL_LOAN_ITEM_CLASS} {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: 6px;
-  align-items: center;
-  font-size: 11px;
-  line-height: 1.2;
-}
-.${CONTROL_LOAN_ITEM_CLASS} input[type="checkbox"] {
-  margin: 0;
-}
-.${CONTROL_LOAN_ITEM_CLASS}__name {
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.${CONTROL_LOAN_ITEM_STATUS_CLASS} {
-  font-size: 10px;
-  opacity: 0.85;
-  white-space: nowrap;
-}
-.${CONTROL_LOAN_ITEM_STATUS_CLASS}--warn {
-  color: #ff7b7b;
-  opacity: 1;
-  font-weight: 700;
-}
-.${CONTROL_LOAN_CALC_CLASS} {
-  margin-top: 8px;
-  width: 100%;
-  height: 22px;
-  border: 0;
-  border-radius: 5px;
-  background: #3a88ff;
-  color: #ffffff;
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-}
-.${CONTROL_LOAN_CALC_CLASS}:disabled {
-  opacity: 0.72;
-  cursor: not-allowed;
 }
 .${CONTROL_LOG_TOGGLE_CLASS} {
   min-width: 54px;
@@ -4600,7 +4105,8 @@ table[class*="LabyrinthPanel_automationTable"] tbody td:nth-child(3) {
         });
         cell.addEventListener("contextmenu", (event) => {
             const preview = getCellPreview(cell);
-            if (!preview || preview.type !== "combat") {
+            const room = preview?.type === "combat" ? null : getRoomFromCell(getGameState(), cell);
+            if (preview?.type !== "combat" && (room?.roomType !== LABYRINTH_COMBAT_ROOM_TYPE || !room?.monsterHrid)) {
                 return;
             }
             event.preventDefault();
@@ -6555,221 +6061,6 @@ table[class*="LabyrinthPanel_automationTable"] tbody td:nth-child(3) {
         return normalized;
     }
 
-    function getSelectedLoanSealItemHrids() {
-        const selected = [];
-        for (const [itemHrid, enabled] of loanSealSelectionByItemHrid.entries()) {
-            if (enabled) {
-                selected.push(String(itemHrid || ""));
-            }
-        }
-        return selected;
-    }
-
-    function updateLoanCalcButtonState(panelRoot = null) {
-        const root = panelRoot || getControlPanel();
-        if (!root) {
-            return;
-        }
-        const loanCalcButton = root.querySelector(`.${CONTROL_LOAN_CALC_CLASS}`);
-        if (!loanCalcButton) {
-            return;
-        }
-        const checkedCount = Array.from(
-            root.querySelectorAll(`.${CONTROL_LOAN_LIST_CLASS} input[type="checkbox"]:not(:disabled):checked`)
-        ).length;
-        loanCalcButton.disabled = checkedCount <= 0;
-    }
-
-    function resolveLoanPanelGridRect() {
-        const state = getGameState();
-        const roomRows = Array.isArray(state?.characterLabyrinth?.roomData) ? state.characterLabyrinth.roomData : [];
-        const totalCells = roomRows.flat().length;
-        let gridParent = totalCells > 0 ? findRoomGridParent(totalCells) : null;
-        if (!gridParent) {
-            const anyCell = document.querySelector('div[class*="LabyrinthPanel_roomCell"]');
-            gridParent = anyCell ? anyCell.parentElement : null;
-        }
-        if (!gridParent) {
-            return null;
-        }
-        return gridParent.getBoundingClientRect();
-    }
-
-    function positionLoanSealPanel(panelRoot = null) {
-        const root = panelRoot || getControlPanel();
-        if (!root) {
-            return;
-        }
-        const panel = root.querySelector(`.${CONTROL_LOAN_PANEL_CLASS}`);
-        const list = root.querySelector(`.${CONTROL_LOAN_LIST_CLASS}`);
-        if (!panel || panel.hasAttribute("hidden")) {
-            return;
-        }
-
-        const gridRect = resolveLoanPanelGridRect();
-        if (!gridRect) {
-            panel.style.position = "absolute";
-            panel.style.top = "0";
-            panel.style.left = "calc(100% + 8px)";
-            panel.style.right = "auto";
-            panel.style.maxHeight = "320px";
-            if (list) {
-                list.style.maxHeight = "230px";
-            }
-            return;
-        }
-
-        const viewportWidth = Math.max(0, window.innerWidth || document.documentElement.clientWidth || 0);
-        const viewportHeight = Math.max(0, window.innerHeight || document.documentElement.clientHeight || 0);
-        const margin = 8;
-        const gutter = 10;
-        const panelWidth = Math.max(240, Math.ceil(panel.getBoundingClientRect().width || 250));
-
-        let left = Math.round(gridRect.right + gutter);
-        if (left + panelWidth > viewportWidth - margin) {
-            left = Math.round(Math.max(margin, gridRect.left - panelWidth - gutter));
-        }
-
-        let top = Math.round(Math.max(margin, gridRect.top));
-        if (viewportHeight > 0) {
-            top = Math.min(top, Math.max(margin, viewportHeight - 140));
-        }
-
-        const panelMaxHeight = Math.max(180, Math.min(420, Math.floor(Math.max(240, viewportHeight - top - margin))));
-
-        panel.style.position = "fixed";
-        panel.style.left = `${left}px`;
-        panel.style.top = `${top}px`;
-        panel.style.right = "auto";
-        panel.style.maxHeight = `${panelMaxHeight}px`;
-
-        if (list) {
-            const listMaxHeight = Math.max(110, panelMaxHeight - 90);
-            list.style.maxHeight = `${listMaxHeight}px`;
-        }
-    }
-
-    function isLoanSealPanelOpen(root = null) {
-        const panelRoot = root || getControlPanel();
-        if (!panelRoot) {
-            return false;
-        }
-        const panel = panelRoot.querySelector(`.${CONTROL_LOAN_PANEL_CLASS}`);
-        return Boolean(panel) && !panel.hasAttribute("hidden");
-    }
-
-    function renderLoanSealPanel(root = null) {
-        const panelRoot = root || getControlPanel();
-        if (!panelRoot) {
-            return;
-        }
-        const panel = panelRoot.querySelector(`.${CONTROL_LOAN_PANEL_CLASS}`);
-        const list = panelRoot.querySelector(`.${CONTROL_LOAN_LIST_CLASS}`);
-        const loanCalcButton = panelRoot.querySelector(`.${CONTROL_LOAN_CALC_CLASS}`);
-        if (!panel || !list || !loanCalcButton) {
-            return;
-        }
-
-        const state = getGameState();
-        const initClientData = getInitClientData();
-        const catalog = buildLoanSealEffectCatalog(state, initClientData);
-        const catalogMap = new Map(catalog.map((effect) => [String(effect.itemHrid || ""), effect]));
-
-        if (catalog.length > 0) {
-            for (const itemHrid of Array.from(loanSealSelectionByItemHrid.keys())) {
-                if (!catalogMap.has(itemHrid)) {
-                    loanSealSelectionByItemHrid.delete(itemHrid);
-                }
-            }
-        }
-
-        list.textContent = "";
-        if (!catalog.length) {
-            const empty = document.createElement("div");
-            empty.className = CONTROL_LOAN_ITEM_STATUS_CLASS;
-            empty.textContent = t("loanNoOptions");
-            list.appendChild(empty);
-            loanCalcButton.disabled = true;
-            positionLoanSealPanel(panelRoot);
-            return;
-        }
-
-        for (const effect of catalog) {
-            const itemHrid = String(effect.itemHrid || "");
-            const canSelect = !effect.isActive && effect.canApply;
-            if (!canSelect && loanSealSelectionByItemHrid.get(itemHrid)) {
-                loanSealSelectionByItemHrid.set(itemHrid, false);
-            }
-
-            const row = document.createElement("div");
-            row.className = CONTROL_LOAN_ITEM_CLASS;
-
-            const checkbox = document.createElement("input");
-            checkbox.type = "checkbox";
-            checkbox.disabled = !canSelect;
-            checkbox.checked = canSelect && loanSealSelectionByItemHrid.get(itemHrid) === true;
-            checkbox.addEventListener("change", (event) => {
-                const checked = Boolean(event?.target?.checked);
-                loanSealSelectionByItemHrid.set(itemHrid, checked);
-                updateLoanCalcButtonState(panelRoot);
-            });
-
-            row.addEventListener("click", (event) => {
-                const target = event?.target;
-                if (target && typeof target.closest === "function" && target.closest('input[type="checkbox"]')) {
-                    return;
-                }
-                if (!canSelect || checkbox.disabled) {
-                    return;
-                }
-                checkbox.checked = !checkbox.checked;
-                loanSealSelectionByItemHrid.set(itemHrid, checkbox.checked);
-                updateLoanCalcButtonState(panelRoot);
-            });
-
-            const nameNode = document.createElement("span");
-            nameNode.className = `${CONTROL_LOAN_ITEM_CLASS}__name`;
-            nameNode.textContent = effect.labelText;
-
-            const statusNode = document.createElement("span");
-            statusNode.className = CONTROL_LOAN_ITEM_STATUS_CLASS;
-            if (effect.isActive) {
-                statusNode.classList.add(`${CONTROL_LOAN_ITEM_STATUS_CLASS}--warn`);
-                statusNode.textContent = `${t("loanAlreadyActive")} x${effect.quantity}`;
-                if (effect.activeBuff?.expiresAt) {
-                    statusNode.title = String(effect.activeBuff.expiresAt);
-                }
-            } else if (!effect.canApply) {
-                statusNode.classList.add(`${CONTROL_LOAN_ITEM_STATUS_CLASS}--warn`);
-                statusNode.textContent = `${t("loanCannotApply")} x${effect.quantity}`;
-            } else {
-                statusNode.textContent = `x${effect.quantity}`;
-            }
-
-            row.appendChild(checkbox);
-            row.appendChild(nameNode);
-            row.appendChild(statusNode);
-            list.appendChild(row);
-        }
-
-        updateLoanCalcButtonState(panelRoot);
-        positionLoanSealPanel(panelRoot);
-    }
-
-    function refreshLoanSealPanelOnOpen(root = null) {
-        const panelRoot = root || getControlPanel();
-        if (!panelRoot || !isLoanSealPanelOpen(panelRoot)) {
-            return;
-        }
-        renderLoanSealPanel(panelRoot);
-        window.setTimeout(() => {
-            if (!panelRoot.isConnected || !isLoanSealPanelOpen(panelRoot)) {
-                return;
-            }
-            renderLoanSealPanel(panelRoot);
-        }, 180);
-    }
-
     function loadRoomLogPanelPosition() {
         const fallback = {
             left: Math.max(10, (window.innerWidth || 1280) - 360),
@@ -7578,11 +6869,6 @@ table[class*="LabyrinthPanel_automationTable"] tbody td:nth-child(3) {
         const totalCount = entries.length * levels.length;
         const maxEnhancementByItem = buildMaxEnhancementByItem(state);
         const labyrinthUpgradeLevels = getLabyrinthUpgradeLevels(true);
-        const loanPersonalActionTypeBuffsDict =
-            options?.loanPersonalActionTypeBuffsDict && typeof options.loanPersonalActionTypeBuffsDict === "object"
-                ? options.loanPersonalActionTypeBuffsDict
-                : null;
-        const selectedSealItemHrids = Array.isArray(options?.selectedSealItemHrids) ? options.selectedSealItemHrids : [];
         const combatTrials = normalizeCombatSimTrials(AUTOMATION_RECOMMEND_COMBAT_TRIALS);
         const chances = [];
         let failedCount = 0;
@@ -7619,13 +6905,9 @@ table[class*="LabyrinthPanel_automationTable"] tbody td:nth-child(3) {
                                   null,
                                   combatTrials,
                                   `distribution:${context.labyrinthSignature}:${entry.key}:${roomLevel}`,
-                                  {
-                                      selectedSealItemHrids,
-                                      labyrinthUpgradeLevels,
-                                  }
+                                   { labyrinthUpgradeLevels }
                               )
                             : computeRoomClearChance(state, initClientData, room, maxEnhancementByItem, {
-                                  loanPersonalActionTypeBuffsDict,
                                   labyrinthUpgradeLevels,
                               });
                         if (result && Number.isFinite(Number(result.clearChance))) {
@@ -7756,35 +7038,6 @@ table[class*="LabyrinthPanel_automationTable"] tbody td:nth-child(3) {
             );
         }
 
-        const loanToggle = root.querySelector(`.${CONTROL_LOAN_TOGGLE_CLASS}`);
-        if (loanToggle) {
-            loanToggle.addEventListener(
-                "click",
-                (event) => {
-                    if (event) {
-                        event.preventDefault();
-                        if (typeof event.stopImmediatePropagation === "function") {
-                            event.stopImmediatePropagation();
-                        }
-                        event.stopPropagation();
-                    }
-                    const panel = root.querySelector(`.${CONTROL_LOAN_PANEL_CLASS}`);
-                    if (!panel) {
-                        return;
-                    }
-                    const opening = panel.hasAttribute("hidden");
-                    if (opening) {
-                        setRoomLogPanelOpen(false);
-                        panel.removeAttribute("hidden");
-                        refreshLoanSealPanelOnOpen(root);
-                    } else {
-                        panel.setAttribute("hidden", "hidden");
-                    }
-                },
-                true
-            );
-        }
-
         const logToggle = root.querySelector(`.${CONTROL_LOG_TOGGLE_CLASS}`);
         if (logToggle) {
             logToggle.addEventListener(
@@ -7796,10 +7049,6 @@ table[class*="LabyrinthPanel_automationTable"] tbody td:nth-child(3) {
                             event.stopImmediatePropagation();
                         }
                         event.stopPropagation();
-                    }
-                    const loanPanel = root.querySelector(`.${CONTROL_LOAN_PANEL_CLASS}`);
-                    if (loanPanel) {
-                        loanPanel.setAttribute("hidden", "hidden");
                     }
                     setRoomLogPanelOpen(!isRoomLogPanelOpen());
                 },
@@ -7817,35 +7066,6 @@ table[class*="LabyrinthPanel_automationTable"] tbody td:nth-child(3) {
                         event.stopImmediatePropagation();
                     }
                     setRoomDistributionEnabled(distributionCheckbox.checked);
-                },
-                true
-            );
-        }
-
-        const loanCalcButton = root.querySelector(`.${CONTROL_LOAN_CALC_CLASS}`);
-        if (loanCalcButton) {
-            loanCalcButton.addEventListener(
-                "click",
-                (event) => {
-                    if (event) {
-                        event.preventDefault();
-                        if (typeof event.stopImmediatePropagation === "function") {
-                            event.stopImmediatePropagation();
-                        }
-                        event.stopPropagation();
-                    }
-                    const state = getGameState();
-                    const initClientData = getInitClientData();
-                    const catalog = buildLoanSealEffectCatalog(state, initClientData);
-                    const selectedItemHrids = getSelectedLoanSealItemHrids();
-                    const loanOptions = buildLoanSimulationOptions(state, catalog, selectedItemHrids);
-                    if (!loanOptions) {
-                        return;
-                    }
-                    runManualUpdate({
-                        loanPersonalActionTypeBuffsDict: loanOptions.loanPersonalActionTypeBuffsDict,
-                        selectedSealItemHrids: loanOptions.selectedSealItemHrids,
-                    });
                 },
                 true
             );
@@ -7982,9 +7202,6 @@ table[class*="LabyrinthPanel_automationTable"] tbody td:nth-child(3) {
             if (root.parentElement !== inlineHost) {
                 inlineHost.appendChild(root);
             }
-            if (isLoanSealPanelOpen(root)) {
-                positionLoanSealPanel(root);
-            }
             return root;
         }
 
@@ -7999,9 +7216,6 @@ table[class*="LabyrinthPanel_automationTable"] tbody td:nth-child(3) {
         if (root.parentElement !== host || root.nextElementSibling !== anchor) {
             host.insertBefore(root, anchor);
         }
-        if (isLoanSealPanelOpen(root)) {
-            positionLoanSealPanel(root);
-        }
         return root;
     }
 
@@ -8011,10 +7225,8 @@ table[class*="LabyrinthPanel_automationTable"] tbody td:nth-child(3) {
             return;
         }
         const button = root.querySelector(`.${CONTROL_CLASS}__button`);
-        const loanToggle = root.querySelector(`.${CONTROL_LOAN_TOGGLE_CLASS}`);
         const logToggle = root.querySelector(`.${CONTROL_LOG_TOGGLE_CLASS}`);
         const distributionCheckbox = root.querySelector(`.${CONTROL_DISTRIBUTION_TOGGLE_CLASS} input[type="checkbox"]`);
-        const loanCalcButton = root.querySelector(`.${CONTROL_LOAN_CALC_CLASS}`);
         const trialsInput = root.querySelector(`.${CONTROL_CLASS}__settings-input`);
         const bar = root.querySelector(`.${CONTROL_CLASS}__bar`);
         const text = root.querySelector(`.${CONTROL_CLASS}__text`);
@@ -8022,21 +7234,11 @@ table[class*="LabyrinthPanel_automationTable"] tbody td:nth-child(3) {
             const running = Boolean(status.running);
             button.disabled = running;
             button.textContent = running ? t("calculating") : t("calcMaze");
-            if (loanToggle) {
-                loanToggle.disabled = running;
-            }
             if (logToggle) {
                 logToggle.disabled = running;
             }
             if (distributionCheckbox) {
                 distributionCheckbox.disabled = running;
-            }
-            if (loanCalcButton) {
-                if (running) {
-                    loanCalcButton.disabled = true;
-                } else {
-                    updateLoanCalcButtonState(root);
-                }
             }
             if (trialsInput) {
                 trialsInput.disabled = running;
@@ -8184,94 +7386,6 @@ self["webpackChunkmwicombatsimulator"] = __webpack_chunk_array__;`;
     return result;
   }
 
-  function normalizeBuffs(raw) {
-    if (!Array.isArray(raw)) {
-      return [];
-    }
-    var result = [];
-    var seen = Object.create(null);
-    for (var i = 0; i < raw.length; i += 1) {
-      var buff = raw[i];
-      var typeHrid = String((buff && buff.typeHrid) || "");
-      if (!typeHrid) {
-        continue;
-      }
-      var normalized = {
-        uniqueHrid: String((buff && buff.uniqueHrid) || ""),
-        typeHrid: typeHrid,
-        ratioBoost: finite(buff && buff.ratioBoost, 0),
-        ratioBoostLevelBonus: finite(buff && buff.ratioBoostLevelBonus, 0),
-        flatBoost: finite(buff && buff.flatBoost, 0),
-        flatBoostLevelBonus: finite(buff && buff.flatBoostLevelBonus, 0),
-        startTime: String((buff && buff.startTime) || "0001-01-01T00:00:00Z"),
-        duration: Math.max(0, finite(buff && buff.duration, 0)),
-      };
-      var dedupeKey = [
-        normalized.typeHrid,
-        normalized.ratioBoost,
-        normalized.ratioBoostLevelBonus,
-        normalized.flatBoost,
-        normalized.flatBoostLevelBonus,
-        normalized.duration,
-      ].join("|");
-      if (seen[dedupeKey]) {
-        continue;
-      }
-      seen[dedupeKey] = true;
-      result.push(normalized);
-    }
-    return result;
-  }
-
-  function normalizePersonalBuffItemHrids(raw) {
-    if (!Array.isArray(raw)) {
-      return [];
-    }
-    var result = [];
-    var seen = Object.create(null);
-    for (var i = 0; i < raw.length; i += 1) {
-      var itemHrid = String(raw[i] || "");
-      if (!itemHrid || seen[itemHrid]) {
-        continue;
-      }
-      seen[itemHrid] = true;
-      result.push(itemHrid);
-    }
-    return result;
-  }
-
-  function buildPersonalBuffsFromItemHrids(raw) {
-    var itemHrids = normalizePersonalBuffItemHrids(raw);
-    var detailByItem = {
-      "/items/seal_of_combat_drop": { typeHrid: "/buff_types/combat_drop_quantity", flatBoost: 0.15, ratioBoost: 0 },
-      "/items/seal_of_attack_speed": { typeHrid: "/buff_types/attack_speed", flatBoost: 0, ratioBoost: 0.15 },
-      "/items/seal_of_cast_speed": { typeHrid: "/buff_types/cast_speed", flatBoost: 0.15, ratioBoost: 0 },
-      "/items/seal_of_damage": { typeHrid: "/buff_types/damage", flatBoost: 0, ratioBoost: 0.08 },
-      "/items/seal_of_critical_rate": { typeHrid: "/buff_types/critical_rate", flatBoost: 0.1, ratioBoost: 0 },
-      "/items/seal_of_wisdom": { typeHrid: "/buff_types/wisdom", flatBoost: 0.2, ratioBoost: 0 },
-      "/items/seal_of_rare_find": { typeHrid: "/buff_types/rare_find", flatBoost: 0.6, ratioBoost: 0 },
-    };
-    var buffs = [];
-    for (var i = 0; i < itemHrids.length; i += 1) {
-      var itemHrid = itemHrids[i];
-      var detail = detailByItem[itemHrid];
-      if (!detail || !detail.typeHrid) {
-        continue;
-      }
-      buffs.push({
-        uniqueHrid: "/buff_uniques/personal_" + itemHrid.split("/").pop(),
-        typeHrid: detail.typeHrid,
-        ratioBoost: finite(detail.ratioBoost, 0),
-        ratioBoostLevelBonus: 0,
-        flatBoost: finite(detail.flatBoost, 0),
-        flatBoostLevelBonus: 0,
-        startTime: "0001-01-01T00:00:00Z",
-        duration: 0,
-      });
-    }
-    return normalizeBuffs(buffs);
-  }
-
   function ensureEncounterRecorderPatched() {
     if (!CombatSimulator || !CombatSimulator.prototype) {
       return;
@@ -8400,34 +7514,10 @@ self["webpackChunkmwicombatsimulator"] = __webpack_chunk_array__;`;
     }
 
     var player = Player.createFromDTO(playerDto);
+    player.extraBuffs = [];
     // Lab clear-rate calculation always assumes no active food/coffee consumables.
     player.food = [null, null, null];
     player.drinks = [null, null, null];
-    var guildCombatBuffs = normalizeBuffs(params.guildCombatBuffs || []);
-    var guildMaxHitpointsRatio = 0;
-    var guildMaxManapointsRatio = 0;
-    var remainingGuildCombatBuffs = [];
-    for (var guildBuffIndex = 0; guildBuffIndex < guildCombatBuffs.length; guildBuffIndex += 1) {
-      var guildBuff = guildCombatBuffs[guildBuffIndex];
-      if (guildBuff.typeHrid === "/buff_types/max_hitpoints") {
-        guildMaxHitpointsRatio += finite(guildBuff.ratioBoost, 0);
-      } else if (guildBuff.typeHrid === "/buff_types/max_manapoints") {
-        guildMaxManapointsRatio += finite(guildBuff.ratioBoost, 0);
-      } else {
-        remainingGuildCombatBuffs.push(guildBuff);
-      }
-    }
-    if (player.combatDetails && player.combatDetails.combatStats) {
-      player.combatDetails.combatStats.maxHitpointsRatio =
-        finite(player.combatDetails.combatStats.maxHitpointsRatio, 0) + guildMaxHitpointsRatio;
-      player.combatDetails.combatStats.maxManapointsRatio =
-        finite(player.combatDetails.combatStats.maxManapointsRatio, 0) + guildMaxManapointsRatio;
-    }
-    player.extraBuffs = normalizeBuffs(
-      buildPersonalBuffsFromItemHrids(params.playerPersonalBuffItemHrids)
-        .concat(params.labyrinthCombatBuffs || [])
-        .concat(remainingGuildCombatBuffs)
-    );
 
     var mazeCrates = normalizeCrates(params.mazeCrateItemHrids);
     var labyrinth = new Labyrinth(monsterHrid, roomLevel, mazeCrates);
@@ -8542,9 +7632,6 @@ self["webpackChunkmwicombatsimulator"] = __webpack_chunk_array__;`;
       var trials = Math.max(1, Math.floor(Number(data.trials) || 1));
       var run = await simulateSingleRoomBatch({
         playerDto: data.playerDto,
-        playerPersonalBuffItemHrids: data.playerPersonalBuffItemHrids,
-        labyrinthCombatBuffs: data.labyrinthCombatBuffs,
-        guildCombatBuffs: data.guildCombatBuffs,
         monsterHrid: data.monsterHrid,
         mazeDifficulty: data.mazeDifficulty,
         roomDurationSeconds: data.roomDurationSeconds,
@@ -8679,9 +7766,6 @@ self["webpackChunkmwicombatsimulator"] = __webpack_chunk_array__;`;
                     type: "simulate_room",
                     requestId,
                     playerDto: deepCloneJson(params.playerDto),
-                    playerPersonalBuffItemHrids: deepCloneJson(params.playerPersonalBuffItemHrids),
-                    labyrinthCombatBuffs: deepCloneJson(params.labyrinthCombatBuffs),
-                    guildCombatBuffs: deepCloneJson(params.guildCombatBuffs),
                     monsterHrid: params.monsterHrid,
                     mazeDifficulty: params.mazeDifficulty,
                     roomDurationSeconds: params.roomDurationSeconds,
@@ -9311,7 +8395,6 @@ self["webpackChunkmwicombatsimulator"] = __webpack_chunk_array__;`;
         wasRoomChallengeRunning = false;
         lastObservedPathRoomKey = "";
         lastLabyrinthDisplaySignature = normalizedSignature;
-        activeLoanSimulationOptions = null;
         resetAutoRecalcState();
         handleRoomDistributionLabyrinthTransition(normalizedSignature);
     }
@@ -9329,7 +8412,6 @@ self["webpackChunkmwicombatsimulator"] = __webpack_chunk_array__;`;
         wasRoomChallengeRunning = false;
         lastObservedPathRoomKey = "";
         lastLabyrinthDisplaySignature = normalizedSignature;
-        activeLoanSimulationOptions = null;
         resetAutoRecalcState();
         handleRoomDistributionLabyrinthTransition(normalizedSignature);
     }
@@ -9444,13 +8526,11 @@ self["webpackChunkmwicombatsimulator"] = __webpack_chunk_array__;`;
             fallbackMetrics
         );
         const crateMetrics = getSkillingBuffMetrics(skillId, crateBuffs);
-        const loanMetrics = createEmptySkillingMetrics();
         const combinedMetrics = createEmptySkillingMetrics();
         addSkillingMetrics(combinedMetrics, globalMetrics);
         addSkillingMetrics(combinedMetrics, roomLoadout.metrics);
         addSkillingMetrics(combinedMetrics, crateMetrics);
         addSkillingMetrics(combinedMetrics, labyrinthUpgradeMetrics);
-        addSkillingMetrics(combinedMetrics, loanMetrics);
 
         const baseSkillLevel = getSkillLevel(state.characterSkillMap, room.skillHrid);
         const skillLevelBonus = combinedMetrics.skillLevelBonus;
@@ -9463,7 +8543,6 @@ self["webpackChunkmwicombatsimulator"] = __webpack_chunk_array__;`;
             actionTypeHrid,
             roomLoadout.metrics,
             crateMetrics,
-            loanMetrics,
             includePersonalBuffs,
             labyrinthExperienceBonus
         );
@@ -9736,7 +8815,6 @@ self["webpackChunkmwicombatsimulator"] = __webpack_chunk_array__;`;
                 `success=${(successChance * 100).toFixed(1)}%`,
                 `globalSuccess+${(globalMetrics.successBonus * 100).toFixed(1)}%`,
                 `double=${(doubleChance * 100).toFixed(1)}%`,
-                hasMeaningfulSkillingMetrics(loanMetrics) ? "loan=1" : "",
                 isEnhancingRoom ? `target=+${targetEnhLevel}` : `target=${Math.round(targetProgress)}`,
                 isEnhancingRoom
                     ? ""
@@ -10080,7 +9158,7 @@ self["webpackChunkmwicombatsimulator"] = __webpack_chunk_array__;`;
         return abilityDtos;
     }
 
-    function buildCombatPlayerDtoForRoom(state, initClientData, room, maxEnhancementByItem) {
+    function buildCombatPlayerDtoForRoom(state, initClientData, room, maxEnhancementByItem, options = {}) {
         const loadoutInfo = resolveCombatRoomLoadout(state, room);
         const loadout = loadoutInfo.loadout;
         if (!isCombatLoadout(loadout)) {
@@ -10112,6 +9190,8 @@ self["webpackChunkmwicombatsimulator"] = __webpack_chunk_array__;`;
             abilities,
             houseRooms,
             achievements,
+            labyrinthUpgrades: buildSimulatorLabyrinthUpgrades(resolveLabyrinthUpgradeLevels(options)),
+            guildBuffs: getActiveGuildCombatShrineLevels(state),
             debuffOnLevelGap: 0,
         };
 
@@ -10415,6 +9495,8 @@ self["webpackChunkmwicombatsimulator"] = __webpack_chunk_array__;`;
             simulationTime: String(simulationTime || "24"),
             houseRooms: buildHouseRoomLevelMap(state),
             achievements: buildAchievementCompletionMap(state),
+            labyrinth: buildSimulatorLabyrinthImportLevels(playerDto?.labyrinthUpgrades),
+            guildBuffs: playerDto?.guildBuffs || getActiveGuildCombatShrineLevels(state),
         };
     }
 
@@ -10464,6 +9546,8 @@ self["webpackChunkmwicombatsimulator"] = __webpack_chunk_array__;`;
             food: [],
             drinks: [],
             abilities: [],
+            labyrinthUpgrades: buildSimulatorLabyrinthUpgrades(resolveLabyrinthUpgradeLevels()),
+            guildBuffs: getActiveGuildCombatShrineLevels(state),
         };
         return buildSimulatorImportSetFromPlayerDto(state, fallbackDto, defaultZoneHrid, simulationTime);
     }
@@ -10497,7 +9581,6 @@ self["webpackChunkmwicombatsimulator"] = __webpack_chunk_array__;`;
             ? buildSimulatorImportSetFromPlayerDto(state, playerData.playerDto, suggestedZoneHrid, "24")
             : buildFallbackSimulatorImportSetFromState(state, suggestedZoneHrid, "24");
         const importSet = stripConsumablesFromSimulatorImportSet(importSetRaw);
-        const simulatorPersonalBuffItemHrids = getSimulatorPersonalBuffItemHrids(state);
 
         return {
             source: SIMULATOR_BRIDGE_SOURCE,
@@ -10524,7 +9607,6 @@ self["webpackChunkmwicombatsimulator"] = __webpack_chunk_array__;`;
             coffeeCrateItemHrid,
             foodCrateItemHrid,
             importSet,
-            simulatorPersonalBuffItemHrids,
         };
     }
 
@@ -10910,7 +9992,6 @@ self["webpackChunkmwicombatsimulator"] = __webpack_chunk_array__;`;
         actionTypeHrid,
         roomLoadoutMetrics,
         crateMetrics,
-        loanMetrics,
         includePersonalBuffs,
         labyrinthExperienceBonus = 0
     ) {
@@ -10930,7 +10011,6 @@ self["webpackChunkmwicombatsimulator"] = __webpack_chunk_array__;`;
         appendExperienceBuckets(globalWithoutPersonal);
         appendExperienceBuckets(roomLoadoutMetrics);
         appendExperienceBuckets(crateMetrics);
-        appendExperienceBuckets(loanMetrics);
         genericBonus += finiteNumber(labyrinthExperienceBonus, 0);
 
         if (includePersonalBuffs) {
@@ -11341,21 +10421,15 @@ self["webpackChunkmwicombatsimulator"] = __webpack_chunk_array__;`;
     }
 
     function getCombatRoomSignature(state, initClientData, room, maxEnhancementByItem, options = {}) {
-        const includePersonalBuffs = !(options && options.includePersonalBuffs === false);
         const baseSignature = getCombatPlayerSignature(state);
         const combatCrate = getCombatCrateBuffs(state, initClientData);
         const labyrinthUpgradeLevels = resolveLabyrinthUpgradeLevels(options);
-        const labyrinthCombatBuffs = buildLabyrinthCombatBuffs(labyrinthUpgradeLevels);
-        const guildCombatBuffs = getActiveGuildCombatBuffs(state);
-        const personalSealItemHrids = getCombatSimulatorPersonalSealItemHrids(state, {
-            includePersonalBuffs,
-            selectedSealItemHrids: Array.isArray(options?.selectedSealItemHrids) ? options.selectedSealItemHrids : [],
-        });
+        const labyrinthUpgrades = buildSimulatorLabyrinthUpgrades(labyrinthUpgradeLevels);
+        const guildBuffs = getActiveGuildCombatShrineLevels(state);
         const combatCrateSignature = String(combatCrate.combatCrateSignature || combatCrate.teaCrateItemHrid || "");
         const crateBuffHash = hashString(stableStringify(combatCrate.combatBuffs || []));
-        const labyrinthBuffHash = hashString(stableStringify(labyrinthCombatBuffs || []));
-        const guildBuffHash = hashString(stableStringify(guildCombatBuffs || []));
-        const personalBuffHash = hashString(stableStringify(personalSealItemHrids || []));
+        const labyrinthBuffHash = hashString(stableStringify(labyrinthUpgrades));
+        const guildBuffHash = hashString(stableStringify(guildBuffs));
         const monsterDetailHash = hashString(stableStringify(initClientData?.combatMonsterDetailMap?.[room?.monsterHrid] || null));
         const loadoutInfo = resolveCombatRoomLoadout(state, room);
         const loadout = loadoutInfo.loadout;
@@ -11369,8 +10443,6 @@ self["webpackChunkmwicombatsimulator"] = __webpack_chunk_array__;`;
                 `crateBuff=${crateBuffHash}`,
                 `labBuff=${labyrinthBuffHash}`,
                 `guildBuff=${guildBuffHash}`,
-                `pMode=${includePersonalBuffs ? 1 : 0}`,
-                `pBuff=${personalBuffHash}`,
                 baseSignature,
             ].join("|");
         }
@@ -11427,8 +10499,6 @@ self["webpackChunkmwicombatsimulator"] = __webpack_chunk_array__;`;
             `crateBuff=${crateBuffHash}`,
             `labBuff=${labyrinthBuffHash}`,
             `guildBuff=${guildBuffHash}`,
-            `pMode=${includePersonalBuffs ? 1 : 0}`,
-            `pBuff=${personalBuffHash}`,
             `levels=${levelParts.join(",")}`,
             `ability=${abilityParts.join(",")}`,
             `aTrig=${abilityTriggerHash}`,
@@ -11453,16 +10523,9 @@ self["webpackChunkmwicombatsimulator"] = __webpack_chunk_array__;`;
         const trials = normalizeCombatSimTrials(combatTrials);
         const combatCrate = getCombatCrateBuffs(state, initClientData);
         const labyrinthUpgradeLevels = resolveLabyrinthUpgradeLevels(options);
-        const labyrinthCombatBuffs = buildLabyrinthCombatBuffs(labyrinthUpgradeLevels);
-        const guildCombatBuffs = getActiveGuildCombatBuffs(state);
         const guildCombatShrineLevels = getActiveGuildCombatShrineLevels(state);
-        const includePersonalBuffs = !(options && options.includePersonalBuffs === false);
-        const playerPersonalBuffItemHrids = getCombatSimulatorPersonalSealItemHrids(state, {
-            includePersonalBuffs,
-            selectedSealItemHrids: Array.isArray(options?.selectedSealItemHrids) ? options.selectedSealItemHrids : [],
-        });
         const combatCrateSignature = String(combatCrate.combatCrateSignature || combatCrate.teaCrateItemHrid || "");
-        const playerData = buildCombatPlayerDtoForRoom(state, initClientData, room, maxEnhancementByItem);
+        const playerData = buildCombatPlayerDtoForRoom(state, initClientData, room, maxEnhancementByItem, options);
         if (!playerData.playerDto) {
             return null;
         }
@@ -11474,9 +10537,6 @@ self["webpackChunkmwicombatsimulator"] = __webpack_chunk_array__;`;
         const workerResult = await simulateCombatRoomWithWorker(
             {
                 playerDto: playerData.playerDto,
-                playerPersonalBuffItemHrids,
-                labyrinthCombatBuffs,
-                guildCombatBuffs,
                 monsterHrid: room.monsterHrid,
                 mazeDifficulty: roomLevel,
                 roomDurationSeconds: ROOM_DURATION_SECONDS,
@@ -11530,10 +10590,9 @@ self["webpackChunkmwicombatsimulator"] = __webpack_chunk_array__;`;
                 mazeCrateItemHrid: combatCrateSignature,
                 mazeCrateItemHrids: Array.isArray(combatCrate.combatCrateItemHrids) ? combatCrate.combatCrateItemHrids.slice() : [],
                 mazeCrateBuffCount: Array.isArray(combatCrate.combatBuffs) ? combatCrate.combatBuffs.length : 0,
-                labyrinthBuffCount: Array.isArray(labyrinthCombatBuffs) ? labyrinthCombatBuffs.length : 0,
-                guildBuffCount: Array.isArray(guildCombatBuffs) ? guildCombatBuffs.length : 0,
+                labyrinthBuffCount: Object.values(playerData.playerDto.labyrinthUpgrades).filter((level) => level > 0).length,
+                guildBuffCount: Object.values(guildCombatShrineLevels).filter((level) => level > 0).length,
                 guildCombatShrineLevels,
-                personalBuffCount: Array.isArray(playerPersonalBuffItemHrids) ? playerPersonalBuffItemHrids.length : 0,
                 combatInputSnapshot: inputSnapshot,
                 firstRunDebug: firstRunDebug || null,
             },
@@ -11547,63 +10606,8 @@ self["webpackChunkmwicombatsimulator"] = __webpack_chunk_array__;`;
                     : "",
                 `mode=${playerData.loadoutInfo.loadout?.useExactEnhancement ? "exact" : "highest"}`,
                 `crate=${combatCrateSignature || "none"}`,
-                `guildLv=${guildCombatShrineLevels.force}/${guildCombatShrineLevels.spirit}/${guildCombatShrineLevels.tempo}`,
-                getLabyrinthUpgradeLevel(labyrinthUpgradeLevels, LABYRINTH_UPGRADE_KEY_COMBAT_DAMAGE) > 0
-                    ? `labDmg+${(
-                          getLabyrinthUpgradeLevel(labyrinthUpgradeLevels, LABYRINTH_UPGRADE_KEY_COMBAT_DAMAGE) *
-                          LABYRINTH_UPGRADE_STEP_RATIO *
-                          100
-                      ).toFixed(1)}%`
-                    : "",
-                getLabyrinthUpgradeLevel(labyrinthUpgradeLevels, LABYRINTH_UPGRADE_KEY_ATTACK_SPEED) > 0
-                    ? `labAtkSpd+${(
-                          getLabyrinthUpgradeLevel(labyrinthUpgradeLevels, LABYRINTH_UPGRADE_KEY_ATTACK_SPEED) *
-                          LABYRINTH_UPGRADE_STEP_RATIO *
-                          100
-                      ).toFixed(1)}%`
-                    : "",
-                getLabyrinthUpgradeLevel(labyrinthUpgradeLevels, LABYRINTH_UPGRADE_KEY_CAST_SPEED) > 0
-                    ? `labCastSpd+${(
-                          getLabyrinthUpgradeLevel(labyrinthUpgradeLevels, LABYRINTH_UPGRADE_KEY_CAST_SPEED) *
-                          LABYRINTH_UPGRADE_STEP_RATIO *
-                          100
-                      ).toFixed(1)}%`
-                    : "",
-                getLabyrinthUpgradeLevel(labyrinthUpgradeLevels, LABYRINTH_UPGRADE_KEY_CRITICAL_RATE) > 0
-                    ? `labCrit+${(
-                          getLabyrinthUpgradeLevel(labyrinthUpgradeLevels, LABYRINTH_UPGRADE_KEY_CRITICAL_RATE) *
-                          LABYRINTH_UPGRADE_STEP_RATIO *
-                          100
-                      ).toFixed(1)}%`
-                    : "",
-                getCombatBuffValueByType(guildCombatBuffs, "/buff_types/max_hitpoints", "ratioBoost") > 0
-                    ? `guildHp+${(
-                          getCombatBuffValueByType(guildCombatBuffs, "/buff_types/max_hitpoints", "ratioBoost") * 100
-                      ).toFixed(1)}%`
-                    : "",
-                getCombatBuffValueByType(guildCombatBuffs, "/buff_types/max_manapoints", "ratioBoost") > 0
-                    ? `guildMp+${(
-                          getCombatBuffValueByType(guildCombatBuffs, "/buff_types/max_manapoints", "ratioBoost") * 100
-                      ).toFixed(1)}%`
-                    : "",
-                getCombatBuffValueByType(guildCombatBuffs, "/buff_types/attack_speed", "ratioBoost") > 0
-                    ? `guildAtkSpd+${(
-                          getCombatBuffValueByType(guildCombatBuffs, "/buff_types/attack_speed", "ratioBoost") * 100
-                      ).toFixed(1)}%`
-                    : "",
-                getCombatBuffValueByType(guildCombatBuffs, "/buff_types/cast_speed", "flatBoost") > 0
-                    ? `guildCastSpd+${(
-                          getCombatBuffValueByType(guildCombatBuffs, "/buff_types/cast_speed", "flatBoost") * 100
-                      ).toFixed(1)}%`
-                    : "",
-                getCombatBuffValueByType(guildCombatBuffs, "/buff_types/damage", "ratioBoost") > 0
-                    ? `guildDmg+${(
-                          getCombatBuffValueByType(guildCombatBuffs, "/buff_types/damage", "ratioBoost") * 100
-                      ).toFixed(1)}%`
-                    : "",
-                Array.isArray(playerPersonalBuffItemHrids) && playerPersonalBuffItemHrids.length > 0
-                    ? `pBuff=${playerPersonalBuffItemHrids.length}`
-                    : "",
+                `guildLv=${Object.values(guildCombatShrineLevels).join("/")}`,
+                `labLv=${Object.values(playerData.playerDto.labyrinthUpgrades).join("/")}`,
                 `roomLv=${roomLevel}`,
                 `trials=${executedTrials}`,
                 `wins=${successes}`,
@@ -11641,11 +10645,8 @@ self["webpackChunkmwicombatsimulator"] = __webpack_chunk_array__;`;
         if (!room || room.roomType !== LABYRINTH_COMBAT_ROOM_TYPE || !room.monsterHrid) {
             return null;
         }
-        const includePersonalBuffs = !(options && options.includePersonalBuffs === false);
         const labyrinthUpgradeLevels = resolveLabyrinthUpgradeLevels(options);
         const playerSignature = getCombatRoomSignature(state, initClientData, room, maxEnhancementByItem, {
-            includePersonalBuffs,
-            selectedSealItemHrids: Array.isArray(options?.selectedSealItemHrids) ? options.selectedSealItemHrids : [],
             labyrinthUpgradeLevels,
         });
         if (!playerSignature) {
@@ -11685,8 +10686,6 @@ self["webpackChunkmwicombatsimulator"] = __webpack_chunk_array__;`;
                 trials,
                 roomKey,
                 {
-                    includePersonalBuffs,
-                    selectedSealItemHrids: Array.isArray(options?.selectedSealItemHrids) ? options.selectedSealItemHrids : [],
                     labyrinthUpgradeLevels,
                 }
             );
@@ -11942,11 +10941,6 @@ self["webpackChunkmwicombatsimulator"] = __webpack_chunk_array__;`;
         const maxEnhancementByItem = buildMaxEnhancementByItem(state);
         const labyrinthUpgradeLevels = getLabyrinthUpgradeLevels(true);
         const targetCount = targetIndexes.length;
-        const loanPersonalActionTypeBuffsDict =
-            options && options.loanPersonalActionTypeBuffsDict && typeof options.loanPersonalActionTypeBuffsDict === "object"
-                ? options.loanPersonalActionTypeBuffsDict
-                : null;
-        const selectedSealItemHrids = Array.isArray(options?.selectedSealItemHrids) ? options.selectedSealItemHrids : [];
 
         for (let targetPos = 0; targetPos < targetCount; targetPos += 1) {
             if (isRunStale()) {
@@ -11979,7 +10973,6 @@ self["webpackChunkmwicombatsimulator"] = __webpack_chunk_array__;`;
             let result = null;
             if (room?.roomType === LABYRINTH_SKILLING_ROOM_TYPE) {
                 result = computeRoomClearChance(state, initClientData, room, maxEnhancementByItem, {
-                    loanPersonalActionTypeBuffsDict,
                     labyrinthUpgradeLevels,
                 });
                 progressTracker.add(1, roomProgressMessage);
@@ -11996,10 +10989,7 @@ self["webpackChunkmwicombatsimulator"] = __webpack_chunk_array__;`;
                     progressTracker,
                     combatTrials,
                     roomKey,
-                    {
-                        selectedSealItemHrids,
-                        labyrinthUpgradeLevels,
-                    }
+                    { labyrinthUpgradeLevels }
                 );
             }
 
@@ -12040,6 +11030,9 @@ self["webpackChunkmwicombatsimulator"] = __webpack_chunk_array__;`;
                     setCellCombatPreview(cell, combatPreview);
                 } else {
                     clearCellCombatPreview(cell);
+                    if (room?.roomType === LABYRINTH_COMBAT_ROOM_TYPE && room?.monsterHrid) {
+                        bindSkillingPreviewEvents(cell);
+                    }
                 }
             }
 
@@ -12064,27 +11057,9 @@ self["webpackChunkmwicombatsimulator"] = __webpack_chunk_array__;`;
         }
         pendingAutoRecalcRoomKeys.clear();
         const trigger = String(options?.trigger || "manual");
-        const explicitLoanOptions = normalizeLoanSimulationOptions(options);
-        let effectiveLoanOptions = explicitLoanOptions;
-        if (!effectiveLoanOptions && trigger === "auto-new-tiles") {
-            effectiveLoanOptions = normalizeLoanSimulationOptions(activeLoanSimulationOptions);
-        }
-        if (trigger !== "auto-new-tiles") {
-            activeLoanSimulationOptions = effectiveLoanOptions ? deepCloneJson(effectiveLoanOptions) : null;
-        }
-
         const runOptions = {
             ...(options && typeof options === "object" ? options : {}),
         };
-        if (effectiveLoanOptions) {
-            runOptions.loanPersonalActionTypeBuffsDict = deepCloneJson(effectiveLoanOptions.loanPersonalActionTypeBuffsDict);
-            runOptions.selectedSealItemHrids = Array.isArray(effectiveLoanOptions.selectedSealItemHrids)
-                ? Array.from(effectiveLoanOptions.selectedSealItemHrids)
-                : [];
-        } else {
-            delete runOptions.loanPersonalActionTypeBuffsDict;
-            delete runOptions.selectedSealItemHrids;
-        }
 
         manualUpdateRunning = true;
         setControlStatus({
@@ -12269,41 +11244,11 @@ self["webpackChunkmwicombatsimulator"] = __webpack_chunk_array__;`;
         }
     }
 
-    function applySimulatorExtraBuffsOnPage(payload) {
-        const configuredBuffs = Array.isArray(payload?.simulatorPersonalBuffItemHrids)
-            ? payload.simulatorPersonalBuffItemHrids
-            : [];
-        const expected = new Set(
-            configuredBuffs
-                .map((value) => String(value || ""))
-                .filter((value) => SIMULATOR_PERSONAL_BUFF_ITEM_HRIDS.has(value))
-        );
-        const toggle = document.querySelector("input#personalBuffsToggle");
-        const buffInputs = Array.from(document.querySelectorAll("#personalBuffsBox input[type='checkbox']"));
-        if (!toggle && buffInputs.length === 0) {
-            return false;
-        }
-
-        let applied = false;
-        if (toggle && setCheckboxControlValue(toggle, expected.size > 0)) {
-            applied = true;
-        }
-        for (const input of buffInputs) {
-            const value = String(input?.value || "");
-            const shouldCheck = expected.has(value);
-            if (setCheckboxControlValue(input, shouldCheck)) {
-                applied = true;
-            }
-        }
-        return applied;
-    }
-
     function applySimulatorBridgeFieldsOnPage(payload, sanitizedImportSet) {
         applySimulatorLanguageOnPage(payload);
         applyMonsterSelectionOnSimulatorPage(payload);
         applySimulatorPlayerSelectionOnPage();
         applySimulatorCrateSelectionOnPage(payload);
-        applySimulatorExtraBuffsOnPage(payload);
 
         if (Number.isFinite(Number(payload?.mazeDifficulty))) {
             const roomLevel = Math.max(20, Math.floor(Number(payload.mazeDifficulty)));

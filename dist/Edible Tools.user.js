@@ -2,7 +2,7 @@
 // @name         [銀河奶牛]食用工具
 // @name:en      Edible Tools
 // @namespace    http://tampermonkey.net/
-// @version      0.513
+// @version      0.514
 // @description  開箱記錄、箱子期望、離線統計、公會釘釘、食物警察、掉落追蹤、強化統計、地牢計算
 // @description:en  Chest log, chest value, offline stats, guild XP, food monitor, drop tracking, enhancement stats
 // @author       Truth_Light
@@ -1507,7 +1507,7 @@
                     const color = itemData.Color || '';
 
                     itemQuantityElement.style.color = color;
-                    const taxFactor = Edible_Tools_Set.enableMarketTaxCalculation && !(itemName in specialItemPrices) ? 0.95 : 1;
+                    const taxFactor = Edible_Tools_Set.enableMarketTaxCalculation && !(itemName in specialItemPrices) ? 0.96 : 1;
                     const itemOpenTotalAskValue = itemAskValue * itemQuantity * taxFactor;
                     const itemOpenTotalBidValue = itemBidValue * itemQuantity * taxFactor;
 
@@ -2782,7 +2782,7 @@ function processCharacterData(init_character_data) {
                 existingItem.出售總價 = (existingItem.出售單價 * existingItem.期望掉落).toFixed(2);
                 existingItem.收購總價 = (existingItem.收購單價 * existingItem.期望掉落).toFixed(2);
                 existingItem.Color = priceColor;
-                const taxFactor = Edible_Tools_Set.enableMarketTaxCalculation && !(itemName in specialItemPrices) ? 0.95 : 1;
+                const taxFactor = Edible_Tools_Set.enableMarketTaxCalculation && !(itemName in specialItemPrices) ? 0.96 : 1;
                 // 累計總價
                 TotalAsk += (askPrice * expectedYield) * taxFactor;
                 TotalBid += (bidPrice * expectedYield) * taxFactor;
@@ -3894,7 +3894,7 @@ function addBattlePlayerLootButton() {
             for (const [itemName, expectedQuantity] of Object.entries(playerExpectDrops)) {
                 const unitPrice = getSpecialItemPrice(itemName, 'bid');
                 if (unitPrice !== null) {
-                    const taxFactor = Edible_Tools_Set.enableMarketTaxCalculation && !(itemName in specialItemPrices) ? 0.95 : 1;
+                    const taxFactor = Edible_Tools_Set.enableMarketTaxCalculation && !(itemName in specialItemPrices) ? 0.96 : 1;
                     totalExpectPrice += unitPrice * expectedQuantity * taxFactor;
                 }
             }
@@ -5403,7 +5403,7 @@ function openSettings() {
                 </label>
                 <label>
                     <input type="checkbox" name="MarketTaxCalculation" ${Edible_Tools_Set.enableMarketTaxCalculation ? 'checked' : ''}>
-                    ${isCN ? '利潤計算包含5%市場稅' : 'Include 5% market tax in profit calculation'}
+                    ${isCN ? '利潤計算包含4%市場稅' : 'Include 4% market tax in profit calculation'}
                 </label>
                 <label>
                     <input type="checkbox" name="PointCombatLevel" ${Edible_Tools_Set.enablePointCombatLevel ? 'checked' : ''}>
