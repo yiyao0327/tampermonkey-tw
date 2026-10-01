@@ -3,7 +3,7 @@
 // @name:zh-CN         MWI Sunrishe 工具箱
 // @name:en            MWI Sunrishe Toolkit
 // @namespace          http://tampermonkey.net/
-// @version            2.17.2
+// @version            2.18.0
 // @description        MWI Sunrishe 綜合工具箱：提供角色/隊伍名片、技能/房屋/戰鬥升級規劃、裝備提升計算器、地下城收益、配裝同步和市場伴侶增強。
 // @description:zh-CN  MWI Sunrishe 綜合工具箱：提供角色/隊伍名片、技能/房屋/戰鬥升級規劃、裝備提升計算器、地下城收益、配裝同步和市場伴侶增強。
 // @description:en     MST toolkit for character/party cards, ability/house/combat upgrade planning, equipment comparison, dungeon profit, loadout sync, and Market Mate enhancements.
@@ -47,6 +47,9 @@
 // @connect            oapi.dingtalk.com
 // @connect            qyapi.weixin.qq.com
 // @connect            open.feishu.cn
+// @connect            js.nainai.eu.org
+// @connect            update.greasyfork.org.cn
+// @connect            update.greasyfork.org
 // @downloadURL https://raw.githubusercontent.com/yiyao0327/tampermonkey-tw/main/dist/mwi-sunrishe-toolkit.user.js
 // @updateURL https://raw.githubusercontent.com/yiyao0327/tampermonkey-tw/main/dist/mwi-sunrishe-toolkit.user.js
 // ==/UserScript==
@@ -54,7 +57,7 @@
   'use strict';
 
   // 構建指令碼會靜態替換這個佔位符，業務程式碼不直接讀取 Node 環境變數。
-  const PACKAGE_VERSION = "2.17.2";
+  const PACKAGE_VERSION = "2.18.0";
 
   const BUILD_FLAGS = Object.freeze({
     // 目前只有語言切換按鈕需要區分 dev/prod：正式包不展示該除錯入口。
@@ -62,7 +65,7 @@
   });
 
   // 市場賣出收益統一從這裡扣稅，交易稅調整時只改這一處。
-  const MARKET_TAX_RATE = 0.05;
+  const MARKET_TAX_RATE = 0.04;
   const MARKET_TAX_MULTIPLIER = 1 - MARKET_TAX_RATE;
 
   // 牛鈴袋在市場上出售按 18% 特殊稅率扣稅，與普通市場稅分開管理，調整時只改這一處。
@@ -2101,7 +2104,42 @@
     houseUpgradeCalculator: {zh: '房屋升級材料計算器', en: 'House Upgrade Calculator'},
     combatUpgradeCalculator: {zh: '戰鬥升級計算器', en: 'Combat Upgrade Calculator'},
     abilityUpgradeCalculator: {zh: '技能升級計算器', en: 'Ability Upgrade Calculator'},
-    subscribeNotification: {zh: '訂閱通知', en: 'Notifications'}
+    subscribeNotification: {zh: '訂閱通知', en: 'Notifications'},
+    changelog: {zh: '更新日誌', en: 'Changelog'},
+    checkUpdate: {zh: '檢查更新', en: 'Check for Updates'},
+    toolkitUpdateAvailable: {zh: '更新新版本 v{0}', en: 'Update to v{0}'}
+  };
+
+  // changelog-messages
+  const CHANGELOG_MESSAGES = {
+    changelogTitle: {zh: '更新日誌', en: 'Changelog'},
+    changelogCurrent: {zh: '當前版本', en: 'Installed'},
+    changelogLegacyGroup: {zh: 'EDS 歷史版本', en: 'EDS Legacy Versions'}
+  };
+
+  // update-checker-messages
+  const UPDATE_CHECKER_MESSAGES = {
+    // 入口紅框的懸浮說明：說明紅框與右上角小點的含義（更新版本號由呼叫方傳入）。
+    updateAvailableBadge: {zh: '有新版本 v{0} 可用', en: 'New version v{0} is available'},
+    // 檢查更新彈窗：顯示當前版本與最新版本，並提供重新檢查。
+    checkUpdateTitle: {zh: '檢查更新', en: 'Check for Updates'},
+    checkUpdateChecking: {zh: '正在檢查更新…', en: 'Checking for updates…'},
+    checkUpdateCurrent: {zh: '當前版本', en: 'Installed version'},
+    checkUpdateRemote: {zh: '最新版本', en: 'Latest version'},
+    checkUpdateLatest: {zh: '已是最新版本', en: 'You are on the latest version'},
+    checkUpdateAvailable: {zh: '發現新版本 v{0}', en: 'New version v{0} is available'},
+    checkUpdateFailed: {zh: '檢查更新失敗', en: 'Update check failed'},
+    checkUpdateFailedHint: {
+      zh: '無法連線更新地址，請檢查網路或代理後重試。',
+      en: 'Could not reach the update sources. Check your network or proxy and try again.'
+    },
+    checkUpdateRetry: {zh: '重新檢查', en: 'Check again'},
+    checkUpdateInstall: {zh: '安裝新版本', en: 'Install new version'},
+    checkUpdateCheckedAt: {zh: '檢查時間', en: 'Checked at'},
+    checkUpdateSource: {zh: '來源', en: 'Source'},
+    checkUpdateSourceProxy: {zh: '代理地址', en: 'Proxy address'},
+    checkUpdateSourceMirror: {zh: '映象地址', en: 'Mirror address'},
+    checkUpdateSourceOfficial: {zh: '官方地址', en: 'Official address'}
   };
 
   // subscribe-notification-messages
@@ -2452,7 +2490,9 @@
     combatCalculator: COMBAT_CALCULATOR_MESSAGES,
     abilityCalculator: ABILITY_CALCULATOR_MESSAGES,
     combatSimImport: COMBAT_SIM_IMPORT_MESSAGES,
-    subscribeNotification: SUBSCRIBE_NOTIFICATION_MESSAGES
+    subscribeNotification: SUBSCRIBE_NOTIFICATION_MESSAGES,
+    changelog: CHANGELOG_MESSAGES,
+    updateChecker: UPDATE_CHECKER_MESSAGES
   };
 
   // style-service
@@ -2533,8 +2573,8 @@
         skills: '/static/media/skills_sprite.3bb4d936.svg',
         abilities: '/static/media/abilities_sprite.fdd1b4de.svg',
         actions: '/static/media/actions_sprite.e6388cbc.svg',
-        misc: '/static/media/misc_sprite.cfad291b.svg',
-        chatIcons: '/static/media/chat_icons_sprite.628944de.svg'
+        misc: '/static/media/misc_sprite.02869244.svg',
+        chatIcons: '/static/media/chat_icons_sprite.5a021815.svg'
       },
       markers: {
         items: 'items_sprite',
@@ -2564,18 +2604,42 @@
       scanPage() {
         if (this.scannedRevision === this.domRevision) return;
         this.scannedRevision = this.domRevision;
-        const unresolved = new Set(Object.keys(this.markers));
+        // 同一 sprite 在頁面上可能有多個檔名：其它指令碼（如第三方懸浮面板）還在用舊 hash，
+        // 而遊戲自己渲染的圖示數量遠多於它們，因此取出現次數最多的一個；數量並列時優先
+        // 遊戲根容器（#root）內的寫法，避免誤用第三方指令碼的舊圖示集。
+        const types = Object.entries(this.markers);
+        const counts = new Map();
         for (const useElement of document.querySelectorAll('svg use')) {
           const href = this.getUseHref(useElement);
           if (!href.includes('#')) continue;
           const spritePath = href.split('#')[0];
-          for (const type of unresolved) {
-            if (!spritePath.includes(this.markers[type])) continue;
-            this.paths.set(type, spritePath);
-            unresolved.delete(type);
-            break;
+          const match = types.find(
+            ([
+              , marker
+            ]) => spritePath.includes(marker)
+          );
+          if (!match) continue;
+          const [
+            type
+          ] = match;
+          let perPath = counts.get(type);
+          if (!perPath) counts.set(type, (perPath = new Map()));
+          const entry = perPath.get(spritePath) || {path: spritePath, count: 0, inRoot: false};
+          entry.count += 1;
+          entry.inRoot = entry.inRoot || Boolean(useElement.closest?.('#root'));
+          perPath.set(spritePath, entry);
+        }
+        this.paths.clear();
+        for (const [
+          type, perPath
+        ] of counts) {
+          let best = null;
+          for (const entry of perPath.values()) {
+            if (!best || entry.count > best.count || (entry.count === best.count && entry.inRoot && !best.inRoot)) {
+              best = entry;
+            }
           }
-          if (!unresolved.size) break;
+          if (best) this.paths.set(type, best.path);
         }
       },
 
@@ -3437,7 +3501,7 @@
       const popoverId = `${prefix}-popover`;
       const triggerClass = `${prefix}-trigger`;
       const paragraphClass = `${prefix}-popover-paragraph`;
-      const miscSprite = utils.getSpriteUrl('misc') || '/static/media/misc_sprite.cfad291b.svg';
+      const miscSprite = utils.getSpriteUrl('misc') || '/static/media/misc_sprite.02869244.svg';
       const triggerHost = document.createElement('span');
       triggerHost.className = `${prefix}-anchor`;
       TemplateRenderer.render(
@@ -3968,7 +4032,7 @@
       const {TemplateRenderer, utils} = this.ctx;
       const titleElement = popup?.querySelector?.('.swal2-title');
       if (!titleElement || !icon) return;
-      const miscSprite = utils?.getSpriteUrl?.('misc') || '/static/media/misc_sprite.cfad291b.svg';
+      const miscSprite = utils?.getSpriteUrl?.('misc') || '/static/media/misc_sprite.02869244.svg';
       const host = document.createElement('span');
       host.className = 'mst-dialog-title-icon';
       TemplateRenderer.render(
@@ -4337,7 +4401,7 @@
 
     getDialogHtml(feature) {
       const {i18n, utils} = feature.ctx;
-      const miscSprite = utils.getSpriteUrl('misc') || '/static/media/misc_sprite.cfad291b.svg';
+      const miscSprite = utils.getSpriteUrl('misc') || '/static/media/misc_sprite.02869244.svg';
       return `
   <div class="mst-upgrade-calculator mst-ability-upgrade-calculator">
     <div class="mst-ability-toolbar">
@@ -6744,6 +6808,497 @@
         equipmentHidden,
         newVersion: true
       };
+    }
+  }
+
+  // 版本號解析與比較：當前構建版本（dev 構建帶 -dev.<時間戳> 字尾）與 GreasyFork meta 版本
+  // 都走同一套口徑，只比較數字字首，字尾不參與比較。
+  function parseVersionNumbers(version) {
+    const base = String(version || '')
+      .trim()
+      .match(/^\d+(?:\.\d+)*/);
+    return base ? base[0].split('.').map((part) => Number(part)) : [];
+  }
+
+  function getBaseVersion(version) {
+    const numbers = parseVersionNumbers(version);
+    return numbers.length ? numbers.join('.') : '';
+  }
+
+  // 逐段比較：2.9.0 < 2.10.0（按數字而非字串），段數不同時缺失段按 0 處理。
+  function compareVersions(left, right) {
+    const a = parseVersionNumbers(left);
+    const b = parseVersionNumbers(right);
+    const length = Math.max(a.length, b.length);
+    for (let index = 0; index < length; index++) {
+      const difference = (a[index] || 0) - (b[index] || 0);
+      if (difference) return difference > 0 ? 1 : -1;
+    }
+    return 0;
+  }
+
+  function isNewerVersion(candidate, current) {
+    return compareVersions(candidate, current) > 0;
+  }
+
+  var MST_CHANGELOG_CSS = String.raw`.mst-changelog-root{display:flex;max-height:min(60vh,34rem);flex-direction:column;gap:.7rem;overflow-y:auto;padding-right:.3rem;text-align:left}
+.mst-changelog-entry{display:flex;flex-direction:column;gap:.3rem;border-bottom:1px solid var(--color-midnight-100, #454771);padding-bottom:.6rem}
+.mst-changelog-entry:last-child{border-bottom:none;padding-bottom:0}
+.mst-changelog-entry-head{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}
+.mst-changelog-version{color:var(--color-text-dark-mode, #e7e7e7);font-size:var(--font-size-md, 1rem);font-weight:600}
+.mst-changelog-date{color:var(--color-space-200, #bbc5f1);font-size:var(--font-size-sm, .8125rem);opacity:.85}
+.mst-changelog-current{border-radius:.75rem;padding:.05rem .45rem;background:var(--color-primary, #4357af);color:var(--color-text-dark-mode, #e7e7e7);font-size:var(--font-size-sm, .8125rem);font-weight:600}
+.mst-changelog-notes{display:flex;margin:0;padding-left:1.2rem;flex-direction:column;gap:.25rem}
+.mst-changelog-notes li{font-size:.82rem;line-height:1.5;overflow-wrap:break-word}
+.mst-changelog-group{margin-top:.2rem;color:var(--color-space-200, #bbc5f1);font-size:var(--font-size-sm, .8125rem);font-weight:600;letter-spacing:.05em}`;
+
+  // 更新日誌資料：與 docs/changelog.md 保持同步（版本、順序、中文說明逐條一致，測試會校驗）。
+  // 釋出日期取自 GreasyFork 釋出記錄（指令碼 574037）；`legacy: true` 表示 MST 融合前的 EDS 歷史線。
+  // 版本說明只寫使用者可感知的變化，更新版本時先改 docs/changelog.md，再同步這裡並補英文。
+  const CHANGELOG_VERSIONS = [
+    {
+      version: '2.18.0',
+      date: '2026-10-01',
+      notes: [
+        {
+          zh: '地下城收益的普通物品市場稅由 5% 調整為 4%，賣出收益相應提高（牛鈴與牛鈴袋仍為 18%）。',
+          en: 'Dungeon Profit: the standard market tax is lowered from 5% to 4%, so selling revenue is higher (cowbells and their bags stay at 18%).'
+        }, {
+          zh: '修復遊戲更新後部分圖示顯示不出來的問題。',
+          en: 'Fixed an issue where some icons could fail to display after a game update.'
+        }, {
+          zh: '工具箱新增“更新日誌”，可檢視各版本的版本號、釋出日期和更新說明。',
+          en: 'New "Changelog": view every version with its number, release date, and update notes.'
+        }, {
+          zh: '工具箱新增“檢查更新”：定時在後臺檢查新版本，有新版本時入口顯示提示、按鈕變為“更新新版本”並可直接安裝；沒有新版本時點選可檢視當前版本與最新版本。',
+          en: 'New "Check for Updates": it checks in the background and, when a new version is found, shows a hint on the Toolkit entry and turns the button into "Update to vX" for one-click install; with no new version, click it to view the installed and latest versions.'
+        }
+      ]
+    }, {
+      version: '2.17.2',
+      date: '2026-09-24',
+      notes: [
+        {
+          zh: '裝備提升計算器：模擬目標的護甲與生命值調整後，每秒傷害數值整體提高約三成，比較結果更穩定。',
+          en: "Equipment Comparison: after the simulated target's armor and hitpoints were adjusted, DPS values are about 30% higher overall and comparisons are more stable."
+        }, {
+          zh: '裝備提升計算器：基準裝備與對比裝備是同一件時直接顯示 0% 提升，兩欄每秒傷害顯示“—”，不必等待模擬。',
+          en: 'Equipment Comparison: when the baseline and comparison items are the same, it shows 0% improvement and both DPS columns show "—", with no simulation needed.'
+        }, {
+          zh: '裝備提升計算器：開啟彈窗和切換職業方案後自動開始模擬，不用再手動改動裝備。',
+          en: 'Equipment Comparison: simulation starts automatically when the dialog opens or the profession preset changes, so no manual equipment change is needed first.'
+        }, {
+          zh: '裝備提升計算器：模擬只反映所選裝備本身，不再計入角色成就等固定增益；搜尋和切換裝備時響應更快。',
+          en: 'Equipment Comparison: the simulation reflects only the selected equipment and no longer includes fixed bonuses such as character achievements; searching and switching equipment is faster.'
+        }
+      ]
+    }, {
+      version: '2.17.1',
+      date: '2026-09-23',
+      notes: [
+        {
+          zh: '相容性調整：工具箱改為只轉發遊戲連線、不再改動連線本身，去掉與其它會改寫遊戲連線的指令碼（如 Oi momomo 公會試煉助手、MWI 戰鬥工具）同時使用時的衝突隱患，工具箱自己的資料同步也照常工作。',
+          en: 'Compatibility: the Toolkit now only forwards the game connection instead of modifying it, removing conflicts with other scripts that rewrite the game connection (such as the Oi momomo guild trial helper and MWI combat tools) while keeping its own data sync working.'
+        }
+      ]
+    }, {
+      version: '2.17.0',
+      date: '2026-09-23',
+      notes: [
+        {
+          zh: '新增“任務開始”通知（預設開啟，可在“訊息型別”裡單獨關閉）：隊首換成另一個任務時推送並列出接下來 3 項等待佇列，被其他任務頂掉後重新開始的任務（迷宮、個人戰鬥這類任務編號沒變的也一樣）同樣推送；組隊戰鬥改在每次真正開戰時推送。任務完成與任務開始發生在同一次切換時只發一條通知（一條訊息裡可以同時有“完成”和“開始”兩行），同一任務一直在隊首執行（例如迷宮跑不同環節、戰鬥打不同波次）不會重複推送。',
+          en: 'New "Task start" notification (on by default, can be turned off separately under "Message types"): it is pushed when the queue head switches to another task and lists the next 3 waiting tasks; tasks that resume after being pushed aside (even with an unchanged task id, such as the labyrinth or solo battles) are pushed too, and party battles are announced once per actual battle start. When a task completes and the next one starts in the same transition only one message is sent (it can contain both a "complete" and a "start" line), and a task that keeps running at the head (e.g. labyrinth rooms or battle waves) is not pushed repeatedly.'
+        }, {
+          zh: '通知裡的行動名與遊戲內保持一致：點金、分解、轉化、解精煉顯示“行動名: 物品名”，強化顯示“物品名 +強化等級”。',
+          en: 'Action names in notifications now match the game: alchemy actions (transmute, decompose, convert, refine) show "Action: Item", and enhancing shows "Item +level".'
+        }, {
+          zh: '掉線或未登入時不再收到提醒：沒有拿到角色佇列資料時不再當成佇列為空，檢測到掉線會暫停“佇列為空”和定期進度提醒，重連後自動恢復。',
+          en: 'No more reminders while disconnected or not logged in: a missing character queue is no longer treated as an empty queue, and disconnection pauses the "empty queue" and periodic progress pushes until the connection is restored.'
+        }, {
+          zh: '關閉訂閱通知一段時間後再開啟，通知按當前佇列繼續，不再停留在關閉前的舊任務，也不會立刻補推一條。',
+          en: 'After subscription notifications have been off for a while, re-enabling them continues with the current queue instead of the old task from before, without an immediate catch-up push.'
+        }, {
+          zh: '通知末尾取不到角色名時顯示“角色 <編號>”以便區分賬號，連角色資訊都沒有時顯示“未知角色”。',
+          en: 'When the character name is unavailable, notifications show "Character <id>" to tell accounts apart, and "Unknown character" when no character info is available at all.'
+        },
+        {
+          zh: '“訊息型別”選項順序調整為任務開始、任務完成、佇列為空、定期進度；最小推送間隔預設值由 10 秒改為 5 秒（已儲存的設定不變）。',
+          en: 'The "Message types" options are reordered to task start, task completion, empty queue, periodic progress; the default minimum push interval changed from 10 to 5 seconds (saved settings are unchanged).'
+        }, {
+          zh: '地下城收益新增“牛鈴不計算收益”選項（預設不勾選）：勾選後牛鈴和牛鈴袋都不計入收益，收益結果與掉落物表裡的這部分價值按 0 顯示。',
+          en: 'Dungeon Profit adds an "Exclude cowbell value" option (off by default): when checked, cowbells and bags of cowbells are excluded from profit and their value in the results and drop table shows as 0.'
+        }
+      ]
+    }, {
+      version: '2.16.0',
+      date: '2026-09-08',
+      notes: [
+        {
+          zh: '新增訂閱通知：行動佇列任務完成、新任務開始或長時間未完成時，推送通知到釘釘、企業微信或飛書機器人，佇列騰空時附加提醒；任務完成和定期進度通知可分別開關，在工具箱選單的“訂閱通知”裡配置和測試傳送，僅在遊戲頁面開啟期間接收，金鑰只儲存在本地。組隊戰鬥取消準備後再次準備時，進度從重新準備時重新計數；遊戲連線斷開或同賬號在其他頁面登入被擠掉後，舊頁面暫停推送進度和佇列已空提醒，重連後自動恢復。',
+          en: 'New subscription notifications: push task completion, new task start, or long-running progress to a DingTalk, WeCom, or Feishu bot, plus a reminder when the queue becomes empty. Completion and periodic progress notifications can be toggled separately; configure and test sending under "Notifications" in the Toolkit menu. Notifications are only received while the game page is open and keys are stored locally. For party battles, progress restarts after a new ready-up; when the game connection drops or the account is kicked by another login, the old page pauses progress and empty-queue pushes until it reconnects.'
+        }, {
+          zh: '角色名片：勾選“使用最高強化等級”時，按庫存與已穿戴中的最高強化等級生成名片；懸浮裝備、技能、房屋圖示顯示單項評分，點選評分割槽域可檢視戰鬥、生活各分項的明細（按遊戲內順序排列），並可一鍵複製明細（每行同時包含名稱和分數）；遊戲以英文啟動後切換到中文時，名片裡的物品名也能正常顯示中文。',
+          en: 'Character Card: with "Use highest enhancement level" checked, the card is generated from the highest enhancement level in inventory and equipped gear. Hovering equipment, ability, or house icons shows per-item scores, clicking the score area shows the combat and skilling breakdowns (in game order), and the breakdown can be copied in one click (each line contains both the name and the score). Item names now display correctly when the game starts in English and then switches to Chinese.'
+        }, {
+          zh: '戰鬥模擬：一鍵匯入與角色名片共用隊友資料，遊戲內檢視過的隊友資料自動同步；跨公會隊友的神龕等級按其所在公會的神龕等級計算（在遊戲內檢視過該公會資料頁後生效）；配裝頁面複製的戰鬥模擬資料補充神龕資訊。',
+          en: "Combat Simulator: one-click import shares party profiles with the Character Card and syncs any profile you open in game; cross-guild members' shrine levels follow their guild's shrine levels (after viewing that guild's profile page in game); combat sim data copied from the loadout page now includes shrine info."
+        }, {
+          zh: '工具箱各功能彈窗標題前顯示與選單一致的圖示，彈窗和選單入口更容易一一對應。',
+          en: 'Every Toolkit dialog now shows the same icon as its menu entry, making dialogs and menu entries easy to match.'
+        }
+      ]
+    },
+    {
+      version: '2.15.0',
+      date: '2026-08-28',
+      notes: [
+        {
+          zh: '點選右上角頭像彈出的選單裡新增「Sunrishe 工具箱」入口，點選後原地開啟工具箱下拉（頁頭原有入口不變）。',
+          en: 'A new "Sunrishe Toolkit" entry appears at the top of the avatar menu, opening the Toolkit dropdown in place (the header entry is unchanged).'
+        }, {
+          zh: '戰鬥升級計算器在沒有主修職業時也能規劃升級，按各行經驗估算耗時和預計升級時間。',
+          en: "Combat Upgrade Calculator can now plan upgrades without a major profession, estimating duration and completion time from each row's XP."
+        }
+      ]
+    }, {
+      version: '2.14.0',
+      date: '2026-08-26',
+      notes: [
+        {
+          zh: '地下城收益新增批次模擬：把多個地下城加入列表，每行單獨設定難度、隊伍人數、耗時和每日成本，一次對比製作/購買鑰匙的每日成本和期望收益；引數修改後自動儲存，可隨時恢復預設。',
+          en: 'Dungeon Profit adds batch simulation: add multiple dungeons to a list, set difficulty, party size, run time, and daily cost per row, then compare daily cost and expected profit of crafting versus buying keys at once; parameters are saved automatically and can be reset to defaults.'
+        }, {
+          zh: '技能升級：從技能頁面開啟計算器時，自動填入當前裝配的技能；技能書選單裡的計算器入口按鈕與遊戲其他操作按鈕外觀一致。',
+          en: 'Ability Upgrade: opening the calculator from the abilities page now pre-fills currently equipped abilities, and the calculator button in the ability book menu matches the look of other game action buttons.'
+        }, {
+          zh: '地下城收益的“掉落物”頁籤外觀改為與遊戲頁面頁籤一致。',
+          en: 'The Dungeon Profit "Drops" tab now matches the game\'s tab style.'
+        }
+      ]
+    }, {
+      version: '2.13.0',
+      date: '2026-08-21',
+      notes: [
+        {
+          zh: '新增戰鬥模擬器一鍵匯入：在 aiwwb 模擬器頁面填入當前角色與隊伍資料並重新整理價格，隊友資料來自遊戲內點開過的資料。',
+          en: 'New one-click Combat Simulator import: fill the aiwwb simulator with the current character and party data and refresh prices; party data comes from profiles you have opened in game.'
+        }, {
+          zh: '工具箱選單新增“戰鬥模擬 aiwwb”入口（複用同一視窗）。',
+          en: 'New "Combat Sim aiwwb" entry in the Toolkit menu (reuses the same window).'
+        }, {
+          zh: '修復與 MWITools 同時使用時其頭部按鈕被擠到居中排列的問題。',
+          en: 'Fixed MWITools header buttons being squeezed toward the center when both scripts are installed.'
+        }
+      ]
+    }, {
+      version: '2.12.0',
+      date: '2026-08-19',
+      notes: [
+        {
+          zh: '地下城收益計算器增強：地下城下拉框增加 D1-D4 序號，方便對照遊戲內地下城地圖；結果區新增“掉落物”頁籤，按官方寶箱掉落物列表分普通、精煉寶箱逐條展示物品、掉率、期望數量和左一/右一價格，掉率和期望數量懸浮可檢視詳情，價格按市場報價稅前計算。',
+          en: 'Dungeon Profit improvements: the dungeon dropdown now shows D1-D4 numbers to match the in-game dungeon map, and the results area has a new "Drops" tab listing items, drop rates, expected quantities, and best-ask/best-bid prices per standard and refined chest, with details on hover; prices are calculated from market quotes before tax.'
+        }
+      ]
+    }, {
+      version: '2.11.1',
+      date: '2026-08-18',
+      notes: [
+        {
+          zh: '修復市場“加入購物車”按鈕與“生產採集增強最佳化”等其他指令碼同時啟用時，提示“當前沒有可加入購物車的市場物品”的問題。',
+          en: 'Fixed the "no market item to add to cart" message when the Marketplace Add to Cart button is used together with other scripts such as the production/gathering optimizer.'
+        }, {
+          zh: '同時安裝多份本指令碼（如正式版與本地除錯版）時，“加入購物車”按鈕保持穩定出現，不再互相干擾。',
+          en: 'When several copies of this script are installed (e.g. the release and a local dev build), the Add to Cart button now appears consistently without the copies interfering with each other.'
+        }
+      ]
+    },
+    {
+      version: '2.11.0',
+      date: '2026-08-18',
+      notes: [
+        {
+          zh: '迷宮入口新增“補充補給”：在“進入迷宮”按鈕上方提供補給按鈕，滑鼠懸浮時彈出小視窗選擇 1~5 次入場，把缺少的火把、鬥簹、探照燈和茶箱、咖啡箱、食物箱加入 MWITools 購物車（道具按頁面配置與攜帶上限補足，補給箱按入場次數補足，頁面未配置時按專家檔位；只加入購物車，不自動下單）。',
+          en: 'The labyrinth entry adds "Restock supplies": a button above "Enter Labyrinth" opens a small window to choose 1-5 runs and adds missing torches, shrouds, beacons, and tea/coffee/food crates to the MWITools cart (items top up to the carry cap, crates to the run count, expert tier by default; cart only, never orders).'
+        }, {
+          zh: '市場新增“加入購物車”按鈕：在市場“重新整理”按鈕右側，點選把當前檢視的物品加入 MWITools 購物車，每次 1 個；檢視具體強化等級的訂單時按該等級加入，未強化物品按 +0 加入（只加入購物車，不自動下單）。',
+          en: 'Marketplace adds an "Add to cart" button next to "Refresh" that adds the currently viewed item to the MWITools cart, 1 per click; a specific enhancement level is kept and unenhanced items are added as +0 (cart only, never orders).'
+        }
+      ]
+    }, {
+      version: '2.10.2',
+      date: '2026-08-17',
+      notes: [
+        {
+          zh: '修復市場行情來源：市場資料改為始終按當前所在伺服器讀取（正式服、測試服、中文站各自讀取本站行情），在帶 www、不帶 www 或測試服域名的頁面開啟時都能正確讀取，不再依賴固定的域名跳轉。',
+          en: 'Fixed the market data source: prices are always read from the current server (release, test, and Chinese sites each use their own market), so pages with or without www or on the test domain all work without a fixed domain redirect.'
+        }
+      ]
+    }, {
+      version: '2.10.1',
+      date: '2026-08-17',
+      notes: [
+        {
+          zh: '戰力打造分全面升級為著裝評分：新增“啟用著裝評分”選項（預設勾選），評分與 MWITools 最新版保持一致並分戰鬥、生活兩行展示（✦ 標識在文案前，懸浮提示可檢視各項明細），市場行情按當前所在伺服器讀取；不勾選時保持原有的戰力打造分。',
+          en: 'Combat Power Score upgraded to Wardrobe Score: new "Enable wardrobe score" option (on by default); scores match the latest MWITools and are shown in separate combat and skilling lines (with a ✦ marker and a hover breakdown), and market data follows the current server; unchecking keeps the original Combat Power Score.'
+        }, {
+          zh: '購物車功能切換到 MWITools：原“市場伴侶”外掛已停用，技能書、房屋材料和剪貼簿匯入都改由 MWITools 購物車處理。',
+          en: 'Cart features moved to MWITools: the old Market Mate plugin is retired, and ability books, house materials, and clipboard import all use the MWITools cart now.'
+        }, {
+          zh: '地下城收益新增“收益扣除市場稅”選項（預設勾選），可按需切換是否在賣出收益中扣除市場稅（普通物品 5%，牛鈴與牛鈴袋 18%）；預期產出區新增每日普通寶箱和精煉寶箱產出兩行；寶箱內物品缺價時不再以官方指導價兜底，更貼近實際掛單與成交。',
+          en: 'Dungeon Profit adds a "Deduct market tax" option (on by default) to switch market tax on selling revenue (5% for regular items, 18% for cowbells and their bags); the expected output area adds daily standard and refined chest outputs; missing prices no longer fall back to the official guide price, closer to actual listings and trades.'
+        }, {
+          zh: '技能升級“新增技能”的選擇視窗改為在計算器內部顯示，技能以卡片列表呈現，不再全屏遮擋。',
+          en: 'The "Add ability" picker in Ability Upgrade now appears inside the calculator as a card list instead of covering the screen.'
+        }, {
+          zh: '市場技能書選單新增“技能升級計算器”入口，點選後直接開啟計算器並預填該技能。',
+          en: 'New "Ability Upgrade Calculator" entry in the ability book market menu, opening the calculator with that ability pre-filled.'
+        },
+        {
+          zh: '多個彈窗的下拉框、核取方塊邊框與輸入框同色，不再刺眼。',
+          en: 'Dropdowns and checkboxes in several dialogs now share the input border color instead of standing out.'
+        }, {
+          zh: '裝備提升計算器“職業方案”的中文名稱與遊戲官方保持一致：重盾、長槍。',
+          en: 'Equipment Comparison profession names in Chinese now match the official game names: 重盾 and 長槍.'
+        }
+      ]
+    }, {
+      version: '2.9.3',
+      date: '2026-08-15',
+      notes: [
+        {
+          zh: '地下城收益按最新遊戲規則調整市場稅：賣出收入固定扣除 5% 市場稅（原 2%），牛鈴袋按 18% 特殊稅率扣稅。',
+          en: 'Dungeon Profit applies the latest market tax rules: selling revenue is reduced by a fixed 5% market tax (up from 2%), and bags of cowbells use the 18% special rate.'
+        }, {
+          zh: '修復地下城收益中牛鈴價值可能算成 0 的問題：牛鈴袋缺價時按官方市場指導價估值，指導價也缺失時才按市場快照成交價兜底（約 107.5 萬金幣/袋），牛鈴按十分之一折算，不再顯示為 0。',
+          en: 'Fixed cowbell value sometimes being calculated as 0: when a bag of cowbells has no market price it falls back to the official guide price and then to the market snapshot trade price (about 1.075M coins per bag), with cowbells at one tenth, so it no longer shows 0.'
+        }
+      ]
+    }, {
+      version: '2.9.1',
+      date: '2026-08-11',
+      notes: [
+        {
+          zh: '最佳化名片角色資料快取：只儲存名片展示所需的欄位，快取體積大幅縮小，超出上限或瀏覽器儲存不足時自動清理最舊資料。',
+          en: 'Character profile caching optimized: only the fields needed by the card are cached, greatly reducing cache size, and the oldest profiles are cleaned up when the limit is exceeded or browser storage is low.'
+        }
+      ]
+    },
+    {
+      version: '2.9.0',
+      date: '2026-08-05',
+      notes: [
+        {
+          zh: '地下城收益計算器新增隊伍人數選項（1-5 人），寶箱數量按官方公式 `5 ÷ 隊伍人數` 計算，預設 5 人時每車普通寶箱仍為 1.295 個，門票、鑰匙和收益隨人數自動調整。',
+          en: 'Dungeon Profit adds a party size option (1-5): chest quantity uses the official formula `5 ÷ party size`, so with the default 5 members a standard chest is still 1.295 per run, and tickets, keys, and profit adjust automatically.'
+        }
+      ]
+    }, {
+      version: '2.8.3',
+      date: '2026-08-04',
+      notes: [
+        {
+          zh: '修復右上角工具箱入口布局；本地除錯指令碼新增檔案版和網頁版；地下城收益新增“披風不計算收益”並修復數量提前四捨五入導致的輕微偏差；戰鬥升級新增“使用當前戰鬥經驗”；裝備提升修復雙手武器方案誤疊副手導致傷害輸出提升被高估的問題。',
+          en: 'Fixed the Toolkit entry layout in the header; local debug scripts now include a file version and a web version; Dungeon Profit adds "Exclude cape value" and fixes a small deviation from rounding quantities too early; Combat Upgrade adds "Use current combat XP"; Equipment Comparison fixes two-handed weapon setups double-counting the off-hand and overstating the damage gain.'
+        }
+      ]
+    }, {
+      version: '2.7.26',
+      date: '2026-08-03',
+      notes: [
+        {
+          zh: '最佳化指令碼載入和瀏覽器相容性，修復火狐瀏覽器下游戲連線、原生跳轉、配裝讀取、遊戲名稱語言和油猴介面相關問題；裝備提升中選擇基準裝備後，對比裝備也會自動選中相同裝備。',
+          en: 'Improved script loading and browser compatibility, fixing game connection, native navigation, loadout reading, game name language, and userscript API issues in Firefox; in Equipment Comparison, selecting a baseline item now also selects the same item for comparison.'
+        }
+      ]
+    }, {
+      version: '2.7.22',
+      date: '2026-08-02',
+      notes: [
+        {
+          zh: '最佳化技能和戰鬥升級輸入體驗，等級輸入不會再顯示多餘的數字加減箭頭。',
+          en: 'Improved level input in ability and combat upgrades — no more leftover number spinner arrows.'
+        }, {
+          zh: '最佳化彈窗在小屏和手機瀏覽器下的位置，技能選擇和工具箱選單會盡量保持在當前可見區域內。',
+          en: 'Improved dialog positioning on small screens and mobile browsers so the ability picker and Toolkit menu stay within the visible area.'
+        }
+      ]
+    }, {
+      version: '2.7.20',
+      date: '2026-08-02',
+      notes: [
+        {
+          zh: '從原 EDS 配裝同步升級為 **MWI Sunrishe Toolkit**：保留 Milkonomy、hyhfish 和戰鬥模擬器相關複製/同步能力，並統一收進遊戲頂部的工具箱入口。',
+          en: 'Upgraded from the EDS loadout sync into **MWI Sunrishe Toolkit**: Milkonomy, hyhfish, and combat simulator copy/sync features are kept and gathered under the Toolkit entry at the top of the game.'
+        }, {
+          zh: '新增角色、隊伍和配裝名片：可讀取當前角色、公開資料、隊伍和配裝資料，支援快取角色、佈局切換、圖片下載與複製。',
+          en: 'New character, party, and loadout cards: read the current character, public profiles, party, and loadout data, with profile caching, layout switching, image download, and copy.'
+        }, {
+          zh: '新增技能、房屋和戰鬥升級計算器：可結合角色等級、經驗、庫存、市場價格和常用方案規劃升級材料、技能書、耗時與預計完成時間。',
+          en: 'New ability, house, and combat upgrade calculators: plan materials, ability books, duration, and completion time using character levels, XP, inventory, market prices, and common presets.'
+        }, {
+          zh: '新增裝備提升計算器：按職業方案比較兩件裝備的屬性差異、模擬傷害輸出、裝備價格差和每 1000 萬金幣帶來的提升。',
+          en: 'New Equipment Comparison: compare two items by stats, simulated damage, price difference, and improvement per 10M coins by profession preset.'
+        }, {
+          zh: '新增地下城收益計算器：按官方掉落表、當前市場價格、製作/購買鑰匙、自定義買賣檔位和每日藥品飲料成本估算長期期望收益。',
+          en: 'New Dungeon Profit calculator: estimate long-term expected profit from official drop tables, current market prices, crafted/bought keys, custom buy/sell tiers, and daily potion/food costs.'
+        },
+        {
+          zh: '增強 MWI 市場伴侶配合能力：支援剪貼簿批次匯入、房屋材料和技能書加入購物車，並保留“只加入購物車、不自動下單”的安全邊界。',
+          en: 'Enhanced MWI Market Mate integration: clipboard batch import plus house materials and ability books to the cart, keeping the "cart only, never order" safety boundary.'
+        }, {
+          zh: '最佳化整體使用體驗：介面語言跟隨遊戲即時切換，彈窗提示、移動端顯示、官方中文術語和市場價格方向已統一整理；中文裡最佳出售價/最佳收購價按遊戲習慣顯示為左一/右一。',
+          en: 'Overall experience: the interface language follows the game in real time, and dialogs, mobile display, official Chinese terms, and market price directions are unified; best sell/buy prices display as 左一/右一 in Chinese, following game conventions.'
+        }
+      ]
+    },
+    {
+      version: '1.2.7',
+      date: '2026-05-07',
+      legacy: true,
+      notes: [
+        {
+          zh: '新利潤網（hyhfish 改版）支援同步披風。',
+          en: 'The new profit site (hyhfish version) supports cape sync.'
+        }, {
+          zh: '修復複製 Milkonomy 資料時遺漏個人成就增益的問題。',
+          en: 'Fixed missing personal achievement bonuses when copying Milkonomy data.'
+        }
+      ]
+    }, {
+      version: '1.2.5',
+      date: '2026-04-17',
+      legacy: true,
+      notes: [
+        {
+          zh: '增加對新利潤網 `hyhfish.github.io/milkonomy` 的支援。',
+          en: 'Added support for the new profit site `hyhfish.github.io/milkonomy`.'
+        }
+      ]
+    }, {
+      // 未在 GreasyFork 釋出過，無釋出記錄可查，不標註日期。
+      version: '1.1.3',
+      date: '',
+      legacy: true,
+      notes: [
+        {
+          zh: '戰鬥配裝支援複製戰鬥模擬器格式的資料。',
+          en: 'Combat loadouts can be copied in combat simulator format.'
+        }, {
+          zh: '避免在非遊戲網站注入遊戲介面樣式。',
+          en: 'Avoid injecting game UI styles on non-game sites.'
+        }
+      ]
+    }, {
+      version: '1.0.2',
+      date: '2026-04-15',
+      legacy: true,
+      notes: [
+        {
+          zh: '修復 Milkonomy 從未配置過方案時無法同步的問題。',
+          en: 'Fixed Milkonomy sync failing when no loadout had ever been configured.'
+        }
+      ]
+    }, {
+      version: '1.0.1',
+      date: '2026-04-15',
+      legacy: true,
+      notes: [
+        {
+          zh: '修復中文映象站無法使用的問題。',
+          en: 'Fixed the Chinese mirror site being unusable.'
+        }
+      ]
+    },
+    {
+      version: '1.0.0',
+      date: '2026-04-15',
+      legacy: true,
+      notes: [
+        {
+          zh: '支援在遊戲網站複製生活配裝方案資料。',
+          en: 'Copy skilling loadout data on the game site.'
+        }, {
+          zh: '支援在 Milkonomy 網站同步生活配裝方案。',
+          en: 'Sync skilling loadouts on the Milkonomy site.'
+        }
+      ]
+    }
+  ];
+
+  // 更新日誌：在工具箱選單裡開啟彈窗，按版本倒序列出所有版本的版本號、釋出日期和更新說明。
+  // 資料與 docs/changelog.md 保持同步（測試校驗），釋出日期取自 GreasyFork 釋出記錄。
+
+  class ChangelogFeature {
+    constructor(ctx) {
+      this.ctx = ctx;
+      this.root = null;
+    }
+
+    init() {
+      const {LanguageEvents} = this.ctx;
+      StyleService.ensure('mst-changelog-style', MST_CHANGELOG_CSS);
+      LanguageEvents?.subscribe(() => this.refreshLanguage());
+    }
+
+    open() {
+      const {Notifier, TemplateRenderer, i18n} = this.ctx;
+      return Notifier.html({
+        title: i18n.t('changelogTitle'),
+        width: 'min(40rem, calc(100vw - 1rem))',
+        popupClass: 'mst-changelog-dialog',
+        icon: 'patch_notes',
+        html: () => TemplateRenderer.html`<div class="mst-changelog-root" id="mst-changelog-root"></div>`,
+        didOpen: (popup) => {
+          this.root = popup?.querySelector('#mst-changelog-root') || document.getElementById('mst-changelog-root');
+          this.render();
+        },
+        willClose: () => {
+          this.root = null;
+        }
+      });
+    }
+
+    render() {
+      const {TemplateRenderer} = this.ctx;
+      if (!this.root) return;
+      TemplateRenderer.render(() => this.template(), this.root);
+    }
+
+    // 語言切換時更新標題與列表文案，保持已開啟彈窗的內容一致。
+    refreshLanguage() {
+      const {i18n} = this.ctx;
+      if (!this.root?.isConnected) return;
+      const title = this.root.closest('.mst-changelog-dialog')?.querySelector('.swal2-title');
+      if (title) title.textContent = i18n.t('changelogTitle');
+      this.render();
+    }
+
+    template() {
+      const {TemplateRenderer, i18n} = this.ctx;
+      const currentVersion = getBaseVersion(PACKAGE_VERSION);
+      const legacyEntries = CHANGELOG_VERSIONS.filter((entry) => entry.legacy);
+      const renderEntry = (entry) => TemplateRenderer.html`
+  <section class="mst-changelog-entry">
+    <div class="mst-changelog-entry-head">
+      <span class="mst-changelog-version">v${entry.version}</span>
+      ${entry.date ? TemplateRenderer.html`<span class="mst-changelog-date">${entry.date}</span>` : TemplateRenderer.empty}
+      ${
+        entry.version === currentVersion
+          ? TemplateRenderer.html`<span class="mst-changelog-current">${i18n.t('changelogCurrent')}</span>`
+          : TemplateRenderer.empty
+      }
+    </div>
+    <ol class="mst-changelog-notes">
+      ${entry.notes.map((note) => TemplateRenderer.html`<li>${i18n.pick(note)}</li>`)}
+    </ol>
+  </section>`;
+      // uhtml 陣列插值必須保持扁平：MST 版本、歷史分組標題和歷史版本展開進同一層陣列。
+      const nodes = [
+        ...CHANGELOG_VERSIONS.filter((entry) => !entry.legacy).map(
+          renderEntry
+        ), legacyEntries.length ? TemplateRenderer.html`<div class="mst-changelog-group">${i18n.t('changelogLegacyGroup')}</div>` : null, ...legacyEntries.map(renderEntry)
+      ].filter(Boolean);
+      return TemplateRenderer.html`${nodes}`;
     }
   }
 
@@ -12645,7 +13200,7 @@
       const primaryRate = this.getRateValue(feature.popup, 'primary-rate');
       const secondaryRate = this.getRateValue(feature.popup, 'secondary-rate');
       const plan = feature.calculatePlan(primaryRate, secondaryRate);
-      const miscSprite = utils.getSpriteUrl('misc') || '/static/media/misc_sprite.cfad291b.svg';
+      const miscSprite = utils.getSpriteUrl('misc') || '/static/media/misc_sprite.02869244.svg';
       // 常用等級覆蓋當前版本主要訓練斷點，完整輸入仍由 number 控制元件支援。
       const levelOptions = [
         35, 50, 55, 65, 75,
@@ -13417,7 +13972,7 @@
       // 掛單價缺失時按 bid 反推 ask 掛單價恆用該倍率還原，與“收益扣除市場稅”選項無關。
       const marketTaxMultiplier =
         marketHrid === '/items/bag_of_10_cowbells' ? COWBELL_TAX_MULTIPLIER : MARKET_TAX_MULTIPLIER;
-      // 開啟市場稅時普通物品按 5%、牛鈴袋按 18% 分別扣稅；
+      // 開啟市場稅時普通物品按 4%、牛鈴袋按 18% 分別扣稅；
       // 未開啟（或第三參預設的成本/產出估值）時所有物品都按報價不扣稅，牛鈴袋也不例外。
       const taxMultiplier = applyMarketTax
         ? marketHrid === '/items/bag_of_10_cowbells'
@@ -14341,7 +14896,7 @@
         )
         .join('');
       const customMode = Boolean(feature.state.customMode);
-      const miscSprite = utils?.getSpriteUrl?.('misc') || '/static/media/misc_sprite.cfad291b.svg';
+      const miscSprite = utils?.getSpriteUrl?.('misc') || '/static/media/misc_sprite.02869244.svg';
       return `
   <tr data-batch-row-id="${row.id}">
     <td class="mst-sequence-cell mst-dungeon-batch-index" draggable="true" title="${escapeHtmlText(
@@ -23710,7 +24265,7 @@
       const houseSpriteUrl =
         utils.getSvgSpriteUrl('[class*="HousePanel_houseRoom__"] svg use') ||
         utils.getSpriteUrl('misc') ||
-        '/static/media/misc_sprite.cfad291b.svg';
+        '/static/media/misc_sprite.02869244.svg';
       const houseNameToHrid = new Map();
 
       Object.entries(ui.houseDetails).forEach(
@@ -24752,7 +25307,7 @@
 
   // 佇列跟蹤器：以官方 CharacterAction.id 為準判定行動佇列變動事件。
   // 純邏輯邊界，不依賴 DOM、DataHub 或 i18n，事件文案由裝配層生成。
-  // 官方合併語義（main.*.chunk.js handleMessageActionsUpdated，v1.20260814.0）：
+  // 官方合併語義（main.*.chunk.js handleMessageActionsUpdated，v1.20260927.0）：
   // endCharacterActions 中 isDone=true 的行動從佇列移除，其餘按 id upsert，
   // 最後 partyID 非 0（組隊/戰鬥行動）排在前、partyID 為 0 的在後、各組按 ordinal 升序。
 
@@ -26119,7 +26674,9 @@
         abilityCalculator,
         equipmentComparison,
         dungeonCalculator,
-        subscribeNotification
+        subscribeNotification,
+        changelog,
+        updateChecker
       }
     ) {
       this.ctx = ctx;
@@ -26130,6 +26687,8 @@
       this.equipmentComparison = equipmentComparison;
       this.dungeonCalculator = dungeonCalculator;
       this.subscribeNotification = subscribeNotification;
+      this.changelog = changelog;
+      this.updateChecker = updateChecker;
       this.dropdownCleanup = null;
       this.outsideClickHandler = (event) => {
         const dropdown = document.getElementById('mst-toolkit-character-dropdown');
@@ -26142,8 +26701,15 @@
     getActions() {
       const {GameNavigationService, Notifier, i18n} = this.ctx;
       // 選單順序按常用工作流排列：資料與升級工具在前，站點導航放最後。
+      // “檢查更新”是固定入口，位置在“更新日誌”下面：檢查到新版本時變成高亮的
+      // “更新新版本”並直接開啟安裝頁，否則開啟檢查更新彈窗顯示當前版本與最新版本。
+      const hasUpdate = this.updateChecker.hasUpdate();
       return [
-        {key: 'userCharacterCard', icon: 'social', handler: () => this.characterCardFeature.showMyCharacterCard()}, {
+        {
+          key: 'userCharacterCard',
+          icon: 'social',
+          handler: () => this.characterCardFeature.showMyCharacterCard()
+        }, {
           key: 'subscribeNotification',
           icon: 'action_queue',
           handler: () => this.subscribeNotification.openSettings()
@@ -26164,7 +26730,17 @@
           key: 'combatSimAiwwb',
           icon: 'combat',
           handler: () => this.openCombatSimulator()
-        }, {
+        }, {key: 'changelog', icon: 'patch_notes', handler: () => this.changelog.open()}, {
+          key: 'checkUpdate',
+          icon: 'news',
+          variant: hasUpdate ? 'update' : '',
+          label: hasUpdate
+            ? i18n.t('toolkitUpdateAvailable', this.updateChecker.getLatestVersion())
+            : i18n.t('checkUpdate'),
+          handler: () =>
+            this.updateChecker.hasUpdate() ? this.updateChecker.openInstallUrl() : this.updateChecker.openDialog()
+        },
+        {
           key: 'switchCharacter',
           icon: 'switch_character',
           handler: () => {
@@ -26177,16 +26753,6 @@
     // 跳轉 aiwwb 戰鬥模擬器；window.open 傳固定 target 名，重複點選複用同一視窗不新開。
     openCombatSimulator() {
       window.open('https://aiwwb.github.io/milkywayidle_battle/dist/', 'mst-combat-sim-aiwwb');
-    }
-
-    refresh() {
-      const {i18n} = this.ctx;
-      document.querySelectorAll('.mst-my-character-card-btn').forEach((button) => {
-        const text = i18n.t('toolkitShort');
-        const title = i18n.t('toolkitTitle');
-        if (button.textContent !== text) button.textContent = text;
-        if (button.getAttribute('title') !== title) button.setAttribute('title', title);
-      });
     }
 
     toggleDropdown(trigger, anchorRect) {
@@ -26272,23 +26838,28 @@
     renderDropdown(dropdown) {
       const {TemplateRenderer, i18n, utils} = this.ctx;
       if (!dropdown) return;
-      const miscSprite = utils.getSpriteUrl('misc') || '/static/media/misc_sprite.cfad291b.svg';
+      const miscSprite = utils.getSpriteUrl('misc') || '/static/media/misc_sprite.02869244.svg';
       TemplateRenderer.render(
         () => TemplateRenderer.html`
   <div class="mst-toolkit-dropdown-title">${i18n.t('toolkitTitle')}</div>
-  ${this.getActions().map(
-    ({key, icon, handler}) => TemplateRenderer.html`
-  <button type="button" class="mst-toolkit-action" @click=${() => {
+  ${this.getActions().map((action) => this.renderAction(action, dropdown, miscSprite))}
+`,
+        dropdown
+      );
+    }
+
+    renderAction({key, icon, label, variant, handler}, dropdown, miscSprite) {
+      const {TemplateRenderer, i18n} = this.ctx;
+      // “更新新版本”用紅色漸變描邊樣式；class 必須整值插值，uhtml 不支援“靜態片段 + 插值”混寫。
+      const className = variant === 'update' ? 'mst-toolkit-action mst-toolkit-action-update' : 'mst-toolkit-action';
+      return TemplateRenderer.html`
+  <button type="button" class=${className} @click=${() => {
     dropdown.remove();
     handler();
   }}>
     <svg aria-hidden="true"><use href=${miscSprite + '#' + icon}></use></svg>
-    <span>${i18n.t(key)}</span>
-  </button>`
-  )}
-`,
-        dropdown
-      );
+    <span>${label || i18n.t(key)}</span>
+  </button>`;
     }
 
     // 在右上角頭像彈出層（遊戲原生 Header_avatarMenu 選單）裡注入工具箱入口，
@@ -26333,15 +26904,27 @@
       else menu.appendChild(button);
     }
 
+    // 檢測到新版本時入口按鈕加紅框漸變描邊與右上角小點，懸浮提示說明可用版本。
     refresh() {
       const {i18n} = this.ctx;
+      const hasUpdate = this.updateChecker.hasUpdate();
+      const updateVersion = hasUpdate ? this.updateChecker.getLatestVersion() : '';
       document.querySelectorAll('.mst-my-character-card-btn').forEach((button) => {
         const text = i18n.t('toolkitShort');
         const title = i18n.t('toolkitTitle');
+        const fullTitle = hasUpdate ? `${title} · ${i18n.t('updateAvailableBadge', updateVersion)}` : title;
         if (button.textContent !== text) button.textContent = text;
-        if (button.getAttribute('title') !== title) button.setAttribute('title', title);
+        if (button.getAttribute('title') !== fullTitle) button.setAttribute('title', fullTitle);
+        button.classList.toggle('mst-toolkit-update-available', hasUpdate);
       });
       this.addAvatarMenuEntry();
+    }
+
+    // 更新狀態變化時重新整理入口標記；下拉已開啟時同步補上或移除“更新新版本”。
+    handleUpdateChange() {
+      this.refresh();
+      const dropdown = document.getElementById('mst-toolkit-character-dropdown');
+      if (dropdown) this.renderDropdown(dropdown);
     }
 
     init() {
@@ -26353,6 +26936,346 @@
       LanguageEvents.subscribe(() => {
         this.refresh();
       });
+      this.updateChecker.onChange(() => this.handleUpdateChange());
+    }
+  }
+
+  var MST_UPDATE_CHECKER_CSS = String.raw`.mst-my-character-card-btn.mst-toolkit-update-available{position:relative;border-color:transparent;background:linear-gradient(var(--color-midnight-500, #2c2e45),var(--color-midnight-500, #2c2e45)) padding-box,linear-gradient(135deg,var(--color-scarlet-500, #d0333d),var(--color-orange-400, #fbb54b)) border-box;box-shadow:0 0 .35rem #d0333d99}
+.mst-my-character-card-btn.mst-toolkit-update-available:hover{background:linear-gradient(var(--color-midnight-400, #323450),var(--color-midnight-400, #323450)) padding-box,linear-gradient(135deg,var(--color-scarlet-400, #d95c64),var(--color-orange-300, #fcc778)) border-box}
+.mst-my-character-card-btn.mst-toolkit-update-available:after{content:"";position:absolute;top:-.2rem;right:-.2rem;width:.4rem;height:.4rem;border-radius:50%;background:var(--color-scarlet-500, #d0333d);box-shadow:0 0 0 1px var(--color-midnight-800, #191a24)}
+.mst-toolkit-action.mst-toolkit-action-update{border-color:transparent;background:linear-gradient(var(--color-midnight-500, #2c2e45),var(--color-midnight-500, #2c2e45)) padding-box,linear-gradient(135deg,var(--color-scarlet-500, #d0333d),var(--color-orange-400, #fbb54b)) border-box;color:var(--color-text-dark-mode, #e7e7e7);font-weight:600}
+.mst-toolkit-action.mst-toolkit-action-update:hover{background:linear-gradient(var(--color-midnight-400, #323450),var(--color-midnight-400, #323450)) padding-box,linear-gradient(135deg,var(--color-scarlet-400, #d95c64),var(--color-orange-300, #fcc778)) border-box}
+.mst-update-checker-root{display:flex;flex-direction:column;gap:.6rem;text-align:left}
+.mst-update-checker-status{font-size:var(--font-size-base, .875rem);font-weight:600;overflow-wrap:break-word}
+.mst-update-checker-latest{color:var(--color-jade-300, #82dcca)}
+.mst-update-checker-update{color:var(--color-orange-400, #fbb54b)}
+.mst-update-checker-error{color:var(--color-scarlet-200, #ecadb1)}
+.mst-update-checker-hint,.mst-update-checker-foot{color:var(--color-space-200, #bbc5f1);font-size:var(--font-size-sm, .8125rem);line-height:1.4;overflow-wrap:break-word}
+.mst-update-checker-rows{display:flex;flex-direction:column;gap:.25rem}
+.mst-update-checker-row{display:flex;justify-content:space-between;gap:.75rem;font-size:var(--font-size-base, .875rem)}
+.mst-update-checker-row>span:first-child{opacity:.85}
+.mst-update-checker-link{align-self:flex-start;border-radius:var(--radius-sm, .25rem);padding:.35rem .75rem;background:var(--color-primary, #4357af);color:var(--color-text-dark-mode, #e7e7e7);font-size:var(--font-size-base, .875rem);text-decoration:none}
+.mst-update-checker-link:hover{background:var(--color-space-600, #4357af)}
+.mst-update-checker-retry{align-self:flex-start;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);padding:.35rem .75rem;background:var(--color-midnight-500, #2c2e45);color:var(--color-text-dark-mode, #e7e7e7);font:inherit;font-size:var(--font-size-base, .875rem);cursor:pointer}
+.mst-update-checker-retry:hover{border-color:var(--color-space-300, #98a7e9);background:var(--color-midnight-400, #323450)}`;
+
+  // 檢查更新的資料來源與解析：按順序嘗試各源，只讀取 meta.js 頭部裡的 @version。
+  // 每一項都自帶 meta 地址、來源標籤與配套的安裝地址——誰檢查成功就用誰的安裝地址，
+  // 因為網路不通時“查得到版本”和“裝得上指令碼”往往必須是同一條鏈路（代理站、映象站各自可用）；
+  // 來源標籤寫在源上，彈窗按標籤顯示，不按下標硬編碼（順序調整後下標會錯位）。
+  // 第一個返回合法版本號的源即作為本次結果，更靠後的源不再請求；
+  // 順序即優先順序：當前為 GreasyFork 官方 → js.nainai 代理 → org.cn 映象；
+  // 以後新增映象時在陣列末尾按優先順序追加一項即可，其餘邏輯無需改動。
+  const META_SUFFIX = '.meta.js';
+  const SCRIPT_SUFFIX = '.user.js';
+
+  function createSource(metaUrl, sourceKey) {
+    return {
+      metaUrl,
+      sourceKey,
+      // 同一路徑下 meta 與指令碼只差字尾，安裝地址由 meta 地址直接推導，避免兩處各寫一份寫歪。
+      installUrl: metaUrl.endsWith(META_SUFFIX) ? metaUrl.slice(0, -META_SUFFIX.length) + SCRIPT_SUFFIX : metaUrl
+    };
+  }
+
+  const UPDATE_CHECK_SOURCES = [
+    createSource(
+      'https://update.greasyfork.org/scripts/574037/MWI%20Sunrishe%20Toolkit.meta.js',
+      'checkUpdateSourceOfficial'
+    ), createSource('https://js.nainai.eu.org/proxy/https://update.greasyfork.org/scripts/574037/MWI%20Sunrishe%20Toolkit.meta.js', 'checkUpdateSourceProxy'), createSource('https://update.greasyfork.org.cn/scripts/574037/MWI%20Sunrishe%20Toolkit.meta.js', 'checkUpdateSourceMirror')
+  ];
+
+  // 一次檢查都沒有成功過時的兜底安裝地址（官方直鏈）。
+  const FALLBACK_INSTALL_URL = 'https://update.greasyfork.org/scripts/574037/MWI%20Sunrishe%20Toolkit.user.js';
+
+  // meta.js 裡每行頭部形如 `// @version            2.17.2`。
+  function parseMetaVersion(text) {
+    const match = String(text || '').match(/^\s*\/\/\s*@version\s+(\S+)\s*$/m);
+    return match ? match[1].trim() : '';
+  }
+
+  // 按順序請求各源：拿到合法版本號立即返回（帶該源的安裝地址與來源標籤）；地址不可用或解析不到版本號才繼續下一個。
+  async function fetchLatestVersion(sources, requestText) {
+    const errors = [];
+    for (let index = 0; index < sources.length; index++) {
+      const source = sources[index];
+      try {
+        const version = parseMetaVersion(await requestText(source.metaUrl));
+        if (version) return {version, sourceIndex: index, sourceKey: source.sourceKey, installUrl: source.installUrl};
+        errors.push(source.metaUrl + ': @version not found');
+      } catch (error) {
+        errors.push(source.metaUrl + ': ' + (error?.message || error));
+      }
+    }
+    console.warn('[MST] 檢查更新失敗:', errors);
+    return {version: '', errors};
+  }
+
+  // 檢查更新：後臺定期從映象地址讀取指令碼 meta.js 的 @version（只讀版本號，不下載指令碼本體）。
+  // 工具箱選單固定提供“檢查更新”入口：發現新版本時它變成“更新新版本”並直接開啟安裝直鏈，
+  // 沒有新版本時開啟檢查彈窗顯示當前版本與最新版本；同時給工具箱入口加紅框與小點提示。
+  // 安裝直鏈跟隨檢查成功的那個源（網路不通時“查得到”和“裝得上”必須是同一條鏈路）。
+  // 檢查狀態只存記憶體（最近檢查時間、遠端版本號與來源），頁面重新整理後重新檢查一次，不做任何持久化。
+
+  // 後臺檢查間隔：6 小時；頁面持續開啟時每 30 分鐘判斷一次是否到期。
+  const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+  const UPDATE_CHECK_TICK_MS = 30 * 60 * 1000;
+  // 啟動後延遲再檢查，避開頁面載入高峰。
+  const UPDATE_CHECK_INITIAL_DELAY_MS = 10000;
+  // 單個地址的請求超時。
+  const REQUEST_TIMEOUT_MS = 15000;
+
+  class UpdateCheckerFeature {
+    constructor(ctx) {
+      this.ctx = ctx;
+      this.latestVersion = '';
+      this.lastCheckedAt = 0;
+      this.sourceKey = '';
+      this.installUrl = '';
+      this.checkPromise = null;
+      this.listeners = new Set();
+      this.initialTimer = null;
+      this.timer = null;
+      this.dialogRoot = null;
+      this.dialogState = null;
+      this.dialogToken = 0;
+    }
+
+    init() {
+      const {CONFIG, LanguageEvents} = this.ctx;
+      // 工具箱只在遊戲頁面存在，非遊戲站不建定時器、不發請求。
+      if (!CONFIG.isGameSite) return;
+      StyleService.ensure('mst-update-checker-style', MST_UPDATE_CHECKER_CSS);
+      this.notifyListeners();
+      // 啟動後先檢查一次，之後按間隔判斷是否到期；狀態只存記憶體，重新整理頁面重新檢查。
+      this.initialTimer = setTimeout(() => this.checkIfDue(), UPDATE_CHECK_INITIAL_DELAY_MS);
+      this.timer = setInterval(() => this.checkIfDue(), UPDATE_CHECK_TICK_MS);
+      LanguageEvents?.subscribe(() => this.refreshLanguage());
+    }
+
+    onChange(listener) {
+      if (typeof listener !== 'function') return () => {};
+      this.listeners.add(listener);
+      return () => this.listeners.delete(listener);
+    }
+
+    notifyListeners() {
+      this.listeners.forEach((listener) => {
+        try {
+          listener();
+        } catch (error) {
+          console.error('[MST] 更新狀態監聽失敗:', error);
+        }
+      });
+    }
+
+    // 遠端版本高於當前構建（dev 字尾不參與比較）時才提示更新。
+    hasUpdate() {
+      return Boolean(this.latestVersion) && isNewerVersion(this.latestVersion, PACKAGE_VERSION);
+    }
+
+    getLatestVersion() {
+      return this.latestVersion;
+    }
+
+    // 安裝地址跟隨檢查成功的源；一次都沒成功過時用官方直鏈兜底。
+    getInstallUrl() {
+      return this.installUrl || FALLBACK_INSTALL_URL;
+    }
+
+    // 開啟指令碼直鏈；固定 target 名，重複點選複用同一視窗不新開。
+    openInstallUrl() {
+      window.open(this.getInstallUrl(), 'mst-update-install');
+    }
+
+    // ---- 檢查更新彈窗（工具箱選單入口：沒有新版本時開啟） ----
+
+    openDialog() {
+      const {Notifier, TemplateRenderer, i18n} = this.ctx;
+      this.dialogState = {status: 'loading'};
+      return Notifier.html({
+        title: i18n.t('checkUpdateTitle'),
+        width: 'min(30rem, calc(100vw - 1rem))',
+        popupClass: 'mst-update-checker-dialog',
+        icon: 'news',
+        html: () => TemplateRenderer.html`<div class="mst-update-checker-root" id="mst-update-checker-root"></div>`,
+        didOpen: (popup) => {
+          this.dialogRoot =
+            popup?.querySelector('#mst-update-checker-root') || document.getElementById('mst-update-checker-root');
+          this.renderDialog();
+          this.runDialogCheck();
+        },
+        willClose: () => {
+          // 關閉後丟棄在途結果，避免向已解除安裝的彈窗寫狀態。
+          this.dialogRoot = null;
+          this.dialogState = null;
+          this.dialogToken += 1;
+        }
+      });
+    }
+
+    async runDialogCheck() {
+      const token = ++this.dialogToken;
+      this.dialogState = {status: 'loading'};
+      this.renderDialog();
+      const success = await this.check();
+      if (token !== this.dialogToken || !this.dialogRoot?.isConnected) return;
+      this.dialogState = {
+        status: success ? (this.hasUpdate() ? 'update' : 'latest') : 'error',
+        checkedAt: this.lastCheckedAt
+      };
+      this.renderDialog();
+    }
+
+    renderDialog() {
+      const {TemplateRenderer} = this.ctx;
+      if (!this.dialogRoot) return;
+      TemplateRenderer.render(() => this.dialogTemplate(), this.dialogRoot);
+    }
+
+    // 語言切換時重新整理入口提示與已開啟的彈窗文案，保留當前結果不重新發起檢查。
+    refreshLanguage() {
+      const {i18n} = this.ctx;
+      this.notifyListeners();
+      if (!this.dialogRoot?.isConnected) return;
+      const title = this.dialogRoot.closest('.mst-update-checker-dialog')?.querySelector('.swal2-title');
+      if (title) title.textContent = i18n.t('checkUpdateTitle');
+      this.renderDialog();
+    }
+
+    dialogTemplate() {
+      const {TemplateRenderer, i18n} = this.ctx;
+      const state = this.dialogState || {status: 'loading'};
+      if (state.status === 'loading') {
+        return TemplateRenderer.html`<div class="mst-update-checker-status">${i18n.t('checkUpdateChecking')}</div>`;
+      }
+      const currentRow = TemplateRenderer.html`
+  <div class="mst-update-checker-row"><span>${i18n.t('checkUpdateCurrent')}</span><span>v${PACKAGE_VERSION}</span></div>`;
+      if (state.status === 'error') {
+        return TemplateRenderer.html`
+  <div class="mst-update-checker-status mst-update-checker-error">❌ ${i18n.t('checkUpdateFailed')}</div>
+  <div class="mst-update-checker-rows">${currentRow}</div>
+  <div class="mst-update-checker-hint">${i18n.t('checkUpdateFailedHint')}</div>
+  ${this.renderDialogActions(state)}`;
+      }
+      const hasUpdate = state.status === 'update';
+      return TemplateRenderer.html`
+  <div class=${hasUpdate ? 'mst-update-checker-status mst-update-checker-update' : 'mst-update-checker-status mst-update-checker-latest'}>
+    ${hasUpdate ? '🆕 ' + i18n.t('checkUpdateAvailable', this.latestVersion) : '✅ ' + i18n.t('checkUpdateLatest')}
+  </div>
+  <div class="mst-update-checker-rows">
+    ${currentRow}
+    ${
+      this.latestVersion
+        ? TemplateRenderer.html`<div class="mst-update-checker-row"><span>${i18n.t('checkUpdateRemote')}</span><span>v${this.latestVersion}</span></div>`
+        : TemplateRenderer.empty
+    }
+  </div>
+  ${this.renderDialogActions(state)}`;
+    }
+
+    // 有更新時給安裝頁連結（與選單按鈕跳轉同一地址），其餘情況給“重新檢查”。
+    renderDialogActions(state) {
+      const {TemplateRenderer, i18n, utils} = this.ctx;
+      const parts = [
+        state.status === 'update'
+          ? TemplateRenderer.html`<a
+    class="mst-update-checker-link"
+    href=${this.getInstallUrl()}
+    target="_blank"
+    rel="noopener noreferrer"
+  >${i18n.t('checkUpdateInstall')}</a>`
+          : TemplateRenderer.html`<button
+    type="button"
+    class="mst-update-checker-retry"
+    @click=${() => this.runDialogCheck()}
+  >${i18n.t('checkUpdateRetry')}</button>`
+      ];
+      if (state.checkedAt) {
+        // 來源標籤由命中的源自帶，不按陣列下標硬編碼（順序調整後下標會錯位）。
+        parts.push(TemplateRenderer.html`<div class="mst-update-checker-foot">
+    ${i18n.t('checkUpdateCheckedAt')} ${utils.formatDateTime(new Date(state.checkedAt))} · ${i18n.t('checkUpdateSource')} ${i18n.t(this.sourceKey || 'checkUpdateSourceOfficial')}
+  </div>`);
+      }
+      return parts;
+    }
+
+    checkIfDue() {
+      if (this.checkPromise) return;
+      if (this.lastCheckedAt && Date.now() - this.lastCheckedAt < UPDATE_CHECK_INTERVAL_MS) return;
+      this.check();
+    }
+
+    // 檢查一次並返回是否拿到版本號；同一時刻只發一次請求，重複呼叫共用同一個結果。
+    check() {
+      if (this.checkPromise) return this.checkPromise;
+      this.checkPromise = this.runCheck().finally(() => {
+        this.checkPromise = null;
+      });
+      return this.checkPromise;
+    }
+
+    async runCheck() {
+      const result = await fetchLatestVersion(UPDATE_CHECK_SOURCES, (url) => this.requestText(url));
+      const success = Boolean(result.version);
+      // 全部地址都不可用時保留上次結果，只記錄本次檢查時間，避免短時間內反覆請求。
+      if (success) {
+        this.latestVersion = result.version;
+        this.sourceKey = result.sourceKey;
+        this.installUrl = result.installUrl;
+      }
+      this.lastCheckedAt = Date.now();
+      this.notifyListeners();
+      return success;
+    }
+
+    // 優先走 GM 請求（受頭部 @connect 授權與指令碼管理器代理保護）；
+    // 管理器不可用或請求被拒絕（如本地除錯殼未同步 @connect）時退回頁面 fetch，
+    // 代理地址帶 CORS 允許跨域，官方地址能否成功取決於其自身響應頭。
+    async requestText(url) {
+      const {GmApi} = this.ctx;
+      const request = GmApi?.xmlHttpRequestApi?.();
+      if (!request) return this.requestViaFetch(url);
+      try {
+        return await this.requestViaGm(request, url);
+      } catch (error) {
+        console.warn('[MST] GM 請求失敗，改用頁面請求:', url, error?.message || error);
+      }
+      return this.requestViaFetch(url);
+    }
+
+    requestViaGm(request, url) {
+      return new Promise((resolve, reject) => {
+        let settled = false;
+        const finish = (callback, value) => {
+          if (settled) return;
+          settled = true;
+          callback(value);
+        };
+        const handleResponse = (response) => {
+          if (response.status && (response.status < 200 || response.status >= 300)) {
+            finish(reject, new Error('HTTP ' + response.status));
+            return;
+          }
+          finish(resolve, String(response.responseText || ''));
+        };
+        const result = request({
+          method: 'GET',
+          url,
+          timeout: REQUEST_TIMEOUT_MS,
+          onload: handleResponse,
+          onerror: () => finish(reject, new Error('network error')),
+          ontimeout: () => finish(reject, new Error('timeout'))
+        });
+        // 部分管理器返回 Promise 而不觸發回撥，兩條路徑只取先到的結果。
+        if (result?.then) result.then(handleResponse).catch((error) => finish(reject, error));
+      });
+    }
+
+    async requestViaFetch(url) {
+      const response = await fetch(url, {cache: 'no-store'});
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return response.text();
     }
   }
 
@@ -26372,6 +27295,7 @@
 
     ctx.AbilityUpgradeCalculatorFeature = AbilityUpgradeCalculatorFeature;
     ctx.BuildScoreService = BuildScoreService;
+    ctx.ChangelogFeature = ChangelogFeature;
     ctx.CharacterCardFeature = CharacterCardFeature;
     ctx.CombatSimulationService = CombatSimulationService;
     ctx.CombatSimImportFeature = CombatSimImportFeature;
@@ -26388,6 +27312,7 @@
     ctx.MarketplaceCartFeature = MarketplaceCartFeature;
     ctx.SubscribeNotificationFeature = SubscribeNotificationFeature;
     ctx.ToolkitMenuFeature = ToolkitMenuFeature;
+    ctx.UpdateCheckerFeature = UpdateCheckerFeature;
   }
 
   var MST_APP_BASE_CSS = String.raw`:root{--mst-z-popup: 1000;--mst-z-toast: 2147483550}
@@ -26517,7 +27442,7 @@
 .mst-combat-profession svg{grid-row:1/3;width:1.75rem;height:1.75rem}
 .mst-combat-profession strong{max-width:100%;align-self:end;justify-self:start;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--font-size-small, .75rem);line-height:1.1;text-align:left}
 .mst-combat-profession small{align-self:start;justify-self:start;color:var(--color-neutral-300, #b9bbca);font-size:var(--font-size-tiny, .6875rem);line-height:1.1;text-align:left}
-.mst-upgrade-calculator-dialog .swal2-title,.mst-equipment-compare-dialog .swal2-title,.mst-house-calculator-dialog .swal2-title,.mst-subscribe-dialog .swal2-title,.mst-character-card-modal .swal2-title{display:flex!important;align-items:center;gap:.6rem}
+.mst-swal2-theme .swal2-title:has(.mst-dialog-title-icon){display:flex!important;align-items:center;gap:.6rem}
 .mst-dialog-title-icon{display:inline-flex;width:1.25rem;height:1.25rem;flex:0 0 auto;align-self:center}
 .mst-dialog-title-icon svg{width:100%;height:100%}
 .mst-combat-help-anchor,.mst-ability-help-anchor,.mst-equipment-help-anchor,.mst-dungeon-help-anchor,.mst-house-help-anchor,.mst-subscribe-help-anchor{position:relative;display:inline-flex;width:var(--spacing-lg-plus, 1.25rem);height:var(--spacing-lg-plus, 1.25rem);flex:0 0 auto;align-self:center;align-items:center;pointer-events:auto;vertical-align:middle}
@@ -26945,6 +27870,8 @@ to{transform:translateY(0);opacity:1}
         EquipmentComparisonService,
         EquipmentComparisonFeature,
         ToolkitMenuFeature,
+        ChangelogFeature,
+        UpdateCheckerFeature,
         ClipboardCartImportFeature,
         LabyrinthSupplyFeature,
         MarketplaceCartFeature,
@@ -26962,6 +27889,8 @@ to{transform:translateY(0);opacity:1}
       const equipmentComparisonService = new EquipmentComparisonService(marketDataService, combatSimulationService);
       const equipmentComparison = new EquipmentComparisonFeature(this.ctx, marketDataService, equipmentComparisonService);
       const subscribeNotification = new SubscribeNotificationFeature(this.ctx);
+      const changelog = new ChangelogFeature(this.ctx);
+      const updateChecker = new UpdateCheckerFeature(this.ctx);
       const toolkitMenu = new ToolkitMenuFeature(this.ctx, {
         characterCardFeature,
         appController: this,
@@ -26969,7 +27898,9 @@ to{transform:translateY(0);opacity:1}
         abilityCalculator,
         equipmentComparison,
         dungeonCalculator,
-        subscribeNotification
+        subscribeNotification,
+        changelog,
+        updateChecker
       });
       // 暴露少量例項給控制台排查，正式功能仍通過選單入口觸發。
       window.MWISunrisheToolkit = {
@@ -26980,7 +27911,8 @@ to{transform:translateY(0);opacity:1}
         combatCalculator,
         abilityCalculator,
         equipmentComparison,
-        dungeonCalculator
+        dungeonCalculator,
+        updateChecker
       };
       this.ctx.pageWindow.MWISunrisheToolkitState = 'app-features';
       characterCardFeature.init();
@@ -26989,6 +27921,8 @@ to{transform:translateY(0);opacity:1}
       dungeonCalculator.init();
       equipmentComparison.init();
       toolkitMenu.init();
+      changelog.init();
+      updateChecker.init();
       new ClipboardCartImportFeature(this.ctx, Notifier).init();
       new LabyrinthSupplyFeature().init();
       new MarketplaceCartFeature().init();
