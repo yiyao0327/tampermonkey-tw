@@ -2,7 +2,7 @@
 // @name         公會助手
 // @name:en      Milky Way Idle Guild Assistant
 // @namespace    https://www.milkywayidle.com/
-// @version      1.2.52
+// @version      1.2.53
 // @author       柆雨
 // @license      MIT
 // @homepageURL  https://github.com/LaYuDr/milky-way-idle-guild-credit-optimizer
@@ -19,7 +19,7 @@
 // ==/UserScript==
 
 // MWI_GUILD_CREDIT_RUNTIME
-window.MwiGuildCreditVersion = "1.2.52";
+window.MwiGuildCreditVersion = "1.2.53";
 
 // SOURCE: src/market-data.js
 (function (root, factory) {
@@ -1437,13 +1437,18 @@ window.MwiGuildCreditVersion = "1.2.52";
       .filter((value) => value !== null)
       .sort((a, b) => a - b);
     const count = values.length;
+    // Zero remains known for totals, coverage and medians, but is not a
+    // contributor to this metric's per-member average.
+    const contributors = values.filter((value) => value > 0);
     const sum = values.reduce((total, value) => total + value, 0);
     const middle = Math.floor(count / 2);
     return {
       count,
       missing: record.rows.length - count,
       total: count && Number.isFinite(sum) ? sum : null,
-      average: count ? values.reduce((total, value) => total + value / count, 0) : null,
+      average: contributors.length
+        ? contributors.reduce((total, value) => total + value / contributors.length, 0)
+        : null,
       median: count ? (count % 2 ? values[middle] : values[middle - 1] / 2 + values[middle] / 2) : null
     };
   }
@@ -1451,6 +1456,56 @@ window.MwiGuildCreditVersion = "1.2.52";
   function metricShare(record, row, field, summary = summarizeMetric(record, field)) {
     const value = metricValue(record, row, field);
     return value !== null && summary.total > 0 ? (value / summary.total) * 100 : null;
+  }
+
+  // A partial denominator cannot establish a low contribution. Compare the raw
+  // percentage, never the rounded display text; official omitted zero is valid.
+  function lowWorkShare(record, row, summary = summarizeMetric(record, "workDone")) {
+    if (record.kind !== "skilling" || record.party?.done !== true || summary.missing) return null;
+    const share = metricShare(record, row, "workDone", summary);
+    // Compare the fraction before multiplying by 100: 90 / 10000 * 100
+    // is 0.8999999999999999 in JavaScript, but must not be flagged.
+    return share !== null && metricValue(record, row, "workDone") / summary.total < 9 / 1000 ? share : null;
+  }
+
+  function signupWorkWarnings(records, context = {}, trialHrid) {
+    const warnings = new Map();
+    const week = timestamp(context.guild?.currentWeekStartAt);
+    if (context.guild?.id == null || !Number.isFinite(week) || !trialHrid) return warnings;
+    const latest = new Map();
+    for (const record of records) {
+      if (
+        record.schemaVersion !== 1 ||
+        record.source === "manual" ||
+        record.kind !== "skilling" ||
+        record.guildId !== String(context.guild.id) ||
+        record.trialHrid !== trialHrid ||
+        record.party?.done !== true ||
+        !Number.isFinite(record.weekStartAt) ||
+        record.weekStartAt >= week
+      )
+        continue;
+      for (const row of record.rows) {
+        if (row.characterId == null) continue;
+        const id = String(row.characterId);
+        const previous = latest.get(id);
+        if (
+          !previous ||
+          record.weekStartAt > previous.record.weekStartAt ||
+          (record.weekStartAt === previous.record.weekStartAt && record.capturedAt > previous.record.capturedAt)
+        )
+          latest.set(id, { record, row });
+      }
+    }
+    const summaries = new Map();
+    for (const [id, { record, row }] of latest) {
+      const signup = context.signups?.[id];
+      if (signup?.signedUpSkillingTrialHrid !== trialHrid || timestamp(signup.signupWeekStartAt) !== week) continue;
+      if (!summaries.has(record)) summaries.set(record, summarizeMetric(record, "workDone"));
+      const share = lowWorkShare(record, row, summaries.get(record));
+      if (share !== null) warnings.set(id, { share, weekStartAt: record.weekStartAt });
+    }
+    return warnings;
   }
 
   function metricAverageMultiple(record, row, field, summary = summarizeMetric(record, field)) {
@@ -1815,6 +1870,8 @@ window.MwiGuildCreditVersion = "1.2.52";
     metricValue,
     summarizeMetric,
     metricShare,
+    lowWorkShare,
+    signupWorkWarnings,
     metricAverageMultiple,
     playerRankings,
     playerProjectOverview,
@@ -2137,9 +2194,12 @@ window.MwiGuildCreditVersion = "1.2.52";
   const page = typeof unsafeWindow === "undefined" ? window : unsafeWindow;
   const marketDataApi = page.MwiGuildCreditMarketData || window.MwiGuildCreditMarketData;
   const marketDomApi = page.MwiGuildCreditMarketDom || window.MwiGuildCreditMarketDom;
+  // The development loader starts in the page before this runtime is fetched.
+  // Reuse its buffer and sockets even when the userscript window is isolated.
+  const loaderBridge = Array.isArray(page.__mwiGuildCreditBridge?.sockets) ? page.__mwiGuildCreditBridge : null;
   const bridge =
     window.__mwiGuildCreditBridge ||
-    (window.__mwiGuildCreditBridge = {
+    (window.__mwiGuildCreditBridge = loaderBridge || {
       messages: [],
       itemDetails: null,
       guildBuffDetails: null,
@@ -2208,6 +2268,8 @@ window.MwiGuildCreditVersion = "1.2.52";
         DIAGNOSTICS_ATTRIBUTE,
         JSON.stringify({
           ...diagnostics,
+          trialRosterCount: Object.keys(bridge.trialHistoryContext.roster || {}).length,
+          trialMembershipEvidenceCount: bridge.trialHistoryContext.membershipEvidence?.length || 0,
           characterItemsRevision: bridge.characterItemsRevision,
           guildBuffLevelsRevision: bridge.guildBuffLevelsRevision,
           guildPointSummaryRevision: bridge.guildPointSummaryRevision,
@@ -2620,10 +2682,12 @@ window.MwiGuildCreditVersion = "1.2.52";
       publishGuildPointSummaryUpdate();
   }
 
-  function keepSocketMessage(rawMessage) {
+  function keepSocketMessage(rawMessage, bufferMessage = true) {
     if (typeof rawMessage !== "string") return;
-    bridge.messages.push(rawMessage);
-    if (bridge.messages.length > 80) bridge.messages.shift();
+    if (bufferMessage) {
+      bridge.messages.push(rawMessage);
+      if (bridge.messages.length > 80) bridge.messages.shift();
+    }
     diagnostics.messageCount = Math.min(Number.MAX_SAFE_INTEGER, diagnostics.messageCount + 1);
     diagnostics.lastMessageAt = Date.now();
     try {
@@ -2817,7 +2881,7 @@ window.MwiGuildCreditVersion = "1.2.52";
       { once: true }
     );
   }
-  if (typeof GM_addElement === "function") {
+  if (typeof GM_addElement === "function" && !loaderBridge) {
     diagnostics.injectionAttempted = true;
     diagnostics.installMode = "gm_add_element_pending";
     publishBridgeDiagnostics();
@@ -2840,7 +2904,9 @@ window.MwiGuildCreditVersion = "1.2.52";
   }
 
   const NativeWebSocket = page.WebSocket;
-  if (!NativeWebSocket || NativeWebSocket.__mwiGuildCreditBridge) {
+  const adoptLoader =
+    NativeWebSocket?.__mwiGuildCreditBridge && loaderBridge === bridge && !bridge.runtimeSocketObserverActive;
+  if (!NativeWebSocket || (NativeWebSocket.__mwiGuildCreditBridge && !adoptLoader)) {
     diagnostics.installMode = NativeWebSocket ? "existing_wrapper" : "websocket_unavailable";
     diagnostics.observerActive = Boolean(NativeWebSocket && NativeWebSocket.__mwiGuildCreditBridge);
     publishBridgeDiagnostics();
@@ -2859,7 +2925,8 @@ window.MwiGuildCreditVersion = "1.2.52";
     }
     instrumentedSockets.add(socket);
     socket.addEventListener("message", (event) => {
-      keepSocketMessage(event.data);
+      // The loader's earlier listener already puts this frame in the buffer.
+      keepSocketMessage(event.data, !adoptLoader);
     });
     return socket;
   }
@@ -2871,8 +2938,17 @@ window.MwiGuildCreditVersion = "1.2.52";
   Object.setPrototypeOf(ObservedWebSocket, NativeWebSocket);
   ObservedWebSocket.__mwiGuildCreditBridge = true;
   page.WebSocket = ObservedWebSocket;
+  bridge.runtimeSocketObserverActive = true;
+  if (adoptLoader) {
+    for (const socket of bridge.sockets) instrumentSocket(socket);
+    for (const message of bridge.messages.slice()) keepSocketMessage(message, false);
+  }
   bridge.marketObserverActive = true;
-  diagnostics.installMode = page === window ? "direct_main_world" : "unsafe_window_fallback";
+  diagnostics.installMode = adoptLoader
+    ? "development_loader_handoff"
+    : page === window
+      ? "direct_main_world"
+      : "unsafe_window_fallback";
   diagnostics.injectionReady = page.WebSocket === ObservedWebSocket;
   diagnostics.observerActive = true;
   publishBridgeDiagnostics();
@@ -3695,6 +3771,15 @@ window.MwiGuildCreditVersion = "1.2.52";
 
   const STRINGS = {
     "zh-CN": {
+      settingsHelp: "幫助",
+      helpRankingOrder: "榜單順序",
+      helpSettingsAndMarket: "設定與市場參考",
+      helpForecastEvidence:
+        "預測僅使用回看範圍內的已確認記錄和非零遊戲追蹤值。自動估算不參與，追蹤零值需手動確認後參與。",
+      helpForecastBacktest: "歷史回測用於檢視線性迴歸在已有記錄上的表現，不改變當前預測方法。",
+      helpConstructionEta: "按計劃缺少的點數估算等待時間：先計本週預計剩餘，再按下週預測點數估算後續各周。",
+      helpTrialCoverage: "部分成員數值未知時，彙總僅包含該指標的已知值。",
+      helpCreditExchangeMode: "信用點卡片顯示當前兌換方式，點選可在最優物品和公會代幣之間切換。",
       unknownItem: "未知物品",
       priceReferenceA: "左一",
       priceReferenceATitle: "左一：最低出售價，可立即買入",
@@ -3821,7 +3906,8 @@ window.MwiGuildCreditVersion = "1.2.52";
       interfaceSettings: "設定",
       interfaceSettingsHint: "調整一鍵填充範圍和外掛頁面；修改會立即在本機生效。",
       openInterfaceSettings: "開啟設定",
-      closeInterfaceSettings: "關閉設定",
+      closeInterfaceSettings: "返回上一頁",
+      backFromSettings: "返回",
       shrineAutofillRange: "一鍵填充範圍",
       shrineAutofillRangeHint: "取消勾選後，一鍵填充不會新增或更新該神龕；已有計劃不會刪除。",
       settingsShrinesLoading: "正在讀取可配置的公會神龕…",
@@ -3860,41 +3946,85 @@ window.MwiGuildCreditVersion = "1.2.52";
       guildPointFollowBalance: "跟隨遊戲餘額",
       guildPointStartingBalanceHint: "選填；清空後使用當前可用點數。",
       guildPointStartingBalanceCompactHint: "留空跟隨遊戲點數",
-      guildPointPlanningWeeksCompactHint: "0 = 當前；1–12 = 加入預測",
-      guildPointTrendHint: "自動記錄累計增量，建築消費不影響統計",
+      guildPointPlanningWeeksCompactHint: "0 = 當前；1 = 含本週剩餘",
+      guildPointTrendHint: "點數儲存在本機；使用最近有效周做線性迴歸",
       guildPointAutoSaved: "自動儲存",
       guildPointSavedSnapshot: "已儲存快照",
       currentAvailableGuildPoints: "當前可用",
-      currentWeekGuildPoints: "本週試煉點數",
-      predictedCurrentWeekGuildPoints: "本週預測點數",
+      currentWeekGuildPoints: "本週已獲",
+      predictedCurrentWeekGuildPoints: "本週預計總量",
       latestWeeklyGuildPoints: "最近完整週獲得",
       weeklyGuildPointGrowth: "環比增長",
       guildPointEstimatedGrowth: "預計周增長速度",
       nextWeekGuildPointForecast: "下週預測",
       guildPointHistoryUnavailable: "尚未讀取公會點數；開啟公會頁面後會自動建立本機基線。",
       guildPointHistoryBaseline: "已建立累計點數基線；下一次周獎勵到賬後將生成首條週記錄。",
-      guildPointForecastNeedsHistory: "已自動儲存週記錄；至少需要連續 2 週數據才能預測。",
-      guildPointForecastColdStart:
-        "此前 {count} 周平均 {average} 點，本週已獲 {current} 點；按歷史中點擬合，每週約增長 {growth} 點，下週預計 {forecast} 點。本週未結束時結果仍會變化。",
-      guildPointForecastMethod: "按最近連續 {count} 個完整週的平均增量預測。",
-      guildPointForecastEstimatedMethod: "按最近 {count} 個完整週的平均增量預測，其中包含自動補充記錄。",
+      guildPointForecastNeedsHistory: "回看範圍內需要至少 2 周有效點數才能做線性迴歸；不使用歷史均值補足。",
+      guildPointForecastColdStart: "此前 {count} 周平均 {average} 點，本週已獲 {current} 點；均值僅供參考。",
+      guildPointForecastMethod: "使用最近 {count} 周內的已核實記錄預測。",
+      guildPointForecastEstimatedMethod: "依據累計點數提供歷史均值參考，自動補充記錄不參與趨勢擬合。",
       guildPointHistoryConflict: "歷史周點數合計超過遊戲累計值，已停止預測。請檢查手動記錄或重置週記錄。",
+      remainingCurrentWeekGuildPoints: "本週預計剩餘",
+      guildPointSourcePartial: "遊戲追蹤",
+      guildPointCsvPartial: "遊戲追蹤",
+      guildPointMethodMean: "近期均值",
+      guildPointMethodLinear: "線性迴歸",
+      guildPointMethodHistorical: "歷史均值參考",
+      guildPointForecastEvidence:
+        "回看 {count} 周：已確認 {reliable} 周、遊戲追蹤 {partial} 周；自動估算 {estimated} 周不參與。當前採用{method}，追蹤零值需手動確認後參與。",
+      guildPointForecastDetails: "預測依據與限制",
+      guildPointHelpHistorical: "已核實歷史周不足，當前使用歷史均值作參考。",
+      guildPointHelpInsufficient: "當前採用近期均值；有效回測 {count}/3，暫不使用趨勢法。",
+      guildPointHelpEvaluated: "當前採用{method}，已對 {count} 個歷史周進行回測。",
+      guildPointHelpDataTitle: "使用哪些記錄",
+      guildPointHelpData:
+        "本週獲得點數大於 0 即視為已結束，回看範圍包含本週；否則從上一週向前計算。使用範圍內的已確認記錄和非零遊戲追蹤值。自動估算、缺失值不參與，追蹤零值需手動確認後參與。",
+      guildPointHelpMethodTitle: "如何計算預測",
+      guildPointHelpMethod:
+        "以實際周次為橫軸、獲得點數為縱軸做最小二乘線性迴歸，外推目標周，四捨五入且不低於 0。至少需要 2 周有效樣本，不再根據回測切換為均值。\n缺失周保留時間間隔，不補零，也不從視窗之外補樣本。樣本不足時顯示 —。",
+      guildPointHelpResultTitle: "如何理解預測結果",
+      guildPointHelpResult:
+        "本週已獲得點數時，預計總量等於已獲點數，預計剩餘為 0。已獲得的點數不會再次加入規劃預算。\n回測只檢驗現存歷史記錄上的表現；成員和參試情況變化後，未來結果可能不同。",
+      trialHelpScreenshotPreview: "檢視截圖範圍、分享前檢查和儲存方式。",
+      trialHelpScreenshotScope: "截圖包含什麼",
+      trialHelpSharing: "分享與儲存",
+      trialHelpHistoryPreview: "瞭解資料如何收集、儲存在何處以及如何匯入。",
+      trialHelpCollection: "收集與儲存",
+      trialHelpImport: "匯入歷史記錄",
+      trialHelpPurpose: "如何使用這些資料",
+      trialHelpFeedback: "反饋與交流",
+      trialHelpColumnsPreview: "佔比與人均的分母不同，未知值也不等於零。",
+      trialHelpShare: "總量佔比",
+      trialHelpShareBody: "個人數值 ÷ 已知成員總量。",
+      trialHelpAverage: "相對人均",
+      trialHelpAverageBody:
+        "個人數值 ÷ 該項非零成員平均值；1× 表示平均水平。工作量、傷害、治療和減傷前承傷分別計算，均排除該項為 0 的成員。",
+      trialHelpMissing: "零值、缺失值與彙總",
+      trialHelpMissingBody:
+        "缺失值或無人有非零數值時顯示 —。彙總平均值排除零值；總量和中位數保留已知零值。\n顯示開關隻影響頁面，不改變歷史記錄或匯出資料。",
+      trialHelpOverviewPreview: "參試次數與人均倍數僅使用已採集的遊戲記錄。",
+      trialHelpOverviewScope: "統計範圍與計算方式",
+      trialHelpRankingPreview: "參試次數、人均倍數和入會時間各有獨立統計口徑。",
+      trialHelpCounts: "參試次數如何計算",
+      trialHelpRankingAverage: "人均倍數與樣本數",
       guildPointForecastWeeks: "預測回看週數",
-      guildPointForecastWeeksHint: "只使用最近連續的完整週。",
+      guildPointForecastWeeksHint: "本週已獲點數時包含本週，否則截至上週；自動估算不參與線性迴歸。",
       increaseGuildPointForecastWeeks: "增加 1 周預測回看範圍",
       decreaseGuildPointForecastWeeks: "減少 1 周預測回看範圍",
       guildPointPlanningWeeks: "規劃週數",
       guildPointPlanningOptions: "預測設定",
-      guildPointPlanningWeeksHint: "0 表示僅使用當前點數；大於 0 時將預測周產出加入可用預算。",
+      guildPointPlanningWeeksHint:
+        "0 僅使用當前餘額；1 加上本週預計剩餘。之後每週按下週預測固定估算，已獲點數不重複計入。",
       increaseGuildPointPlanningWeeks: "增加 1 周規劃時間",
       decreaseGuildPointPlanningWeeks: "減少 1 周規劃時間",
       guildPointPlanningCurrentOnly: "僅當前點數",
       guildPointWeekCount: "{count} 周",
       guildPointWeekWithDate: "第 {count} 周（{date}）",
       guildPointPlanningNeedsBalance: "尚未讀取當前可用點數。",
-      guildPointPlanningNeedsForecast: "已保留當前點數預算；歷史不足或衝突，暫無法加入未來周。",
+      guildPointPlanningNeedsForecast: "已保留當前餘額；本週進度未知、樣本不足或歷史衝突，暫不加入預計收益。",
       guildPointPlanningBudgetCurrent: "規劃預算：當前 {total} 點。",
-      guildPointPlanningBudgetProjected: "規劃預算：{current} + {weeks} 周 × {weekly} = {total} 點。",
+      guildPointPlanningBudgetProjected:
+        "規劃預算：{current} + 本週剩餘 {remaining} + 後續 {weeks} 周 × {weekly} = {total} 點。",
       recentGuildPointHistory: "最近週記錄",
       manualGuildPointWeek: "周次",
       manualGuildPointEarned: "該周獲得點數",
@@ -3915,6 +4045,7 @@ window.MwiGuildCreditVersion = "1.2.52";
       guildPointSourceCurrentEstimated: "本週預測",
       guildPointSourceCurrentPending: "本週未開始",
       guildPointSourceCurrentUnavailable: "尚未讀取",
+      guildPointSourceNextForecast: "下週預測",
       currentGuildPointWeek: "當前周",
       removeManualGuildPointWeek: "刪除 {week} 的手動記錄",
       manualGuildPointWeekSaved: "歷史公會點數已儲存，缺失周已重新自動補充。",
@@ -3934,14 +4065,14 @@ window.MwiGuildCreditVersion = "1.2.52";
       constructionEtaNoPlan: "尚無計劃",
       constructionEtaNoPlanHint: "新增建築後估算完成時間。",
       constructionEtaNeedsBalance: "尚未讀取當前可用點數，請手工填寫預算。",
-      constructionEtaNeedsForecast: "積累 2 個連續完整週後估算完成時間。",
+      constructionEtaNeedsForecast: "需要已知本週進度及有效預測後估算。",
       constructionEtaHistoryConflict: "歷史點數與遊戲累計值衝突，暫停估算。",
       constructionEtaNoGrowth: "預測周產出為 0，暫時無法估算。",
       constructionEtaCovered: "當前點數已覆蓋",
       constructionEtaCoveredHint: "無需等待新的周點數即可完成計劃。",
       constructionEtaWeeks: "約 {count} 周",
-      constructionEtaDetail: "按每週約 {points} 點，尚缺 {shortfall} 點。",
-      constructionEtaDetailEstimated: "暫按歷史回填每週約 {points} 點，尚缺 {shortfall} 點。",
+      constructionEtaDetail: "尚缺 {shortfall} 點；先計本週剩餘，後續每週按下週預測 {points} 點估算。",
+      constructionEtaDetailEstimated: "尚缺 {shortfall} 點；先計本週預計剩餘，後續暫按歷史均值每週 {points} 點。",
       exportGuildPointHistory: "匯出週記錄 CSV",
       resetGuildPointHistory: "重置週記錄",
       resetGuildPointHistoryConfirm: "確定重置當前角色的公會點數週記錄嗎？施工計劃不會被刪除，此操作無法撤銷。",
@@ -3949,7 +4080,7 @@ window.MwiGuildCreditVersion = "1.2.52";
       guildPointCsvWeekStart: "周開始時間",
       guildPointCsvEarned: "獲得公會點數",
       guildPointCsvStatus: "記錄狀態",
-      guildPointCsvComplete: "完整週",
+      guildPointCsvComplete: "已核實完整週",
       guildPointCsvTracking: "本週追蹤中",
       guildPointCsvManual: "手動錄入",
       guildPointCsvEstimated: "自動補充",
@@ -4166,6 +4297,8 @@ window.MwiGuildCreditVersion = "1.2.52";
       trialScreenshotTooLarge: "當前檢視過大，無法生成清晰截圖。請切換到單週或單個玩家後重試。",
       trialScreenshotIconFailed: "原版圖示載入失敗，請檢查網路後重試截圖。",
       trialScreenshotFailed: "截圖成失敗。請重試或切換到單週檢視後下載 PNG。",
+      trialSimpleNames: "簡潔模式",
+      trialSimpleNamesHint: "只顯示普通玩家名字，隱藏個性化圖示和顏色；本次頁面內生效。",
       trialScreenshotMode: "隱藏玩家名",
       trialScreenshotExit: "退出隱藏玩家名",
       trialScreenshotHint: "僅隱藏曆史試煉頁面的玩家名；匯出 JSON 保留原名。重新整理遊戲後關閉。",
@@ -4192,12 +4325,10 @@ window.MwiGuildCreditVersion = "1.2.52";
       trialColumnsGroup_workDoneSummary: "工作量彙總 · 表格上方",
       trialColumnsCalculations: "統計口徑與缺失值說明",
       trialColumnsEmpty: "當前成員表的列已全部隱藏，可在上方列管理中重新開啟。",
-      trialDisplaySettingsHint:
-        "總量佔比 = 個人數值 ÷ 已知成員總量；相對人均 = 個人數值 ÷ 已知成員平均值（1× 表示平均水平）。工作量、傷害、治療和減傷前承傷分別計算，包含明確的零值；缺失值或分母為 0 時顯示 —。彙總僅包含已知值。開關隻影響顯示，不改變歷史記錄或匯出資料。",
       trialDisplaySaveFailed: "設定未能儲存，當前頁面已生效；重新開啟頁面後可能恢復預設。",
       trialOverview: "專案總體概覽",
       trialKnownCoverage: "{field}：已知 {count}/{total} 人，彙總僅含已知值。",
-      trialPartialShare: "部分指標不完整，總量佔比和相對人均分別僅按該次專案記錄中對應指標已知的成員計算。",
+      trialPartialShare: "部分指標不完整：總量佔比僅按該項已知值計算，人均基準僅按該項已知且大於 0 的成員計算。",
       trialField_combatShare: "戰鬥總量佔比",
       trialField_combatMultiple: "戰鬥相對人均",
       trialField_damageDealtShare: "傷害佔比",
@@ -4207,6 +4338,8 @@ window.MwiGuildCreditVersion = "1.2.52";
       trialField_premitigatedDamageTakenShare: "承傷佔比",
       trialField_premitigatedDamageTakenMultiple: "承傷相對人均",
       trialField_workShare: "總量佔比",
+      trialLowWork: "本次工作量佔比 {share}%，低於 0.9%",
+      trialSignupLowWork: "最近一次參加本專案（第 {week} 周）的工作量佔比 {share}%，低於 0.9%",
       trialField_workMultiple: "相對人均",
       trialField_levelSummary: "等級彙總",
       trialField_workSummary: "工作量彙總",
@@ -4228,7 +4361,7 @@ window.MwiGuildCreditVersion = "1.2.52";
       trialOverviewAllProjects: "全部專案",
       trialOverviewMethod: "統計口徑",
       trialOverviewHelp:
-        "僅統計本地儲存的遊戲採集記錄，不含手動整理記錄。每參與一個專案計 1 次，含零貢獻；0 次表示沒有采集到參試記錄。生活按工作量除以該場人均；戰鬥將傷害、治療、承傷的有效人均倍數直接相加，再對同項目各場倍數等權平均。總相對人均為有效場次倍數之和；全部專案行彙總次數和倍數，平均值按有效場次加權。1× 為人均水平；缺失值和零分母跳過，無有效倍數顯示 —。",
+        "僅統計本地儲存的遊戲採集記錄，不含手動整理記錄。每參與一個專案計 1 次，含零貢獻；0 次表示沒有采集到參試記錄。各項人均僅計入該項數值大於 0 的成員。\n生活按工作量除以該場人均；戰鬥將傷害、治療、承傷的有效人均倍數直接相加，再對同項目各場倍數等權平均。\n總相對人均為有效場次倍數之和；全部專案行彙總次數和倍數，平均值按有效場次加權。1× 為人均水平；缺失值和零分母跳過，無有效倍數顯示 —。",
       trialRankingJoinedAt: "入會時間排行",
       trialRankingJoinedAtHelp:
         "僅列出當前公會成員，按入會時間從早到晚排列，同一時間並列。未知時間置後且不排名；時間按本地時區顯示。未參加試煉的成員也會列出。",
@@ -4257,7 +4390,7 @@ window.MwiGuildCreditVersion = "1.2.52";
       trialRankingCountHelp:
         "僅使用外掛從遊戲採集的記錄，手動整理記錄不參與排行榜。每參與一個生活或戰鬥專案計 1 次，包含零貢獻記錄；未採集的專案不計。同值並列。",
       trialRankingAverageHelp:
-        "生活、戰鬥分別按在會且具備資格的試煉周計算：周開始前已入會的成員，確認缺席記 0，每類每週分母只加 1。生活使用工作量人均倍數；戰鬥每個專案將傷害、治療、承傷的有效人均倍數直接相加，再對當周有效專案取平均，最後對各周等權平均。傷害、治療、承傷三個獨立榜分別只使用對應指標的人均倍數，承傷採用減傷前承傷；每項獨立排除缺失或分母為零的資料。缺席只在當週該類專案已完整採集、且入會時間或參試記錄能確認在會時計入；未知在會狀態、未完整採集及無法計算倍數的周不補零。只覆蓋已採集完成的周，舊手動記錄完全不參與。合併榜為生活均值＋戰鬥均值，不除以 2；只有一類有效時保留該類。樣本數按已採集的實際參試記錄計數：每週每類最多 1 個，參加但貢獻為零或數值未知也計入，未參加不計入；合併榜為兩類樣本數之和。樣本數不等於平均值分母，確認缺席周仍按 0 參與平均。",
+        "生活、戰鬥分別按在會且具備資格的試煉周計算：周開始前已入會的成員，確認缺席記 0，每類每週分母只加 1。各項人均基準僅計入該項數值大於 0 的成員。生活使用工作量人均倍數；戰鬥每個專案將傷害、治療、承傷的有效人均倍數直接相加，再對當周有效專案取平均，最後對各周等權平均。\n傷害、治療、承傷三個獨立榜分別只使用對應指標的人均倍數，承傷採用減傷前承傷；每項獨立排除缺失或分母為零的資料。\n缺席只在當週該類專案已完整採集、且入會時間或參試記錄能確認在會時計入；未知在會狀態、未完整採集及無法計算倍數的周不補零。只覆蓋已採集完成的周，舊手動記錄完全不參與。\n合併榜為生活均值＋戰鬥均值，不除以 2；只有一類有效時保留該類。\n樣本數按已採集的實際參試記錄計數：每週每類最多 1 個，參加但貢獻為零或數值未知也計入，未參加不計入；合併榜為兩類樣本數之和。樣本數不等於平均值分母，確認缺席周仍按 0 參與平均。",
       trialPlayerFind: "選擇玩家",
       trialPlayerSwitch: "當前玩家：{name} · 切換玩家",
       trialPlayerSearchLabel: "搜尋歷史玩家",
@@ -4361,7 +4494,19 @@ window.MwiGuildCreditVersion = "1.2.52";
       trialSlot_alchemy_tool: "鍊金",
       trialSlot_enhancing_tool: "強化",
       trialProfileAbilities: "技能配置",
+      trialProfileActivity: "當前活動",
+      trialProfilePresence: "線上狀態",
+      trialProfileObservation: "活動與線上狀態以最近讀取的資料為準。",
+      trialActivityUnknown: "未公開或未知",
+      trialActivity_combat: "戰鬥",
+      trialActivity_labyrinth: "迷宮",
+      trialActivity_special: "特殊活動",
+      trialPresence_online: "線上",
+      trialPresence_offline: "離線",
+      trialPresence_hidden: "已隱藏",
+      trialPresence_unknown: "未知",
       trialProfileHouse: "房屋",
+      trialProfileHouseLevel: "房屋等級：{level}",
       trialProfileRaw: "完整資料資料",
       trialProfileTooltipUnavailable: "詳細資料暫不可用",
       trialProfile_totalTaskPoints: "任務點數",
@@ -4405,6 +4550,18 @@ window.MwiGuildCreditVersion = "1.2.52";
       sidebarCredit: "公會"
     },
     en: {
+      settingsHelp: "Help",
+      helpRankingOrder: "Ranking order",
+      helpSettingsAndMarket: "Settings and market reference",
+      helpForecastEvidence:
+        "Forecasts use confirmed records and nonzero game-tracked values within the lookback window. Estimated records are excluded; tracked zeros require manual confirmation.",
+      helpForecastBacktest:
+        "Historical backtests show how linear regression performs on existing records without changing the forecast method.",
+      helpConstructionEta:
+        "The estimated wait uses the plan’s point shortfall, adds the expected remainder of this week first, then uses next week’s forecast for each following week.",
+      helpTrialCoverage: "When some member values are unknown, aggregates include only known values for that metric.",
+      helpCreditExchangeMode:
+        "Each credit card shows its current exchange method. Click it to switch between the optimal item and guild tokens.",
       unknownItem: "Unknown item",
       priceReferenceA: "Lowest ask",
       priceReferenceATitle: "Lowest ask: the current price to buy immediately",
@@ -4537,7 +4694,8 @@ window.MwiGuildCreditVersion = "1.2.52";
       interfaceSettingsHint:
         "Choose what batch fill includes and which plugin pages are visible. Changes apply locally.",
       openInterfaceSettings: "Open settings",
-      closeInterfaceSettings: "Close settings",
+      closeInterfaceSettings: "Back to previous page",
+      backFromSettings: "Back",
       shrineAutofillRange: "Batch-fill scope",
       shrineAutofillRangeHint:
         "Clear an item to stop batch fill from adding or updating it. Existing plans are never deleted.",
@@ -4579,13 +4737,13 @@ window.MwiGuildCreditVersion = "1.2.52";
       guildPointFollowBalance: "Use game balance",
       guildPointStartingBalanceHint: "Optional. Clear to use the available game balance.",
       guildPointStartingBalanceCompactHint: "Blank uses game balance",
-      guildPointPlanningWeeksCompactHint: "0 = now; 1–12 = forecast",
-      guildPointTrendHint: "Tracks lifetime Guild Point increases, so building spending does not affect the history.",
+      guildPointPlanningWeeksCompactHint: "0 = now; 1 = rest of this week",
+      guildPointTrendHint: "Points stay local; linear regression uses recent valid weeks",
       guildPointAutoSaved: "Auto-saved",
       guildPointSavedSnapshot: "Saved snapshot",
       currentAvailableGuildPoints: "Available now",
-      currentWeekGuildPoints: "This week's trial points",
-      predictedCurrentWeekGuildPoints: "This week's forecast",
+      currentWeekGuildPoints: "Earned this week",
+      predictedCurrentWeekGuildPoints: "This week: expected total",
       latestWeeklyGuildPoints: "Latest complete week",
       weeklyGuildPointGrowth: "Week-over-week",
       guildPointEstimatedGrowth: "Estimated weekly growth",
@@ -4595,22 +4753,66 @@ window.MwiGuildCreditVersion = "1.2.52";
       guildPointHistoryBaseline:
         "The lifetime-point baseline is saved. The next weekly reward will create the first record.",
       guildPointForecastNeedsHistory:
-        "Weekly records are being saved. Two consecutive weeks are required for a forecast.",
+        "Linear regression needs at least two valid weeks within the lookback window. No historical-average fallback is used.",
       guildPointForecastColdStart:
-        "The prior {count} weeks averaged {average} points, and this week has earned {current}. A midpoint trend fit estimates {growth} points of weekly growth and {forecast} next week. The result can change until this week ends.",
-      guildPointForecastMethod: "Forecast from the average change over the latest {count} consecutive complete weeks.",
+        "The prior {count} weeks averaged {average} points; {current} earned this week. This average is a reference only.",
+      guildPointForecastMethod: "Uses verified records within the latest {count} weeks.",
       guildPointForecastEstimatedMethod:
-        "Forecast from the average change over the latest {count} complete weeks, including records filled from the lifetime total.",
+        "Historical-average reference from lifetime points; auto-filled weeks are excluded from trend fitting.",
       guildPointHistoryConflict:
         "Historical weekly points exceed the game's lifetime total, so forecasting is paused. Check manual entries or reset weekly records.",
+      remainingCurrentWeekGuildPoints: "This week: expected remainder",
+      guildPointSourcePartial: "Game tracked",
+      guildPointCsvPartial: "Game tracked",
+      guildPointMethodMean: "recent mean",
+      guildPointMethodLinear: "linear regression",
+      guildPointMethodHistorical: "historical-average reference",
+      guildPointForecastEvidence:
+        "Lookback: {count} weeks; {reliable} confirmed, {partial} game tracked. Excludes {estimated} estimated weeks. Method: {method}. Tracked zeros require manual confirmation.",
+      guildPointForecastDetails: "Forecast basis and limits",
+      guildPointHelpHistorical: "Too few verified past weeks; using the historical average as a reference.",
+      guildPointHelpInsufficient: "Using the recent mean; {count}/3 valid evaluations, so no trend fitting yet.",
+      guildPointHelpEvaluated: "Using {method}, evaluated against {count} past weeks.",
+      guildPointHelpDataTitle: "Which records are used",
+      guildPointHelpData:
+        "Positive current-week points mark this week as finished and include it in the lookback window; otherwise the window ends last week. Confirmed records and positive game-tracked values are used. Estimates and missing values are excluded. Tracked zeros require manual confirmation.",
+      guildPointHelpMethodTitle: "How the forecast is calculated",
+      guildPointHelpMethod:
+        "Least-squares linear regression fits earned points against actual week numbers and extrapolates the target week, rounded to a nonnegative integer. At least two valid weeks are required. Evaluation no longer switches the method to a mean.\nMissing weeks retain their time gaps. No zeros or older samples are filled in. Insufficient data is shown as —.",
+      guildPointHelpResultTitle: "How to read the result",
+      guildPointHelpResult:
+        "Once points are earned this week, its expected total equals those points and its expected remainder is zero. Earned points are not added to the planning budget again.\nEvaluation checks the saved history only. Future results may differ as membership and participation change.",
+      trialHelpScreenshotPreview: "Check what is captured, what to review before sharing and how it is saved.",
+      trialHelpScreenshotScope: "What is captured",
+      trialHelpSharing: "Sharing and saving",
+      trialHelpHistoryPreview: "Learn how records are collected, stored and imported.",
+      trialHelpCollection: "Collection and storage",
+      trialHelpImport: "Importing past records",
+      trialHelpPurpose: "Using these records",
+      trialHelpFeedback: "Feedback and discussion",
+      trialHelpColumnsPreview: "Shares and averages use different denominators; unknown is not zero.",
+      trialHelpShare: "Share of the total",
+      trialHelpShareBody: "Member value divided by the known total.",
+      trialHelpAverage: "Average multiple",
+      trialHelpAverageBody:
+        "Member value divided by the average among members with a positive value for that metric; 1× is average. Work, damage, healing and pre-mitigation damage taken are calculated separately, excluding zero-valued members.",
+      trialHelpMissing: "Zeros, missing values and summaries",
+      trialHelpMissingBody:
+        "Missing values or no positive contributors show —. Summary averages exclude zeros; totals and medians retain known zeros.\nDisplay settings affect the page only, without changing records or exported data.",
+      trialHelpOverviewPreview: "Participation counts and average multiples use collected game records only.",
+      trialHelpOverviewScope: "Scope and calculation",
+      trialHelpRankingPreview: "Participation, average multiples and joining times each use separate rules.",
+      trialHelpCounts: "Participation counts",
+      trialHelpRankingAverage: "Average multiples and sample counts",
       guildPointForecastWeeks: "Forecast lookback",
-      guildPointForecastWeeksHint: "Uses only the latest consecutive complete weeks.",
+      guildPointForecastWeeksHint:
+        "Includes this week once points are earned; otherwise ends last week. Estimates are excluded from regression.",
       increaseGuildPointForecastWeeks: "Increase the forecast lookback by 1 week",
       decreaseGuildPointForecastWeeks: "Decrease the forecast lookback by 1 week",
       guildPointPlanningWeeks: "Planning horizon",
       guildPointPlanningOptions: "Forecast settings",
       guildPointPlanningWeeksHint:
-        "0 uses current points only; values above 0 add forecast weekly output to the available budget.",
+        "0 uses the current balance; 1 adds the rest of this week. Later weeks use the next-week forecast at a fixed rate, without counting earned points twice.",
       increaseGuildPointPlanningWeeks: "Increase the planning horizon by 1 week",
       decreaseGuildPointPlanningWeeks: "Decrease the planning horizon by 1 week",
       guildPointPlanningCurrentOnly: "Current points only",
@@ -4618,9 +4820,10 @@ window.MwiGuildCreditVersion = "1.2.52";
       guildPointWeekWithDate: "Week {count} ({date})",
       guildPointPlanningNeedsBalance: "Available Guild Points have not been read yet.",
       guildPointPlanningNeedsForecast:
-        "The current-point budget is preserved; future weeks cannot be added because history is insufficient or conflicting.",
+        "Current balance retained. Projected earnings need known current-week progress and sufficient, consistent history.",
       guildPointPlanningBudgetCurrent: "Planning budget: {total} current points.",
-      guildPointPlanningBudgetProjected: "Planning budget: {current} + {weeks} weeks × {weekly} = {total} points.",
+      guildPointPlanningBudgetProjected:
+        "Budget: {current} + {remaining} remaining this week + {weeks} later weeks × {weekly} = {total} points.",
       recentGuildPointHistory: "Recent weekly records",
       manualGuildPointWeek: "Week",
       manualGuildPointEarned: "Points earned that week",
@@ -4641,6 +4844,7 @@ window.MwiGuildCreditVersion = "1.2.52";
       guildPointSourceCurrentEstimated: "Current-week forecast",
       guildPointSourceCurrentPending: "Not started this week",
       guildPointSourceCurrentUnavailable: "Not loaded",
+      guildPointSourceNextForecast: "Next-week forecast",
       currentGuildPointWeek: "Current week",
       removeManualGuildPointWeek: "Remove the manual record for {week}",
       manualGuildPointWeekSaved: "Historical Guild Points were saved and missing weeks were recalculated.",
@@ -4661,15 +4865,16 @@ window.MwiGuildCreditVersion = "1.2.52";
       constructionEtaNoPlan: "No plan yet",
       constructionEtaNoPlanHint: "Add a building to estimate completion time.",
       constructionEtaNeedsBalance: "Available Guild Points are unavailable; enter a manual budget.",
-      constructionEtaNeedsForecast: "Two consecutive complete weeks are required for an ETA.",
+      constructionEtaNeedsForecast: "An ETA needs known current-week progress and a valid forecast.",
       constructionEtaHistoryConflict: "Weekly history conflicts with the lifetime total, so the ETA is paused.",
       constructionEtaNoGrowth: "The weekly forecast is zero, so an ETA is unavailable.",
       constructionEtaCovered: "Covered by current points",
       constructionEtaCoveredHint: "The plan can be completed without waiting for more weekly points.",
       constructionEtaWeeks: "About {count} weeks",
-      constructionEtaDetail: "About {points} points per week with {shortfall} still needed.",
+      constructionEtaDetail:
+        "Need {shortfall} points: count the rest of this week first, then {points} per later week.",
       constructionEtaDetailEstimated:
-        "Using the historical backfill estimate of about {points} points per week, with {shortfall} still needed.",
+        "Need {shortfall} points: count this week’s estimated remainder first, then a historical-average {points} per later week.",
       exportGuildPointHistory: "Export weekly CSV",
       resetGuildPointHistory: "Reset weekly records",
       resetGuildPointHistoryConfirm:
@@ -4679,7 +4884,7 @@ window.MwiGuildCreditVersion = "1.2.52";
       guildPointCsvWeekStart: "Week start",
       guildPointCsvEarned: "Guild Points earned",
       guildPointCsvStatus: "Record status",
-      guildPointCsvComplete: "Complete week",
+      guildPointCsvComplete: "Verified complete week",
       guildPointCsvTracking: "Current week tracking",
       guildPointCsvManual: "Manual",
       guildPointCsvEstimated: "Auto-filled",
@@ -4903,6 +5108,8 @@ window.MwiGuildCreditVersion = "1.2.52";
       trialScreenshotTooLarge: "This view is too large for a readable image. Select a single week or player and retry.",
       trialScreenshotIconFailed: "Could not load original icons. Check your connection and retry.",
       trialScreenshotFailed: "Could not generate the image. Retry or select a single week and download PNG.",
+      trialSimpleNames: "Simple names",
+      trialSimpleNamesHint: "Show plain player names without custom icons or colors for this page session.",
       trialScreenshotMode: "Hide player names",
       trialScreenshotExit: "Show player names",
       trialScreenshotHint:
@@ -4930,13 +5137,11 @@ window.MwiGuildCreditVersion = "1.2.52";
       trialColumnsGroup_workDoneSummary: "Work summary · Above table",
       trialColumnsCalculations: "Calculations and missing values",
       trialColumnsEmpty: "All columns are hidden. Turn columns back on using the column manager above.",
-      trialDisplaySettingsHint:
-        "Share = member value ÷ known total. Average multiple = member value ÷ known average (1× is average). Work, damage, healing and pre-mitigation damage taken are calculated separately, including explicit zero. Missing values and zero denominators show —. Summaries include known values only. Display settings do not change records or exported data.",
       trialDisplaySaveFailed: "Settings apply to this page but could not be saved. Reopening may restore defaults.",
       trialOverview: "Trial overview",
       trialKnownCoverage: "{field}: known for {count}/{total} members; summary uses known values only.",
       trialPartialShare:
-        "Some metrics are incomplete; each share and average multiple uses only members with known values for that metric.",
+        "Some metrics are incomplete. Shares use known values; each per-member average uses only members with a known positive value for that metric.",
       trialField_combatShare: "Combat share of total",
       trialField_combatMultiple: "Combat average multiple",
       trialField_damageDealtShare: "Damage share",
@@ -4946,6 +5151,8 @@ window.MwiGuildCreditVersion = "1.2.52";
       trialField_premitigatedDamageTakenShare: "Damage taken share",
       trialField_premitigatedDamageTakenMultiple: "Damage taken average multiple",
       trialField_workShare: "Share of total",
+      trialLowWork: "Work share in this trial: {share}%, below 0.9%",
+      trialSignupLowWork: "Last participation in this project (week {week}): {share}% work share, below 0.9%",
       trialField_workMultiple: "Average multiple",
       trialField_levelSummary: "Level summary",
       trialField_workSummary: "Work summary",
@@ -4967,7 +5174,7 @@ window.MwiGuildCreditVersion = "1.2.52";
       trialOverviewAllProjects: "All trials",
       trialOverviewMethod: "Calculation",
       trialOverviewHelp:
-        "Uses locally saved game captures, excluding manual records. Each project attended counts once, including zero contributions; 0 means no captured participation. Skilling uses work divided by that trial’s average. Combat averages the valid damage, healing and damage-taken multiples first. Multiples for each project are then averaged equally across trials. Total multiple sums valid trial multiples. The All trials row sums participation counts and multiples, averaging across valid samples rather than project averages. 1× is the per-person average. Missing values and zero denominators are skipped; no valid multiple shows —.",
+        "Uses locally saved game captures, excluding manual records. Each project attended counts once, including zero contributions; 0 means no captured participation. Each per-member average includes only members with a positive value for that metric.\nSkilling uses work divided by that trial’s average. Combat sums the valid damage, healing and damage-taken multiples first. Multiples for each project are then averaged equally across trials.\nTotal multiple sums valid trial multiples. The All trials row sums participation counts and multiples, averaging across valid samples rather than project averages. 1× is the per-person average. Missing values and zero denominators are skipped; no valid multiple shows —.",
       trialRankingJoinedAt: "Guild joining order",
       trialRankingJoinedAtHelp:
         "Current guild members, earliest join first; equal times share a rank. Unknown dates come last without a rank. Dates use local time. Members without trial participation are included.",
@@ -4997,7 +5204,7 @@ window.MwiGuildCreditVersion = "1.2.52";
       trialRankingCountHelp:
         "Only records captured by the plugin from the game count; manual transcripts are excluded from rankings. Each skilling or combat project attended counts once, including zero contributions. Uncaptured projects are excluded. Equal values share a rank.",
       trialRankingAverageHelp:
-        "The separate damage, healing and pre-mitigation damage taken rankings use only their own metric multiples, excluding missing values and zero denominators independently. Skilling and combat each average weekly multiples over eligible guild weeks. Membership must begin before the week starts. Confirmed absence counts as 0, and each category adds at most one denominator per week. Skilling uses work; combat sums the valid damage, healing and damage-taken multiples for each project, averages the valid projects within each week, then averages across weeks. Absence requires a fully captured category and membership evidence from join times or attendance. Unknown membership, incomplete captures and unavailable multiples are not treated as zero. Only captured completed weeks are covered; manual records are entirely excluded. Combined score = skilling average + combat average, without dividing by 2; a sole valid category retains its average. Samples count captured attendance, at most once per category per week. Attended weeks count even with zero or unknown metrics; absences do not. Combined samples sum both categories. Samples differ from the averaging denominator: confirmed absences still enter the average as zero.",
+        "The separate damage, healing and pre-mitigation damage taken rankings use only their own metric multiples, excluding missing values and zero denominators independently.\nSkilling and combat each average weekly multiples over eligible guild weeks. Membership must begin before the week starts. Confirmed absence counts as 0, and each category adds at most one denominator per week. Each per-member baseline includes only members with a positive value for that metric.\nSkilling uses work; combat sums the valid damage, healing and damage-taken multiples for each project, averages the valid projects within each week, then averages across weeks.\nAbsence requires a fully captured category and membership evidence from join times or attendance. Unknown membership, incomplete captures and unavailable multiples are not treated as zero. Only captured completed weeks are covered; manual records are entirely excluded.\nCombined score = skilling average + combat average, without dividing by 2; a sole valid category retains its average.\nSamples count captured attendance, at most once per category per week. Attended weeks count even with zero or unknown metrics; absences do not. Combined samples sum both categories. Samples differ from the averaging denominator: confirmed absences still enter the average as zero.",
       trialPlayerFind: "Choose a player",
       trialPlayerSwitch: "Current player: {name} · Change player",
       trialPlayerSearchLabel: "Search historical players",
@@ -5109,7 +5316,19 @@ window.MwiGuildCreditVersion = "1.2.52";
       trialSlot_alchemy_tool: "Alchemy",
       trialSlot_enhancing_tool: "Enhancing",
       trialProfileAbilities: "Abilities",
+      trialProfileActivity: "Current activity",
+      trialProfilePresence: "Online status",
+      trialProfileObservation: "Activity and online status reflect the last profile read.",
+      trialActivityUnknown: "Not shared or unknown",
+      trialActivity_combat: "Combat",
+      trialActivity_labyrinth: "Labyrinth",
+      trialActivity_special: "Special activity",
+      trialPresence_online: "Online",
+      trialPresence_offline: "Offline",
+      trialPresence_hidden: "Hidden",
+      trialPresence_unknown: "Unknown",
       trialProfileHouse: "House",
+      trialProfileHouseLevel: "House level: {level}",
       trialProfileRaw: "Full profile data",
       trialProfileTooltipUnavailable: "Detailed data is currently unavailable",
       trialProfile_totalTaskPoints: "Task points",
@@ -5829,6 +6048,8 @@ window.MwiGuildCreditVersion = "1.2.52";
         weekStartAt,
         earnedPoints: previous ? previous.earnedPoints + earnedPoints : earnedPoints,
         complete: Boolean((previous && previous.complete) || (record && record.complete)),
+        coverage:
+          record?.coverage === "verified" && (!previous || previous.coverage === "verified") ? "verified" : "partial",
         ...(record && ["tracked", "manual", "estimated"].includes(record.source)
           ? { source: record.source }
           : previous && previous.source
@@ -5939,7 +6160,11 @@ window.MwiGuildCreditVersion = "1.2.52";
         history: {
           guildId: observation.guildId || guildId,
           lastObservation: observation,
-          weeks,
+          weeks: weeks.map((record) =>
+            record.weekStartAt === lastObservation.weekStartAt
+              ? { ...record, complete: true, coverage: "partial" }
+              : record
+          ),
           manualWeeks
         }
       };
@@ -5961,13 +6186,21 @@ window.MwiGuildCreditVersion = "1.2.52";
       observation.weekStartAt && lastObservation.weekStartAt && observation.weekStartAt > lastObservation.weekStartAt
         ? lastObservation.weekStartAt
         : observation.weekStartAt || lastObservation.weekStartAt || observation.observedAt;
+    const attributedPoints = weekChanged ? 0 : earnedPoints;
     const nextWeeks = normalizeGuildPointWeeks([
       ...weeks,
-      { weekStartAt: targetWeekStart, earnedPoints, complete: completedWeek, observedAt: observation.observedAt }
+      {
+        weekStartAt: targetWeekStart,
+        earnedPoints: attributedPoints,
+        complete: completedWeek,
+        coverage: "partial",
+        observedAt: observation.observedAt
+      }
     ]);
     return {
       changed: true,
-      recordedPoints: earnedPoints,
+      recordedPoints: attributedPoints,
+      skippedAmbiguousIncrease: weekChanged ? earnedPoints : 0,
       history: {
         guildId: observation.guildId || guildId,
         lastObservation: observation,
@@ -6050,7 +6283,9 @@ window.MwiGuildCreditVersion = "1.2.52";
     if (coldStart.status !== "ok") return { status: coldStart.status, history: normalized, estimatedCount: 0 };
     const firstTrial = Number(firstTrialStartAt);
     const completeTracked = new Map(
-      normalized.weeks.filter((record) => record.complete).map((record) => [record.weekStartAt, record])
+      normalized.weeks
+        .filter((record) => record.complete && record.coverage === "verified" && record.source !== "estimated")
+        .map((record) => [record.weekStartAt, record])
     );
     const manual = new Map(normalized.manualWeeks.map((record) => [record.weekStartAt, record]));
     const records = [];
@@ -6061,7 +6296,7 @@ window.MwiGuildCreditVersion = "1.2.52";
       const trackedRecord = completeTracked.get(weekStartAt);
       const manualRecord = manual.get(weekStartAt);
       const record = manualRecord
-        ? { ...manualRecord, complete: true, source: "manual" }
+        ? { ...manualRecord, complete: true, coverage: "verified", source: "manual" }
         : trackedRecord
           ? { ...trackedRecord, source: "tracked" }
           : null;
@@ -6103,10 +6338,15 @@ window.MwiGuildCreditVersion = "1.2.52";
       });
     }
     records.sort((left, right) => left.weekStartAt - right.weekStartAt);
+    const currentWeekStartAt = firstTrial + coldStart.pastWeekCount * GUILD_POINT_WEEK_MS;
     const outsideRange = normalized.weeks.filter(
-      (record) => !record.complete || record.weekStartAt < firstTrial || record.weekStartAt >= Number(observedAt)
+      (record) => record.weekStartAt < firstTrial || record.weekStartAt >= currentWeekStartAt
     );
-    const forecast = summarizeGuildPointHistory({ weeks: records }, { forecastWeekCount: options.forecastWeekCount });
+    const forecast = summarizeGuildPointHistory(normalized, {
+      forecastWeekCount: options.forecastWeekCount,
+      currentWeekStartAt,
+      currentWeekPoints
+    });
     return {
       status: "ok",
       history: { ...normalized, weeks: [...records, ...outsideRange] },
@@ -6116,38 +6356,142 @@ window.MwiGuildCreditVersion = "1.2.52";
       averageWeeklyChange: forecast.averageWeeklyChange,
       forecastPoints: forecast.forecastPoints,
       growthRate: forecast.growthRate,
-      forecastSampleCount: forecast.forecastSampleCount
+      forecastSampleCount: forecast.forecastSampleCount,
+      forecast,
+      currentWeekStartAt,
+      historicalAveragePoints: coldStart.historicalAveragePoints
     };
   }
 
+  function isReliableGuildPointWeek(record) {
+    return (
+      record.complete && record.source !== "estimated" && (record.source === "manual" || record.coverage === "verified")
+    );
+  }
+
+  function isGuildPointForecastSample(record) {
+    return (
+      record.complete && record.source !== "estimated" && (isReliableGuildPointWeek(record) || record.earnedPoints > 0)
+    );
+  }
+
+  function guildPointModelPrediction(samples, targetWeekStartAt, method = "mean") {
+    if (samples.length < 2) return null;
+    const origin = samples[0].weekStartAt;
+    const xs = samples.map((record) => (record.weekStartAt - origin) / GUILD_POINT_WEEK_MS);
+    const meanX = xs.reduce((sum, x) => sum + x, 0) / samples.length;
+    const meanY = samples.reduce((sum, record) => sum + record.earnedPoints, 0) / samples.length;
+    let prediction = meanY;
+    if (method === "linear") {
+      const variance = xs.reduce((sum, x) => sum + (x - meanX) ** 2, 0);
+      if (!variance) return null;
+      const slope =
+        samples.reduce((sum, record, i) => sum + (xs[i] - meanX) * (record.earnedPoints - meanY), 0) / variance;
+      prediction += slope * ((targetWeekStartAt - origin) / GUILD_POINT_WEEK_MS - meanX);
+    } else if (method === "legacy") {
+      prediction =
+        samples.at(-1).earnedPoints + (samples.at(-1).earnedPoints - samples[0].earnedPoints) / (samples.length - 1);
+    }
+    const rounded = Math.max(0, Math.round(prediction));
+    return Number.isSafeInteger(rounded) ? rounded : null;
+  }
+
+  // Rolling-origin evaluation: every training window ends before its target week.
+  // Estimates and unverified zeros are excluded; positive tracked values retain their coverage.
+  function backtestGuildPointForecast(history, options = {}) {
+    const lookback = normalizeGuildPointForecastWeeks(options.forecastWeekCount);
+    const records = normalizeGuildPointWeeks(history?.weeks).filter(isGuildPointForecastSample);
+    const results = ["mean", "linear", "legacy"].map((method) => ({
+      method,
+      count: 0,
+      absoluteError: 0,
+      overestimate: 0,
+      overestimateCount: 0
+    }));
+    const predictions = [];
+    for (const target of records) {
+      if (Number.isFinite(options.beforeWeekStartAt) && target.weekStartAt >= options.beforeWeekStartAt) continue;
+      const samples = records.filter(
+        (record) =>
+          record.weekStartAt < target.weekStartAt &&
+          record.weekStartAt >= target.weekStartAt - lookback * GUILD_POINT_WEEK_MS
+      );
+      const row = { weekStartAt: target.weekStartAt, actual: target.earnedPoints };
+      const candidates = results.map((result) => guildPointModelPrediction(samples, target.weekStartAt, result.method));
+      if (candidates.some((value) => value === null)) continue;
+      for (let i = 0; i < results.length; i += 1) {
+        const result = results[i];
+        const predicted = candidates[i];
+        const error = predicted - target.earnedPoints;
+        result.count += 1;
+        result.absoluteError += Math.abs(error);
+        result.overestimate += Math.max(0, error);
+        result.overestimateCount += Number(error > 0);
+        row[result.method] = predicted;
+      }
+      predictions.push(row);
+    }
+    const metrics = results.map((result) => ({
+      ...result,
+      meanAbsoluteError: result.count ? result.absoluteError / result.count : null,
+      meanOverestimate: result.count ? result.overestimate / result.count : null
+    }));
+    return { lookback, metrics, predictions, recommendedMethod: "linear" };
+  }
+
   function summarizeGuildPointHistory(history, options = {}) {
-    const trackedWeeks = normalizeGuildPointWeeks(history && history.weeks);
-    const weeks = trackedWeeks.filter((record) => record.complete);
-    const latest = weeks.at(-1) || null;
-    const previous = weeks.at(-2) || null;
+    const manual = normalizeManualGuildPointWeeks(history?.manualWeeks);
+    const manualStarts = new Set(manual.map((record) => record.weekStartAt));
+    const trackedWeeks = normalizeGuildPointWeeks([
+      ...(history?.weeks || []).filter((record) => !manualStarts.has(record.weekStartAt)),
+      ...manual.map((record) => ({ ...record, complete: true, source: "manual", coverage: "verified" }))
+    ]);
+    const currentWeekStartAt = Number.isSafeInteger(options.currentWeekStartAt)
+      ? options.currentWeekStartAt
+      : (trackedWeeks.filter((record) => record.complete).at(-1)?.weekStartAt ?? 0) + GUILD_POINT_WEEK_MS;
+    const weeks = trackedWeeks.filter((record) => record.complete && record.weekStartAt < currentWeekStartAt);
+    const currentWeekComplete = Number.isSafeInteger(options.currentWeekPoints) && options.currentWeekPoints > 0;
+    const forecastEndAt = currentWeekStartAt + (currentWeekComplete ? GUILD_POINT_WEEK_MS : 0);
+    // This transient sample never enters trackedWeeks, saved history, or exports.
+    const completedWeeks = currentWeekComplete
+      ? [
+          ...weeks,
+          {
+            weekStartAt: currentWeekStartAt,
+            earnedPoints: options.currentWeekPoints,
+            complete: true,
+            source: "tracked",
+            coverage: "partial"
+          }
+        ]
+      : weeks;
+    const latest = completedWeeks.at(-1) || null;
+    const previous = completedWeeks.at(-2) || null;
     const growthRate =
-      previous && previous.earnedPoints > 0
+      latest &&
+      previous &&
+      isGuildPointForecastSample(latest) &&
+      isGuildPointForecastSample(previous) &&
+      latest.weekStartAt - previous.weekStartAt === GUILD_POINT_WEEK_MS &&
+      previous.earnedPoints > 0
         ? (latest.earnedPoints - previous.earnedPoints) / previous.earnedPoints
         : null;
     const forecastWeekCount = normalizeGuildPointForecastWeeks(options.forecastWeekCount);
-    const consecutive = latest ? [latest] : [];
-    for (let index = weeks.length - 2; index >= 0 && consecutive.length < forecastWeekCount; index -= 1) {
-      const newer = consecutive[0];
-      const candidate = weeks[index];
-      const gap = newer.weekStartAt - candidate.weekStartAt;
-      if (gap < GUILD_POINT_WEEK_MS * 0.5 || gap > GUILD_POINT_WEEK_MS * 1.5) break;
-      consecutive.unshift(candidate);
-    }
-    let forecastPoints = null;
-    let averageWeeklyChange = null;
-    if (consecutive.length >= 2) {
-      averageWeeklyChange =
-        consecutive
-          .slice(1)
-          .reduce((total, record, index) => total + record.earnedPoints - consecutive[index].earnedPoints, 0) /
-        (consecutive.length - 1);
-      forecastPoints = Math.max(0, Math.round(consecutive.at(-1).earnedPoints + averageWeeklyChange));
-    }
+    const window = completedWeeks.filter(
+      (record) => record.weekStartAt >= forecastEndAt - forecastWeekCount * GUILD_POINT_WEEK_MS
+    );
+    const samples = window.filter(isGuildPointForecastSample);
+    const backtest = backtestGuildPointForecast(
+      { weeks: window },
+      { forecastWeekCount, beforeWeekStartAt: forecastEndAt }
+    );
+    const forecastMethod = "linear";
+    const forecastPoints = guildPointModelPrediction(samples, currentWeekStartAt, forecastMethod);
+    const nextWeekForecastPoints = guildPointModelPrediction(
+      samples,
+      currentWeekStartAt + GUILD_POINT_WEEK_MS,
+      forecastMethod
+    );
     return {
       trackedWeeks,
       weeks,
@@ -6155,9 +6499,21 @@ window.MwiGuildCreditVersion = "1.2.52";
       previous,
       growthRate,
       forecastPoints,
-      averageWeeklyChange,
-      forecastSampleCount: consecutive.length,
-      forecastWeekCount
+      nextWeekForecastPoints,
+      averageWeeklyChange: null,
+      forecastSampleCount: samples.length,
+      verifiedSampleCount: samples.filter(isReliableGuildPointWeek).length,
+      forecastSamples: samples,
+      currentWeekComplete,
+      forecastWeekCount,
+      estimatedSampleCount: window.filter((record) => record.source === "estimated").length,
+      partialSampleCount: window.filter((record) => record.source !== "estimated" && !isReliableGuildPointWeek(record))
+        .length,
+      forecastMethod,
+      backtest,
+      currentWeekStartAt,
+      forecastStartAt: forecastEndAt - forecastWeekCount * GUILD_POINT_WEEK_MS,
+      forecastEndAt
     };
   }
 
@@ -6206,7 +6562,7 @@ window.MwiGuildCreditVersion = "1.2.52";
     };
   }
 
-  function estimateGuildConstructionWeeks(totalCost, availablePoints, weeklyForecast) {
+  function estimateGuildConstructionWeeks(totalCost, availablePoints, weeklyForecast, options = {}) {
     const cost = Number(totalCost);
     if (!Number.isSafeInteger(cost) || cost <= 0)
       return { status: "no_plan", shortfall: 0, weeks: null, weeklyForecast: null };
@@ -6218,6 +6574,19 @@ window.MwiGuildCreditVersion = "1.2.52";
     const forecast = weeklyForecast === null || weeklyForecast === undefined ? NaN : Number(weeklyForecast);
     if (!Number.isSafeInteger(forecast) || forecast < 0)
       return { status: "missing_forecast", shortfall, weeks: null, weeklyForecast: null };
+    const remaining = options.currentWeekRemaining;
+    if (Object.hasOwn(options, "currentWeekRemaining")) {
+      if (!Number.isSafeInteger(remaining) || remaining < 0)
+        return { status: "missing_forecast", shortfall, weeks: null, weeklyForecast: forecast };
+      if (shortfall <= remaining) return { status: "ok", shortfall, weeks: 1, weeklyForecast: forecast };
+      if (forecast === 0) return { status: "no_growth", shortfall, weeks: null, weeklyForecast: forecast };
+      return {
+        status: "ok",
+        shortfall,
+        weeks: 1 + Math.ceil((shortfall - remaining) / forecast),
+        weeklyForecast: forecast
+      };
+    }
     if (forecast === 0) return { status: "no_growth", shortfall, weeks: null, weeklyForecast: forecast };
     return {
       status: "ok",
@@ -6227,7 +6596,7 @@ window.MwiGuildCreditVersion = "1.2.52";
     };
   }
 
-  function calculateGuildPointPlanningBudget(basePoints, weeklyForecast, planningWeeks) {
+  function calculateGuildPointPlanningBudget(basePoints, weeklyForecast, planningWeeks, options = {}) {
     const base = basePoints === null || basePoints === undefined ? NaN : Number(basePoints);
     const weeks = Number(planningWeeks);
     if (!Number.isSafeInteger(base) || base < 0)
@@ -6238,12 +6607,20 @@ window.MwiGuildCreditVersion = "1.2.52";
     const forecast = weeklyForecast === null || weeklyForecast === undefined ? NaN : Number(weeklyForecast);
     if (!Number.isSafeInteger(forecast) || forecast < 0)
       return { status: "missing_forecast", basePoints: base, weeks, forecastPoints: null, budget: base };
+    const includesCurrentWeek = Object.hasOwn(options, "currentWeekRemaining");
+    const remaining = options.currentWeekRemaining;
+    if (includesCurrentWeek && (!Number.isSafeInteger(remaining) || remaining < 0))
+      return { status: "missing_forecast", basePoints: base, weeks, forecastPoints: null, budget: base };
+    const addedPoints = includesCurrentWeek ? remaining + (weeks - 1) * forecast : weeks * forecast;
+    if (!Number.isSafeInteger(base + addedPoints))
+      return { status: "missing_forecast", basePoints: base, weeks, forecastPoints: null, budget: base };
     return {
       status: "ok",
       basePoints: base,
       weeks,
       forecastPoints: forecast,
-      budget: base + weeks * forecast
+      budget: base + addedPoints,
+      ...(includesCurrentWeek ? { currentWeekRemaining: remaining, futureWeeks: weeks - 1, addedPoints } : {})
     };
   }
 
@@ -6583,6 +6960,8 @@ window.MwiGuildCreditVersion = "1.2.52";
     removeManualGuildPointWeek,
     supplementGuildPointHistory,
     summarizeGuildPointHistory,
+    backtestGuildPointForecast,
+    guildPointModelPrediction,
     estimateGuildPointColdStart,
     estimateGuildConstructionWeeks,
     calculateGuildPointPlanningBudget,
@@ -6816,14 +7195,14 @@ window.MwiGuildCreditVersion = "1.2.52";
   );
 
   const rankingColumns = [
+    "joinedAt",
     "participations",
     "skilling",
     "combat",
+    "all",
     "damageDealt",
     "healingDone",
-    "premitigatedDamageTaken",
-    "all",
-    "joinedAt"
+    "premitigatedDamageTaken"
   ];
   function normalizeRankingOrder(value) {
     return [
@@ -6892,7 +7271,7 @@ window.MwiGuildCreditVersion = "1.2.52";
   const GUILD_BUFF_HRID_PATTERN = /^\/guild_buffs\/[A-Za-z0-9_./-]+$/;
   const GUILD_POINT_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
   const LEGACY_GUILD_TRIAL_FIRST_START_AT = Date.parse("2026-07-13T00:00:00Z");
-  const GUILD_BUILDING_PLANNER_SCHEMA_VERSION = 7;
+  const GUILD_BUILDING_PLANNER_SCHEMA_VERSION = 8;
 
   function normalizeGuildShrineAutofillExcludedBuffHrids(value) {
     const values =
@@ -6972,6 +7351,9 @@ window.MwiGuildCreditVersion = "1.2.52";
         weekStartAt,
         earnedPoints: previous ? previous.earnedPoints + earnedPoints : earnedPoints,
         complete: Boolean((previous && previous.complete) || (record && record.complete)),
+        coverage:
+          record?.coverage === "verified" && (!previous || previous.coverage === "verified") ? "verified" : "partial",
+        ...(record && ["tracked", "manual", "estimated"].includes(record.source) ? { source: record.source } : {}),
         observedAt:
           Number.isSafeInteger(observedAt) && observedAt > 0
             ? Math.max(previous ? previous.observedAt : 0, observedAt)
@@ -7003,7 +7385,7 @@ window.MwiGuildCreditVersion = "1.2.52";
       lastObservation: normalizeObservation(source.lastObservation),
       weeks: Array.from(byWeek.values())
         .sort((left, right) => left.weekStartAt - right.weekStartAt)
-        .slice(-12),
+        .slice(-104),
       manualWeeks: Array.from(manualByWeek.values())
         .sort((left, right) => left.weekStartAt - right.weekStartAt)
         .slice(-104)
@@ -7012,7 +7394,7 @@ window.MwiGuildCreditVersion = "1.2.52";
 
   function migrateLegacyGuildPointManualWeeks(value, schemaVersion, firstTrialStartAt) {
     const normalized = normalizeGuildPointHistory(value);
-    if (Number(schemaVersion) >= GUILD_BUILDING_PLANNER_SCHEMA_VERSION) return normalized;
+    if (Number(schemaVersion) >= 7) return normalized;
     const firstTrial = Number(firstTrialStartAt);
     if (!Number.isSafeInteger(firstTrial) || firstTrial <= 0) return normalized;
     const currentWeekStarts = new Set(
@@ -8748,6 +9130,23 @@ window.MwiGuildCreditVersion = "1.2.52";
     );
   }
 
+  function renderHelpSummary(title, preview) {
+    return `<summary class="mwi-help-toggle"><span class="mwi-help-heading">${escapeHtml(title)}</span></summary>${preview ? `<p class="mwi-help-intro">${escapeHtml(preview)}</p>` : ""}`;
+  }
+
+  function renderHelpSections(sections) {
+    return `<dl class="mwi-help-sections">${sections
+      .map(
+        ([heading, text]) =>
+          `<div><dt>${escapeHtml(heading)}</dt><dd>${String(text)
+            .split("\n")
+            .filter(Boolean)
+            .map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`)
+            .join("")}</dd></div>`
+      )
+      .join("")}</dl>`;
+  }
+
   function itemHridFromIcon(icon) {
     const use = icon && icon.querySelector("use");
     const href = use && (use.getAttribute("href") || use.getAttribute("xlink:href"));
@@ -8804,6 +9203,8 @@ window.MwiGuildCreditVersion = "1.2.52";
   return {
     updateRenderedMarkup,
     escapeHtml,
+    renderHelpSummary,
+    renderHelpSections,
     itemHridFromIcon,
     enhancementLevelFromIcon,
     spriteBaseFromReference,
@@ -9516,15 +9917,27 @@ window.MwiGuildCreditVersion = "1.2.52";
       const keepPanelOpen =
         staleSelected || Boolean(state.panel && !state.panel.hidden && state.creditTab && isSelected(state.creditTab));
       const tabHadFocus = state.creditTab === windowRef.document.activeElement;
+      const reuseTab = Boolean(
+        state.creditTab?.isConnected &&
+        state.creditTab.parentElement === tabBar &&
+        dom.isOwnedSidebarTab(state.creditTab)
+      );
       // Recreate before hide so the panel shell can snapshot its focus and scroll position.
       const replacement = localeChanged && state.panel ? recreatePanel(state.panel) : null;
       selection.hide();
-      state.creditTab?.remove();
+      if (!reuseTab) state.creditTab?.remove();
       const panel = replacement || state.panel || createPanel();
       panel.hidden = true;
-      const tab = dom.createTab(tabPrototype, panel, getLabel());
+      const label = getLabel();
+      const tab = reuseTab ? state.creditTab : dom.createTab(tabPrototype, panel, label);
+      if (reuseTab) {
+        // Other plugins may anchor their buttons to this node. Updating only our
+        // panel/locale must retain its identity and position within the same bar.
+        dom.prepareTab(tab, panel);
+        if (tab.textContent !== label) tab.textContent = label;
+      }
       panelHost.append(panel);
-      tabBar.append(tab);
+      if (!reuseTab) tabBar.append(tab);
       state.panel = panel;
       state.creditTab = tab;
       state.panelLocale = locale;
@@ -9860,6 +10273,9 @@ window.MwiGuildCreditVersion = "1.2.52";
         #mwi-credit-optimizer .mwi-view-tabs-shell{position:sticky;z-index:20;top:-12px;display:flex;align-items:stretch;gap:0;margin:0 -12px 12px;padding:8px 12px 0;border-bottom:1px solid #383b53;background:#202139}#mwi-credit-optimizer .mwi-view-tabs{display:flex;flex:0 1 auto;min-width:0;overflow-x:auto;scrollbar-width:thin}#mwi-credit-optimizer .mwi-view-tab-item{position:relative;display:block;flex:0 0 auto;touch-action:pan-y;cursor:grab}#mwi-credit-optimizer .mwi-view-tab-item[hidden]{display:none!important}#mwi-credit-optimizer .mwi-view-tab-item:active{cursor:grabbing}#mwi-credit-optimizer :is(.mwi-view-tab,.mwi-settings-trigger){min-height:40px!important;border-radius:0!important;background:transparent!important;color:#c9cbeb!important;padding:6px 10px!important;touch-action:pan-y}#mwi-credit-optimizer .mwi-view-tab-active{border-bottom:2px solid #77e1cb!important;background:transparent!important;color:#a3f0df!important}#mwi-credit-optimizer .mwi-icon-button{position:relative;width:32px;min-width:32px;min-height:32px;padding:0!important;border:1px solid #555875!important;background:#343650!important;color:#fff!important}#mwi-credit-optimizer .mwi-icon-button:before{position:absolute;top:50%;left:50%;width:7px;height:7px;border-top:2px solid currentColor;border-left:2px solid currentColor;content:""}#mwi-credit-optimizer .mwi-icon-up:before{transform:translate(-50%,-35%) rotate(45deg)}#mwi-credit-optimizer .mwi-icon-down:before{transform:translate(-50%,-65%) rotate(225deg)}
 
         #mwi-credit-optimizer .mwi-settings-panel{min-width:0;margin:-2px 0 10px;border:1px solid #4b5777;border-radius:8px;background:linear-gradient(145deg,#232a43,#25263f);box-shadow:0 8px 20px #0c0d173d;color:#f4f5ff}#mwi-credit-optimizer .mwi-settings-panel[hidden]{display:none!important}#mwi-credit-optimizer .mwi-settings-header{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:9px 10px;border-bottom:1px solid #3f4969;background:#212941}#mwi-credit-optimizer .mwi-settings-header>span{display:grid;gap:2px;min-width:0}#mwi-credit-optimizer .mwi-settings-header h3{margin:0;color:#f3fff9;font-size:14px}#mwi-credit-optimizer .mwi-settings-header p{margin:0;color:#aebbd4;font-size:10px;line-height:1.35;overflow-wrap:anywhere}#mwi-credit-optimizer .mwi-settings-close{flex:0 0 auto;width:28px;min-width:28px;min-height:28px!important;padding:0!important;border:1px solid #59607e!important;background:#343650!important;color:#e8e9f8!important;font-size:18px;line-height:1}#mwi-credit-optimizer .mwi-settings-content{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;padding:9px 10px}#mwi-credit-optimizer .mwi-settings-block{min-width:0;padding:8px 0}#mwi-credit-optimizer .mwi-settings-block+.mwi-settings-block{border-top:1px solid #424866}#mwi-credit-optimizer .mwi-settings-block-heading{display:grid;gap:2px;margin:0 0 7px}#mwi-credit-optimizer .mwi-settings-block-heading h4{margin:0;color:#f2f4ff;font-size:12px}#mwi-credit-optimizer .mwi-settings-block-heading p{margin:0;color:#aeb1cf;font-size:10px;line-height:1.4;overflow-wrap:anywhere}#mwi-credit-optimizer .mwi-settings-domains{display:grid;grid-template-columns:minmax(0,1fr);gap:7px}#mwi-credit-optimizer .mwi-settings-domain{min-width:0;margin:0;padding:6px;border:1px solid #3f4665;border-radius:5px;background:#23253d}#mwi-credit-optimizer .mwi-settings-domain legend{padding:0 4px;color:#77f3d0;font-size:10px;font-weight:700}#mwi-credit-optimizer .mwi-settings-domain[data-domain="combat"] legend{color:#8cb9ff}#mwi-credit-optimizer .mwi-settings-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:4px}#mwi-credit-optimizer label.mwi-settings-option{display:flex;align-items:center;gap:6px;min-width:0;min-height:30px;padding:4px 6px;border:1px solid transparent;border-radius:4px;background:#2b2d49;color:#e8eafa;font-size:10px;line-height:1.25;cursor:pointer}#mwi-credit-optimizer label.mwi-settings-option:hover{border-color:#59607e;background:#313451}#mwi-credit-optimizer .mwi-settings-option span{min-width:0;overflow-wrap:anywhere}#mwi-credit-optimizer .mwi-settings-shrine-icon{display:flex;flex:0 0 30px;width:30px;height:30px}#mwi-credit-optimizer .mwi-settings-shrine-icon .mwi-building-icon{width:100%;height:100%;margin:0}#mwi-credit-optimizer .mwi-settings-shrine-copy{display:grid;gap:3px;flex:1;min-width:0;text-align:left}#mwi-credit-optimizer .mwi-settings-shrine-name{font-size:11px;line-height:1.35}#mwi-credit-optimizer .mwi-settings-shrine-effects{color:#bfc9df;font-size:10px;line-height:1.4}#mwi-credit-optimizer label.mwi-settings-option:focus-within{outline:2px solid #77f3d0;outline-offset:1px}#mwi-credit-optimizer .mwi-settings-option input[type="checkbox"]{flex:0 0 15px;width:15px;min-width:15px;height:15px;min-height:15px;margin:0;padding:0;accent-color:#43c4ad}#mwi-credit-optimizer .mwi-settings-placeholder{margin:0;padding:7px;border:1px dashed #545a79;border-radius:4px;color:#c6c9df;font-size:10px;line-height:1.35}#mwi-credit-optimizer label.mwi-settings-switch{display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0;padding:6px;border-radius:5px;background:#23253d;cursor:pointer}#mwi-credit-optimizer label.mwi-settings-switch+.mwi-settings-switch{margin-top:6px}#mwi-credit-optimizer .mwi-settings-switch-copy{display:grid;gap:2px;min-width:0}#mwi-credit-optimizer .mwi-settings-switch-copy strong{color:#f2f4ff;font-size:11px;overflow-wrap:anywhere}#mwi-credit-optimizer .mwi-settings-switch-copy small{color:#aeb1cf;font-size:9px;line-height:1.35;overflow-wrap:anywhere}#mwi-credit-optimizer input.mwi-settings-switch-input{position:relative;flex:0 0 36px;width:36px;min-width:36px;height:20px;min-height:20px;margin:0;padding:2px;border:1px solid #626784;border-radius:999px;background:#383a54;appearance:none;cursor:pointer;transition:border-color .16s ease,background-color .16s ease}#mwi-credit-optimizer input.mwi-settings-switch-input:before{display:block;width:14px;height:14px;border-radius:50%;background:#c7cae0;box-shadow:0 1px 3px #090a12aa;content:"";transition:transform .16s ease,background-color .16s ease}#mwi-credit-optimizer input.mwi-settings-switch-input:checked{border-color:#77f3d0;background:#2c665d}#mwi-credit-optimizer input.mwi-settings-switch-input:checked:before{transform:translateX(16px);background:#edfffa}#mwi-credit-optimizer .mwi-settings-status{min-height:0;margin:0;padding:0 10px 8px;color:#a9e9dc;font-size:10px;line-height:1.35}#mwi-credit-optimizer .mwi-settings-status:empty{display:none}#mwi-credit-optimizer .mwi-settings-status[data-error="true"]{color:#ff9ca3}
+        #mwi-credit-optimizer[data-settings-open="true"] .mwi-settings-panel{margin:0;border:0;border-radius:0;box-shadow:none;background:transparent}
+        #mwi-credit-optimizer .mwi-settings-trigger[aria-current="page"]{border-bottom:2px solid #77e1cb!important;color:#a3f0df!important}
+        #mwi-credit-optimizer .mwi-settings-close{width:auto;min-width:48px;padding:4px 10px!important;font-size:12px;line-height:1.4}
         #mwi-credit-optimizer .mwi-settings-name{margin:0 0 8px;min-width:0}#mwi-credit-optimizer .mwi-settings-name>label{display:block;margin-bottom:5px;font-size:11px;font-weight:700}#mwi-credit-optimizer .mwi-settings-name-controls{display:flex;flex-wrap:wrap;gap:6px;align-items:center}#mwi-credit-optimizer .mwi-settings-name-controls input{flex:1 1 160px;width:100%;min-width:0;max-width:100%;box-sizing:border-box}#mwi-credit-optimizer .mwi-settings-name-controls button{flex:0 0 auto}#mwi-credit-optimizer .mwi-settings-name p{margin:5px 0 0;color:#aeb1cf;font-size:10px;line-height:1.4;overflow-wrap:anywhere}
         @container (min-width:600px){#mwi-credit-optimizer .mwi-settings-domains{grid-template-columns:repeat(2,minmax(0,1fr))}}@container (max-width:400px){#mwi-credit-optimizer .mwi-settings-content{padding:7px}#mwi-credit-optimizer .mwi-settings-header{padding:8px}#mwi-credit-optimizer label.mwi-settings-switch{align-items:flex-start}}
         @media (prefers-reduced-motion:reduce){#mwi-credit-optimizer input.mwi-settings-switch-input,#mwi-credit-optimizer input.mwi-settings-switch-input:before{transition:none}}
@@ -9890,7 +10306,7 @@ window.MwiGuildCreditVersion = "1.2.52";
         #mwi-credit-optimizer .mwi-guild-point-history-actions button{min-height:36px;padding:4px 8px;border:1px solid #535975;background:transparent;color:#cbd1e7;font-size:12px}
         #mwi-credit-optimizer .mwi-guild-point-history-actions button[data-role="reset-guild-point-history"]{border-color:transparent;color:#d7b4bb}
         #mwi-credit-optimizer .mwi-guild-point-history{border-top:1px solid #38635d;color:#c5d9d5;font-size:12px}
-        #mwi-credit-optimizer .mwi-guild-point-history summary{padding:6px 9px;cursor:pointer;user-select:none}
+        #mwi-credit-optimizer .mwi-guild-point-history>summary{padding:6px 9px;cursor:pointer;user-select:none}
         #mwi-credit-optimizer .mwi-guild-point-manual-form{border-top:1px solid #38635d;background:#203330}
         #mwi-credit-optimizer .mwi-guild-point-table-scroll{overflow:auto;overscroll-behavior:contain}
         #mwi-credit-optimizer .mwi-guild-point-history table{width:100%;min-width:430px;border-collapse:collapse;table-layout:fixed;font-variant-numeric:tabular-nums}
@@ -9904,6 +10320,7 @@ window.MwiGuildCreditVersion = "1.2.52";
         #mwi-credit-optimizer .mwi-guild-point-history tbody tr[data-source="manual"] :is(th,td){background:#253b3a}
         #mwi-credit-optimizer .mwi-guild-point-history tbody tr[data-current-week="true"] :is(th,td){border-top:1px solid #67b9a9;background:#1d3534}
         #mwi-credit-optimizer .mwi-guild-point-current-label{display:block;margin-top:2px;color:#77f3d0;font-size:12px;font-weight:700}
+        #mwi-credit-optimizer .mwi-guild-point-history tr[data-next-week="true"] td:last-child{white-space:normal}
         #mwi-credit-optimizer .mwi-guild-point-history input{box-sizing:border-box;width:100%;min-width:0;height:36px;padding:5px 7px;border:1px solid #4d6966;border-radius:4px;background:#171a2b;color:#eef5ff;font:14px ui-monospace,SFMono-Regular,Menlo,monospace}
         #mwi-credit-optimizer .mwi-guild-point-history input::placeholder{color:#9ea9bd;opacity:1}
         #mwi-credit-optimizer .mwi-guild-point-readonly{display:block;padding:4px 7px;color:#dffff7;font:600 14px ui-monospace,SFMono-Regular,Menlo,monospace}
@@ -9999,7 +10416,7 @@ window.MwiGuildCreditVersion = "1.2.52";
 
         #mwi-credit-optimizer [data-role="construction-view"]{font-size:14px;line-height:1.55}
         #mwi-credit-optimizer .mwi-guild-point-history{font-size:14px;line-height:1.55}
-        #mwi-credit-optimizer .mwi-guild-point-history summary{padding:12px 14px}
+        #mwi-credit-optimizer .mwi-guild-point-history>summary{padding:12px 14px}
         #mwi-credit-optimizer .mwi-guild-point-history td small{font-size:12px}
         #mwi-credit-optimizer .mwi-guild-point-tracked-value{flex-wrap:wrap}
         #mwi-credit-optimizer .mwi-guild-point-manual-hint{font-size:12px}/* Shrine route workspace: one visual signature, compact utility controls, and explicit overflow safety. */
@@ -10309,12 +10726,11 @@ window.MwiGuildCreditVersion = "1.2.52";
         #mwi-credit-optimizer .mwi-construction-budget-input>small,#mwi-credit-optimizer .mwi-guild-point-controls label small{color:var(--build-muted);font-size:12px;line-height:1.4;overflow-wrap:anywhere}
         #mwi-credit-optimizer .mwi-guild-point-week-stepper{width:100%;min-width:0;height:36px}
         #mwi-credit-optimizer .mwi-guild-point-week-stepper input{flex:1;width:0;min-width:0;height:36px;padding:4px 8px;text-align:left}
-        #mwi-credit-optimizer .mwi-guild-point-planning-options{grid-column:1/-1;grid-row:3;min-width:0;color:var(--build-muted);font-size:12px}
-        #mwi-credit-optimizer .mwi-guild-point-planning-options summary{width:fit-content;min-height:28px;padding:5px 0;cursor:pointer;color:var(--build-muted)}
+        #mwi-credit-optimizer .mwi-guild-point-planning-options{min-width:0;padding:8px 0;color:var(--build-muted);font-size:12px}
         #mwi-credit-optimizer .mwi-construction-planning-help{padding:8px 0 0;border-top:1px solid var(--build-line)}
         #mwi-credit-optimizer .mwi-construction-planning-help p{margin:0 0 4px;font-size:12px;color:var(--build-muted)}
         #mwi-credit-optimizer .mwi-guild-point-planning-options>label{display:grid;grid-template-columns:minmax(0,1fr) 96px;align-items:center;gap:6px;padding:8px 0}
-        #mwi-credit-optimizer .mwi-guild-point-planning-options label small{grid-column:1/-1}
+        #mwi-credit-optimizer .mwi-guild-point-planning-options label small{grid-column:1/-1;color:var(--build-muted);font-size:12px;line-height:1.4;overflow-wrap:anywhere}
         #mwi-credit-optimizer .mwi-guild-point-controls output{grid-column:1/-1;grid-row:2;min-width:0;color:var(--build-accent);font-size:14px;line-height:1.5;overflow-wrap:anywhere}
         #mwi-credit-optimizer .mwi-guild-point-controls output[data-state="warning"]{color:var(--build-warning)}
         #mwi-credit-optimizer .mwi-construction-outcome{min-width:0}
@@ -10324,6 +10740,7 @@ window.MwiGuildCreditVersion = "1.2.52";
         #mwi-credit-optimizer .mwi-construction-metric strong{font-size:20px;line-height:1.3;font-weight:650;overflow-wrap:anywhere;color:var(--build-text)}
         #mwi-credit-optimizer .mwi-construction-metric[data-state="danger"] strong{color:var(--build-danger)}
         #mwi-credit-optimizer .mwi-construction-budget-summary{grid-column:1/-1;min-width:0;color:var(--build-muted);font-size:14px;line-height:1.45;overflow-wrap:anywhere}
+        #mwi-credit-optimizer .mwi-construction-budget-summary:empty{display:none}
         #mwi-credit-optimizer .mwi-construction-budget[data-over-budget="true"] .mwi-construction-budget-summary{color:var(--build-warning)}
         #mwi-credit-optimizer .mwi-guild-point-eta{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 8px;margin-top:8px}
         #mwi-credit-optimizer .mwi-guild-point-eta small{color:var(--build-muted);font-size:12px}
@@ -10426,7 +10843,7 @@ window.MwiGuildCreditVersion = "1.2.52";
         #mwi-credit-optimizer .mwi-guild-point-forecast-heading small{font-size:12px;color:var(--build-muted);line-height:1.4}
         #mwi-credit-optimizer .mwi-guild-point-autosaved{font-size:12px;color:var(--build-accent)}
         #mwi-credit-optimizer .mwi-guild-point-autosaved[data-source="cache"]{color:var(--build-warning)}
-        #mwi-credit-optimizer .mwi-guild-point-forecast-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:12px 0}
+        #mwi-credit-optimizer .mwi-guild-point-forecast-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:12px 0}
         #mwi-credit-optimizer .mwi-guild-point-forecast-grid>div{display:grid;align-content:start;gap:4px;min-width:0}
         #mwi-credit-optimizer .mwi-guild-point-forecast-grid small{color:var(--build-muted);font-size:12px;line-height:1.4}
         #mwi-credit-optimizer .mwi-guild-point-forecast-grid strong{font-size:20px;line-height:1.3;font-weight:600;color:var(--build-text);overflow-wrap:anywhere}
@@ -10436,14 +10853,20 @@ window.MwiGuildCreditVersion = "1.2.52";
         #mwi-credit-optimizer .mwi-guild-point-forecast-status{flex:1 1 220px;min-width:0;margin:0;color:var(--build-muted);font-size:12px;line-height:1.5}
         #mwi-credit-optimizer .mwi-guild-point-history-actions{display:flex;flex:0 1 auto;flex-wrap:wrap;gap:6px;min-width:0;max-width:100%}
         #mwi-credit-optimizer .mwi-guild-point-history-actions button{min-height:30px;padding:4px 8px;background:#34394f;color:var(--build-text);font-size:12px}
-        #mwi-credit-optimizer .mwi-guild-point-history{border:0;border-top:1px solid var(--build-line);border-radius:0;background:transparent;font-size:14px;line-height:1.45}
-        #mwi-credit-optimizer .mwi-guild-point-history summary{padding:10px 0;background:transparent;color:var(--build-text);cursor:pointer}
+        #mwi-credit-optimizer .mwi-guild-point-history{min-width:0;margin-top:8px;border:0;border-radius:0;background:transparent;font-size:14px;line-height:1.45}
+        #mwi-credit-optimizer .mwi-guild-point-history>summary{box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px;width:100%;padding:12px 14px;border:1px solid var(--build-line);border-radius:5px;background:#34394f;color:var(--build-text);font-size:14px;font-weight:600;text-align:left;list-style:none;cursor:pointer}
+        #mwi-credit-optimizer .mwi-guild-point-history>summary::-webkit-details-marker{display:none}
+        #mwi-credit-optimizer .mwi-guild-point-history>summary:hover{background:#454e68}
+        #mwi-credit-optimizer .mwi-guild-point-history>summary:focus-visible{outline:2px solid var(--build-accent);outline-offset:2px}
+        #mwi-credit-optimizer .mwi-guild-point-history>summary .mwi-construction-icon{flex:0 0 16px}
+        #mwi-credit-optimizer .mwi-guild-point-history[open]>summary .mwi-construction-icon{transform:rotate(180deg)}
         #mwi-credit-optimizer .mwi-guild-point-table-scroll{scrollbar-width:thin;scrollbar-color:#66708b var(--build-surface)}
         #mwi-credit-optimizer .mwi-guild-point-history :is(th,td){padding:8px 10px;border-bottom-color:var(--build-line)}
         #mwi-credit-optimizer .mwi-guild-point-history thead th{background:#30364b;color:#cbd4e9}
         #mwi-credit-optimizer .mwi-guild-point-history tbody :is(th,td){background:transparent}
         #mwi-credit-optimizer .mwi-guild-point-history tbody tr:hover :is(th,td){background:#30394d}
         #mwi-credit-optimizer .mwi-guild-point-history td small{font-size:12px;color:var(--build-muted)}
+        #mwi-credit-optimizer .mwi-guild-point-history td:last-child{white-space:normal;overflow-wrap:anywhere}
         #mwi-credit-optimizer .mwi-guild-point-tracked-value{flex-wrap:wrap}
         #mwi-credit-optimizer .mwi-guild-point-manual-footer{flex-wrap:wrap;padding:10px 0}
         #mwi-credit-optimizer .mwi-guild-point-manual-hint{font-size:12px;color:var(--build-muted)}
@@ -10576,7 +10999,14 @@ window.MwiGuildCreditVersion = "1.2.52";
         #mwi-credit-optimizer .mwi-trial-table tbody tr:hover{background:#2d3349}
         #mwi-credit-optimizer .mwi-trial-table tbody tr:is(.mwi-trial-member-highlight,.mwi-trial-player-selected){background:#34514e;color:#d5f7ed}
         #mwi-credit-optimizer [data-role="trials-view"] .mwi-trial-profile-link{min-height:0;max-width:100%;padding:0;border:0;border-radius:0;background:transparent;color:inherit;font:inherit;text-align:inherit;white-space:normal;overflow-wrap:anywhere;cursor:pointer}
-        #mwi-credit-optimizer [data-role="trials-view"] .mwi-trial-profile-link:hover{background:transparent;color:var(--trial-accent);text-decoration:underline;text-underline-offset:3px}
+        #mwi-credit-optimizer [data-role="trials-view"] .mwi-trial-profile-link:hover{background:transparent;color:inherit;text-decoration:underline;text-underline-offset:3px}
+
+        #mwi-credit-optimizer [data-role="trials-view"] .mwi-trial-heading-link[data-trial-ranking-player]{color:var(--trial-text)}
+        #mwi-credit-optimizer .mwi-trial-member-name{display:inline-flex;align-items:center;gap:2px;max-width:100%;vertical-align:middle;color:var(--trial-text);font:inherit;white-space:normal}
+        #mwi-credit-optimizer [data-mwi-trial-low-work="true"] .mwi-trial-member-name{color:inherit}
+        #mwi-credit-optimizer .mwi-trial-name-text{min-width:0;overflow-wrap:anywhere}
+        #mwi-credit-optimizer .mwi-trial-name-icon{width:1.125em;height:1.125em;flex:0 0 1.125em}
+        #mwi-credit-optimizer [data-trial-simple-names][aria-pressed="true"]{background:#34514e;color:#d5f7ed;border-color:var(--trial-accent)}
 
         #mwi-credit-optimizer .mwi-trial-import{margin:0 0 8px;padding:0 0 6px;border-bottom:1px solid var(--trial-line);min-width:0}
         #mwi-credit-optimizer .mwi-trial-import [data-role="trial-import-status"]{color:var(--trial-warning);font-size:12px;line-height:1.5;overflow-wrap:anywhere;margin:8px 0 0}
@@ -10595,6 +11025,9 @@ window.MwiGuildCreditVersion = "1.2.52";
         #mwi-credit-optimizer .mwi-trial-table caption{text-align:left;padding:8px 0;color:var(--trial-muted);font-size:12px}
         #mwi-credit-optimizer .mwi-trial-table th,#mwi-credit-optimizer .mwi-trial-table td{padding:3px 4px;text-align:right;border-bottom:1px solid var(--trial-line);white-space:nowrap}
         #mwi-credit-optimizer .mwi-trial-table th:has([data-trial-sort="member"]),#mwi-credit-optimizer .mwi-trial-table th[scope="row"]{text-align:left;white-space:nowrap;min-width:0}
+        #mwi-credit-optimizer [data-mwi-trial-low-work="true"], [class*="GuildPanel_signupModal__"] [data-mwi-trial-low-work="true"]{color:#ffa7b5!important;text-decoration:underline dotted;text-underline-offset:3px}
+        :is(#mwi-credit-optimizer,[class*="GuildPanel_signupModal__"]) [data-mwi-trial-low-work="true"] :is(.mwi-trial-name-text,[class*="CharacterName_name__"],.mwi-trial-name-text span,[class*="CharacterName_name__"] span){color:#ffa7b5!important;-webkit-text-fill-color:#ffa7b5!important;background-image:none!important;text-shadow:none!important;animation:none!important}
+        :is(#mwi-credit-optimizer,[class*="GuildPanel_signupModal__"]) [data-mwi-trial-low-work="true"] :is(.mwi-trial-name-text,[class*="CharacterName_name__"])::before,:is(#mwi-credit-optimizer,[class*="GuildPanel_signupModal__"]) [data-mwi-trial-low-work="true"] :is(.mwi-trial-name-text,[class*="CharacterName_name__"])::after{display:none!important}
         #mwi-credit-optimizer .mwi-trial-member-absent{display:inline-flex;vertical-align:middle;color:var(--trial-warning);cursor:help;line-height:1}
         #mwi-credit-optimizer .mwi-trial-member-absent:focus-visible{outline:2px solid var(--trial-accent);outline-offset:2px}
         #mwi-credit-optimizer .mwi-trial-table small{display:block;color:var(--trial-muted);font-size:12px;font-weight:normal}
@@ -10727,6 +11160,10 @@ window.MwiGuildCreditVersion = "1.2.52";
         #mwi-credit-optimizer .mwi-trial-overview-help{margin-top:8px;font-size:12px;color:var(--trial-muted)}
         #mwi-credit-optimizer .mwi-trial-overview-help summary{cursor:pointer}
         #mwi-credit-optimizer .mwi-trial-overview-help p{margin:6px 0;line-height:1.5;overflow-wrap:anywhere}
+        #mwi-credit-optimizer .mwi-trial-profile-observation{margin:4px 0 8px;color:var(--trial-muted);font-size:12px;line-height:1.4;overflow-wrap:anywhere}
+        #mwi-credit-optimizer [data-trial-profile-presence="online"] dd{color:var(--trial-accent)}
+        #mwi-credit-optimizer [data-trial-profile-presence="offline"] dd,#mwi-credit-optimizer [data-trial-profile-presence="unknown"] dd{color:var(--trial-muted)}
+        #mwi-credit-optimizer [data-trial-profile-presence="hidden"] dd{color:var(--trial-warning)}
         #mwi-credit-optimizer .mwi-trial-profile-facts{margin:8px 0}
         #mwi-credit-optimizer .mwi-trial-profile-facts>div{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;padding:3px 0;border-bottom:1px solid var(--trial-line)}
         #mwi-credit-optimizer .mwi-trial-profile-facts dt{display:flex;align-items:center;gap:6px;min-width:0;color:var(--trial-muted);overflow-wrap:anywhere}
@@ -10737,6 +11174,9 @@ window.MwiGuildCreditVersion = "1.2.52";
         #mwi-credit-optimizer .mwi-trial-equipment-slot .mwi-trial-profile-icon{width:82%;height:82%}
         #mwi-credit-optimizer .mwi-trial-equipment-empty{align-items:start;border-style:dashed;background:transparent;color:var(--trial-muted);font-size:12px;text-align:center;padding:2px}
         #mwi-credit-optimizer .mwi-trial-equipment-level{position:absolute;left:2px;top:0;font-size:14px;line-height:1.3;color:#eee;font-variant-numeric:tabular-nums;text-shadow:1px 1px 1px #000,-1px -1px 1px #000;pointer-events:none}
+        #mwi-credit-optimizer .mwi-trial-skill-house{position:absolute;right:2px;bottom:2px;display:flex;align-items:center;gap:2px;max-width:calc(100% - 4px);padding:1px 3px;border-radius:3px;background:#191c2e;color:var(--trial-accent);font-size:12px;line-height:1.2;font-variant-numeric:tabular-nums;pointer-events:none}
+        #mwi-credit-optimizer .mwi-trial-skill-house svg{flex:0 0 11px}
+        #mwi-credit-optimizer .mwi-trial-skill-house[data-unknown="true"]{color:var(--trial-muted)}
         #mwi-credit-optimizer .mwi-trial-equipment-level[data-tier="blue"]{color:#87c8eb}
         #mwi-credit-optimizer .mwi-trial-equipment-level[data-tier="purple"]{color:#cb91fa}
         #mwi-credit-optimizer .mwi-trial-equipment-level[data-tier="gold"]{color:#ffac00}
@@ -10753,6 +11193,23 @@ window.MwiGuildCreditVersion = "1.2.52";
           #mwi-credit-optimizer .mwi-trial-import-list{max-height:280px}
           #mwi-credit-optimizer .mwi-trial-import-list li{grid-template-columns:minmax(0,1fr)}
         }
+
+        /* Explanations keep compact native disclosure markers and readable expanded text. */
+        #mwi-credit-optimizer .mwi-settings-help>details+details{border-top:1px solid #41465f;padding-top:6px}
+        #mwi-credit-optimizer .mwi-settings-help .mwi-help-sections{padding:4px 2px 12px}
+        #mwi-credit-optimizer .mwi-settings-help summary:focus-visible{outline:2px solid #91dfcb;outline-offset:2px}
+        #mwi-credit-optimizer [data-role="shrine-guide-detail"]:empty{display:none}
+        #mwi-credit-optimizer .mwi-context-help{min-width:0;margin:6px 0;background:transparent;border:0;border-radius:0;color:#b7bfd4}
+        #mwi-credit-optimizer details.mwi-context-help>summary.mwi-help-toggle{width:fit-content;max-width:100%;min-height:36px;overflow-wrap:anywhere;cursor:pointer;border:0;border-radius:4px;background:transparent;gap:0;padding:6px 2px;color:#b7bfd4;font-size:13px;font-weight:400;line-height:1.5}
+        #mwi-credit-optimizer details.mwi-context-help>summary.mwi-help-toggle:hover{background:transparent;color:#edf0fa;text-decoration:underline;text-underline-offset:3px}
+        #mwi-credit-optimizer .mwi-help-heading{min-width:0;overflow-wrap:anywhere}
+        #mwi-credit-optimizer .mwi-context-help .mwi-help-intro{max-width:68ch;margin:2px 0 10px;font-size:13px;line-height:1.6;color:#b7bfd4;overflow-wrap:anywhere}
+        #mwi-credit-optimizer .mwi-context-help .mwi-help-sections{display:grid;gap:12px;margin:0;padding:0 0 10px;border:0;text-align:left}
+        #mwi-credit-optimizer .mwi-help-sections>div{display:grid;gap:3px;min-width:0;max-width:68ch}
+        #mwi-credit-optimizer .mwi-help-sections dt{font-size:13px;line-height:1.5;font-weight:600;color:#d7dced}
+        #mwi-credit-optimizer .mwi-help-sections dd{min-width:0;margin:0;font-size:13px;line-height:1.65;overflow-wrap:anywhere;color:#b7bfd4}
+        #mwi-credit-optimizer .mwi-help-sections dd p{margin:0;font-size:inherit;line-height:inherit;color:inherit}
+        #mwi-credit-optimizer .mwi-help-sections dd p+p{margin-top:8px}
 
   `;
 
@@ -10827,7 +11284,6 @@ window.MwiGuildCreditVersion = "1.2.52";
       pickerOpen: state.buildingPlans.length === 0,
       expandedBuildingHrids: new Set(),
       guildPointHistoryOpen: false,
-      planningOptionsOpen: false,
       trackedGuildPointEditWeekStarts: new Set(),
       trackedGuildPointEditWarning: null,
       clearUndoPlans: null,
@@ -10942,7 +11398,9 @@ window.MwiGuildCreditVersion = "1.2.52";
       const basePoints = state.manualGuildPoints === null ? liveAvailable : state.manualGuildPoints;
       const weeks = guildPointPlanningWeekCount();
       const forecast = guildPointForecastBasis(historySummary);
-      const planning = core.calculateGuildPointPlanningBudget(basePoints, forecast.effectiveForecastPoints, weeks);
+      const planning = core.calculateGuildPointPlanningBudget(basePoints, forecast.nextWeekForecastPoints, weeks, {
+        currentWeekRemaining: forecast.currentWeekRemaining
+      });
       return {
         ...planning,
         canProject: planning.status === "ok"
@@ -10967,7 +11425,7 @@ window.MwiGuildCreditVersion = "1.2.52";
 
     function syncGuildPointHistory() {
       const summary = state.guildPointSummary;
-      if (!summary) return guildPointHistorySummary();
+      if (!summary || state.guildPointSummaryCached) return guildPointHistorySummary();
       const update = core.recordGuildPointObservation(state.guildPointHistory, {
         guildId: summary.guildId,
         lifetimePoints: summary.lifetimePoints,
@@ -10988,30 +11446,52 @@ window.MwiGuildCreditVersion = "1.2.52";
       return core.supplementGuildPointHistory(
         state.guildPointHistory,
         summary.lifetimePoints,
-        summary.currentWeekPoints,
+        currentGuildWeekPoints(),
         Date.now(),
         guildTrialFirstStartAt,
         { forecastWeekCount: guildPointForecastWeekCount() }
       );
     }
 
+    function currentGuildWeekPoints() {
+      const currentWeekStartAt =
+        guildTrialFirstStartAt +
+        Math.floor((Date.now() - guildTrialFirstStartAt) / (7 * 24 * 60 * 60 * 1000)) * 7 * 24 * 60 * 60 * 1000;
+      if (
+        state.guildWeekStartAt &&
+        Math.floor((state.guildWeekStartAt - guildTrialFirstStartAt) / (7 * 24 * 60 * 60 * 1000)) !==
+          Math.floor((currentWeekStartAt - guildTrialFirstStartAt) / (7 * 24 * 60 * 60 * 1000))
+      )
+        return null;
+      const value = state.guildPointSummary?.currentWeekPoints;
+      return Number.isSafeInteger(value) && value >= 0 ? value : null;
+    }
+
     function guildPointHistorySummary() {
       const supplemented = supplementedGuildPointHistory();
-      const history = core.summarizeGuildPointHistory(supplemented.history, {
-        forecastWeekCount: guildPointForecastWeekCount()
-      });
+      const currentWeekStartAt =
+        guildTrialFirstStartAt +
+        Math.floor((Date.now() - guildTrialFirstStartAt) / (7 * 24 * 60 * 60 * 1000)) * 7 * 24 * 60 * 60 * 1000;
+      // Keep observed values for fitting; auto-fill is only a display aid.
+      const weeksByStart = new Map(
+        [...(supplemented.history?.weeks || []), ...(state.guildPointHistory?.weeks || [])].map((record) => [
+          record.weekStartAt,
+          record
+        ])
+      );
+      const history = core.summarizeGuildPointHistory(
+        { ...supplemented.history, weeks: [...weeksByStart.values()] },
+        {
+          forecastWeekCount: guildPointForecastWeekCount(),
+          currentWeekStartAt,
+          currentWeekPoints: currentGuildWeekPoints()
+        }
+      );
       return {
         ...history,
         ...(supplemented.status === "known_points_exceed_total"
-          ? { forecastPoints: null, averageWeeklyChange: null, forecastSampleCount: 0 }
-          : Number.isFinite(supplemented.forecastPoints)
-            ? {
-                growthRate: supplemented.growthRate,
-                forecastPoints: supplemented.forecastPoints,
-                averageWeeklyChange: supplemented.averageWeeklyChange,
-                forecastSampleCount: supplemented.forecastSampleCount
-              }
-            : {}),
+          ? { forecastPoints: null, nextWeekForecastPoints: null, averageWeeklyChange: null, forecastSampleCount: 0 }
+          : {}),
         supplemented
       };
     }
@@ -11037,23 +11517,31 @@ window.MwiGuildCreditVersion = "1.2.52";
       return core.estimateGuildConstructionWeeks(
         plan.totalCost,
         plan.planning.basePoints,
-        forecast.effectiveForecastPoints
+        forecast.nextWeekForecastPoints,
+        { currentWeekRemaining: forecast.currentWeekRemaining }
       );
     }
 
     function guildPointForecastBasis(historySummary) {
       const history = historySummary || guildPointHistorySummary();
       const hasConflict = history.supplemented?.status === "known_points_exceed_total";
-      const estimatedCount = Number(history.supplemented?.estimatedCount) || 0;
-      const trackedCount = Number(history.supplemented?.trackedCount) || 0;
-      const manualCount = Number(history.supplemented?.manualCount) || 0;
-      const forecastSource = estimatedCount > 0 ? (trackedCount + manualCount > 0 ? "mixed" : "estimated") : "tracked";
+      const effectiveForecastPoints = hasConflict ? null : history.forecastPoints;
+      const currentWeekPoints = currentGuildWeekPoints();
+      const currentWeekTotal =
+        currentWeekPoints > 0
+          ? currentWeekPoints
+          : Number.isSafeInteger(effectiveForecastPoints) && Number.isSafeInteger(currentWeekPoints)
+            ? Math.max(effectiveForecastPoints, currentWeekPoints)
+            : null;
       return {
         ...history,
         hasConflict,
-        forecastSource,
-        usesColdStart: forecastSource !== "tracked",
-        effectiveForecastPoints: hasConflict ? null : history.forecastPoints
+        effectiveForecastPoints,
+        currentWeekPoints,
+        currentWeekTotal,
+        currentWeekRemaining: hasConflict || currentWeekTotal === null ? null : currentWeekTotal - currentWeekPoints,
+        nextWeekForecastPoints: hasConflict ? null : history.nextWeekForecastPoints,
+        forecastSource: "tracked"
       };
     }
 
@@ -11065,7 +11553,7 @@ window.MwiGuildCreditVersion = "1.2.52";
       ).reverse();
     }
 
-    function renderCurrentGuildPointWeek(history) {
+    function renderCurrentGuildPointWeek() {
       const weekMs = 7 * 24 * 60 * 60 * 1000;
       const elapsedWeeks = Math.floor((Date.now() - guildTrialFirstStartAt) / weekMs);
       const fallbackWeekStartAt =
@@ -11081,32 +11569,27 @@ window.MwiGuildCreditVersion = "1.2.52";
           : fallbackWeekStartAt;
       if (!weekStartAt) return "";
 
-      const currentWeekPoints = state.guildPointSummary?.currentWeekPoints;
-      const hasCurrentWeekPoints = Number.isSafeInteger(currentWeekPoints) && currentWeekPoints > 0;
-      const predictsCurrentWeek = currentWeekPoints === 0 && Number.isSafeInteger(history.effectiveForecastPoints);
-      const source = hasCurrentWeekPoints
-        ? "current"
-        : predictsCurrentWeek
-          ? "currentEstimated"
-          : currentWeekPoints === 0
-            ? "currentPending"
-            : "currentUnavailable";
-      const points = hasCurrentWeekPoints
-        ? formatNumber(currentWeekPoints)
-        : predictsCurrentWeek
-          ? formatNumber(history.effectiveForecastPoints)
-          : currentWeekPoints === 0
-            ? formatNumber(0)
-            : "-";
+      const currentWeekPoints = currentGuildWeekPoints();
+      const source = currentWeekPoints === null ? "currentUnavailable" : "current";
+      const points = currentWeekPoints === null ? "-" : formatNumber(currentWeekPoints);
       const week = guildPointWeekLabel(weekStartAt);
       return `<tr data-source="${source}" data-current-week="true" aria-label="${escapeHtml(t("currentGuildPointWeek"))}"><th scope="row"><time datetime="${new Date(weekStartAt).toISOString()}">${escapeHtml(week)}</time><small class="mwi-guild-point-current-label">${escapeHtml(t("currentGuildPointWeek"))}</small></th><td><strong class="mwi-guild-point-readonly" data-role="current-week-guild-points">${escapeHtml(points)}</strong></td><td><small>${escapeHtml(t(`guildPointSource${source[0].toUpperCase()}${source.slice(1)}`))}</small></td></tr>`;
+    }
+
+    function renderNextGuildPointWeek(history) {
+      if (!(history.currentWeekPoints > 0) || history.currentWeekStartAt < guildTrialFirstStartAt) return "";
+      const weekStartAt = history.currentWeekStartAt + 7 * 24 * 60 * 60 * 1000;
+      const points = Number.isSafeInteger(history.nextWeekForecastPoints)
+        ? formatNumber(history.nextWeekForecastPoints)
+        : "-";
+      return `<tr data-source="forecast" data-next-week="true"><th scope="row"><time datetime="${new Date(weekStartAt).toISOString()}">${escapeHtml(guildPointWeekLabel(weekStartAt))}</time></th><td><strong class="mwi-guild-point-readonly" data-role="next-week-guild-points">${escapeHtml(points)}</strong></td><td><small>${escapeHtml(t("guildPointSourceNextForecast"))}</small></td></tr>`;
     }
 
     function renderManualGuildPointHistory(history) {
       const recordsByWeek = new Map(history.weeks.map((record) => [record.weekStartAt, record]));
       const trackedByWeek = new Map(
         (state.guildPointHistory?.weeks || [])
-          .filter((record) => record.complete)
+          .filter((record) => record.weekStartAt < history.currentWeekStartAt)
           .map((record) => [record.weekStartAt, record])
       );
       const manualByWeek = new Map(
@@ -11124,11 +11607,13 @@ window.MwiGuildCreditVersion = "1.2.52";
               ? "manualOverride"
               : trackedEditEnabled
                 ? "trackedEditing"
-                : record
-                  ? ["manual", "estimated"].includes(record.source)
-                    ? record.source
-                    : "tracked"
-                  : "empty";
+                : trackedRecord && trackedRecord.coverage !== "verified"
+                  ? "partial"
+                  : record
+                    ? ["manual", "estimated"].includes(record.source)
+                      ? record.source
+                      : "tracked"
+                    : "empty";
           const week = guildPointWeekLabel(weekStartAt);
           const value = manualRecord
             ? manualRecord.earnedPoints
@@ -11139,20 +11624,20 @@ window.MwiGuildCreditVersion = "1.2.52";
                 : "";
           const placeholder = source === "estimated" ? formatNumber(record.earnedPoints) : "";
           const input = `<input data-role="manual-guild-point-earned" data-week-start-at="${weekStartAt}"${trackedRecord ? ` data-tracked-original-points="${trackedRecord.earnedPoints}"` : ""} type="number" min="0" step="1" inputmode="numeric" aria-label="${escapeHtml(t("manualGuildPointEarnedForWeek", { week }))}" value="${value}"${placeholder ? ` placeholder="${escapeHtml(placeholder)}"` : ""}>`;
-          const points =
-            source === "tracked"
-              ? `<span class="mwi-guild-point-tracked-value"><strong class="mwi-guild-point-readonly">${formatNumber(record.earnedPoints)}</strong><button data-role="edit-tracked-guild-point-week" data-week-start-at="${weekStartAt}" type="button" aria-label="${escapeHtml(t("editTrackedGuildPointWeek", { week }))}">${escapeHtml(t("editTrackedGuildPointWeekShort"))}</button></span>`
-              : input;
+          const points = ["tracked", "partial"].includes(source)
+            ? `<span class="mwi-guild-point-tracked-value"><strong class="mwi-guild-point-readonly">${formatNumber(trackedRecord.earnedPoints)}</strong><button data-role="edit-tracked-guild-point-week" data-week-start-at="${weekStartAt}" type="button" aria-label="${escapeHtml(t("editTrackedGuildPointWeek", { week }))}">${escapeHtml(t("editTrackedGuildPointWeekShort"))}</button></span>`
+            : input;
           return `<tr data-source="${source}"><th scope="row"><time datetime="${new Date(weekStartAt).toISOString()}">${escapeHtml(week)}</time></th><td>${points}</td><td><small>${escapeHtml(t(`guildPointSource${source[0].toUpperCase()}${source.slice(1)}`))}</small></td></tr>`;
         })
         .join("");
       const currentWeekRow = renderCurrentGuildPointWeek(history);
+      const nextWeekRow = renderNextGuildPointWeek(history);
       const body =
         rows || currentWeekRow
-          ? `<div class="mwi-guild-point-table-scroll"><table><thead><tr><th scope="col">${escapeHtml(t("manualGuildPointWeek"))}</th><th scope="col">${escapeHtml(t("manualGuildPointEarned"))}</th><th scope="col">${escapeHtml(t("guildPointHistorySource"))}</th></tr></thead><tbody>${currentWeekRow}${rows}</tbody></table></div>`
+          ? `<div class="mwi-guild-point-table-scroll"><table><thead><tr><th scope="col">${escapeHtml(t("manualGuildPointWeek"))}</th><th scope="col">${escapeHtml(t("manualGuildPointEarned"))}</th><th scope="col">${escapeHtml(t("guildPointHistorySource"))}</th></tr></thead><tbody>${nextWeekRow}${currentWeekRow}${rows}</tbody></table></div>`
           : `<p class="mwi-guild-point-history-empty">${escapeHtml(t("manualGuildPointHistoryEmpty"))}</p>`;
       const warning = renderTrackedGuildPointEditWarning();
-      return `<details class="mwi-guild-point-history"${constructionUi.guildPointHistoryOpen ? " open" : ""}><summary>${escapeHtml(t("recentGuildPointHistory"))}</summary><form class="mwi-guild-point-manual-form" data-role="manual-guild-point-form">${body}<div class="mwi-guild-point-manual-footer"><p class="mwi-guild-point-manual-hint">${escapeHtml(t("manualGuildPointHint"))}</p><button data-role="save-manual-guild-point-history" type="button"${rows ? "" : " disabled"}>${escapeHtml(t("saveManualGuildPointHistory"))}</button></div></form>${warning}</details>`;
+      return `<details class="mwi-guild-point-history"${constructionUi.guildPointHistoryOpen ? " open" : ""}><summary class="mwi-guild-point-history-toggle"><span>${escapeHtml(t("recentGuildPointHistory"))}</span>${constructionIcon("chevron")}</summary><form class="mwi-guild-point-manual-form" data-role="manual-guild-point-form">${body}<div class="mwi-guild-point-manual-footer"><button data-role="save-manual-guild-point-history" type="button"${rows ? "" : " disabled"}>${escapeHtml(t("saveManualGuildPointHistory"))}</button></div></form>${warning}</details>`;
     }
 
     function renderTrackedGuildPointEditWarning() {
@@ -11166,14 +11651,12 @@ window.MwiGuildCreditVersion = "1.2.52";
       constructionUi.guildPointHistoryOpen = Boolean(open);
     }
 
-    function setGuildPointPlanningOptionsOpen(open) {
-      constructionUi.planningOptionsOpen = Boolean(open);
-    }
-
     function openTrackedGuildPointEditWarning(weekStartAt) {
       const normalizedWeekStartAt = Number(weekStartAt);
       const record = (state.guildPointHistory?.weeks || []).find(
-        (candidate) => candidate.complete && candidate.weekStartAt === normalizedWeekStartAt
+        (candidate) =>
+          candidate.weekStartAt < Date.now() - 7 * 24 * 60 * 60 * 1000 &&
+          candidate.weekStartAt === normalizedWeekStartAt
       );
       if (!record) return false;
       constructionUi.trackedGuildPointEditWarning = {
@@ -11225,17 +11708,16 @@ window.MwiGuildCreditVersion = "1.2.52";
           : planning.weeks > 0
             ? t("guildPointPlanningBudgetProjected", {
                 current: formatNumber(planning.basePoints),
-                weeks: formatNumber(planning.weeks),
+                weeks: formatNumber(planning.futureWeeks),
+                remaining: formatNumber(planning.currentWeekRemaining),
                 weekly: formatNumber(planning.forecastPoints),
                 total: formatNumber(planning.budget)
               })
             : t("guildPointPlanningBudgetCurrent", { total: formatNumber(planning.budget) });
     }
 
-    function renderGuildPointForecastControls(plan) {
+    function renderGuildPointForecastSettings() {
       const forecastWeeks = guildPointForecastWeekCount();
-      const planningWeeks = guildPointPlanningWeekCount();
-      const planning = plan.planning;
       const forecastStepper = renderGuildPointWeekStepper(
         "guild-point-forecast-weeks",
         forecastWeeks,
@@ -11245,6 +11727,12 @@ window.MwiGuildCreditVersion = "1.2.52";
         "increaseGuildPointForecastWeeks",
         "decreaseGuildPointForecastWeeks"
       );
+      return `<section class="mwi-guild-point-planning-options" aria-label="${escapeHtml(t("guildPointPlanningOptions"))}"><label><span>${escapeHtml(t("guildPointForecastWeeks"))}</span>${forecastStepper}</label></section>`;
+    }
+
+    function renderGuildPointForecastControls(plan) {
+      const planningWeeks = guildPointPlanningWeekCount();
+      const planning = plan.planning;
       const planningStepper = renderGuildPointWeekStepper(
         "guild-point-planning-weeks",
         planningWeeks,
@@ -11254,68 +11742,45 @@ window.MwiGuildCreditVersion = "1.2.52";
         "increaseGuildPointPlanningWeeks",
         "decreaseGuildPointPlanningWeeks"
       );
-      return `<div class="mwi-guild-point-controls"><div class="mwi-construction-budget-input"><label><span>${escapeHtml(t("guildPointStartingBalance"))}</span><input data-role="guild-point-budget" type="number" min="0" step="1" aria-describedby="mwi-guild-point-budget-help mwi-guild-point-budget-error" placeholder="${escapeHtml(t("guildPointFollowBalance"))}" value="${state.manualGuildPoints === null ? "" : state.manualGuildPoints}"></label><small>${escapeHtml(t("guildPointStartingBalanceCompactHint"))}</small><small id="mwi-guild-point-budget-error" class="mwi-field-error" hidden>${escapeHtml(t("invalidGuildPointBudget"))}</small></div><label><span>${escapeHtml(t("guildPointPlanningWeeks"))}</span>${planningStepper}<small>${escapeHtml(t("guildPointPlanningWeeksCompactHint"))}</small></label><details class="mwi-guild-point-planning-options"${constructionUi.planningOptionsOpen ? " open" : ""}><summary>${escapeHtml(t("guildPointPlanningOptions"))}</summary><div class="mwi-construction-planning-help"><p id="mwi-guild-point-budget-help">${escapeHtml(t("guildPointStartingBalanceHint"))}</p><p>${escapeHtml(t("guildPointPlanningWeeksHint"))}</p></div><label><span>${escapeHtml(t("guildPointForecastWeeks"))}</span>${forecastStepper}<small>${escapeHtml(t("guildPointForecastWeeksHint"))}</small></label></details><output data-role="guild-point-planning-summary" data-state="${planning.basePoints === null || (planning.weeks > 0 && !planning.canProject) ? "warning" : "ready"}">${escapeHtml(guildPointPlanningSummary(planning))}</output></div>`;
+      return `<div class="mwi-guild-point-controls"><div class="mwi-construction-budget-input"><label><span>${escapeHtml(t("guildPointStartingBalance"))}</span><input data-role="guild-point-budget" type="number" min="0" step="1" aria-describedby="mwi-guild-point-budget-error" placeholder="${escapeHtml(t("guildPointFollowBalance"))}" value="${state.manualGuildPoints === null ? "" : state.manualGuildPoints}"></label><small id="mwi-guild-point-budget-error" class="mwi-field-error" hidden>${escapeHtml(t("invalidGuildPointBudget"))}</small></div><label><span>${escapeHtml(t("guildPointPlanningWeeks"))}</span>${planningStepper}</label><output data-role="guild-point-planning-summary" data-state="${planning.basePoints === null || (planning.weeks > 0 && !planning.canProject) ? "warning" : "ready"}">${escapeHtml(guildPointPlanningSummary(planning))}</output></div>`;
     }
 
     function renderGuildPointEta(plan, history) {
       const forecast = guildPointForecastBasis(history);
       const eta = guildPointEta(plan, forecast);
       const copy = {
-        no_plan: [t("constructionEtaNoPlan"), t("constructionEtaNoPlanHint")],
+        no_plan: [t("constructionEtaNoPlan"), ""],
         missing_balance: ["-", t("constructionEtaNeedsBalance")],
         missing_forecast: ["-", t("constructionEtaNeedsForecast")],
         history_conflict: ["-", t("constructionEtaHistoryConflict")],
         no_growth: ["-", t("constructionEtaNoGrowth")],
-        covered: [t("constructionEtaCovered"), t("constructionEtaCoveredHint")],
-        ok: [
-          t("constructionEtaWeeks", { count: formatNumber(eta.weeks) }),
-          t(forecast.usesColdStart ? "constructionEtaDetailEstimated" : "constructionEtaDetail", {
-            points: formatNumber(eta.weeklyForecast),
-            shortfall: formatNumber(eta.shortfall)
-          })
-        ]
+        covered: [t("constructionEtaCovered"), ""],
+        ok: [t("constructionEtaWeeks", { count: formatNumber(eta.weeks) }), ""]
       }[eta.status];
-      return `<div class="mwi-guild-point-eta" data-status="${eta.status}"><small>${escapeHtml(t("constructionEta"))}</small><strong data-role="construction-eta">${escapeHtml(copy[0])}</strong><span data-role="construction-eta-detail">${escapeHtml(copy[1])}</span></div>`;
+      return `<div class="mwi-guild-point-eta" data-status="${eta.status}"><small>${escapeHtml(t("constructionEta"))}</small><strong data-role="construction-eta">${escapeHtml(copy[0])}</strong>${copy[1] ? `<span data-role="construction-eta-detail">${escapeHtml(copy[1])}</span>` : ""}</div>`;
     }
 
     function renderGuildPointForecast(historySummary) {
       const history = guildPointForecastBasis(historySummary);
-      const currentWeekPoints = state.guildPointSummary && state.guildPointSummary.currentWeekPoints;
-      const hasCurrentWeekPoints = Number.isSafeInteger(currentWeekPoints) && currentWeekPoints > 0;
-      const predictsCurrentWeek = currentWeekPoints === 0 && Number.isSafeInteger(history.effectiveForecastPoints);
-      const latestPoints = hasCurrentWeekPoints
-        ? formatNumber(currentWeekPoints)
-        : predictsCurrentWeek
-          ? formatNumber(history.effectiveForecastPoints)
-          : history.latest
-            ? formatNumber(history.latest.earnedPoints)
-            : "-";
-      const growth = history.growthRate;
-      const growthText = Number.isFinite(growth) ? `${growth > 0 ? "+" : ""}${formatNumber(growth * 100, 1)}%` : "-";
-      const forecastText = Number.isFinite(history.effectiveForecastPoints)
-        ? formatNumber(history.effectiveForecastPoints)
-        : "-";
+      const show = (value) => (Number.isSafeInteger(value) ? formatNumber(value) : "-");
+      const metrics = [
+        ["currentWeekGuildPoints", "latest-weekly-guild-points", history.currentWeekPoints],
+        ["predictedCurrentWeekGuildPoints", "current-week-total-forecast", history.currentWeekTotal],
+        ["remainingCurrentWeekGuildPoints", "current-week-remaining-forecast", history.currentWeekRemaining],
+        ["nextWeekGuildPointForecast", "next-week-guild-point-forecast", history.nextWeekForecastPoints]
+      ];
       const status = !state.guildPointSummary
         ? t("guildPointHistoryUnavailable")
         : history.hasConflict
           ? t("guildPointHistoryConflict")
-          : !history.weeks.length
-            ? t("guildPointHistoryBaseline")
-            : history.forecastPoints === null
-              ? t("guildPointForecastNeedsHistory")
-              : t(history.usesColdStart ? "guildPointForecastEstimatedMethod" : "guildPointForecastMethod", {
-                  count: formatNumber(history.forecastSampleCount)
-                });
+          : history.forecastPoints === null
+            ? t("guildPointForecastNeedsHistory")
+            : "";
+      const growth = history.growthRate;
+      const growthText = Number.isFinite(growth) ? `${growth > 0 ? "+" : ""}${formatNumber(growth * 100, 1)}%` : "-";
       const canExport = history.trackedWeeks.length > 0;
-      const canReset = Boolean(
-        (state.guildPointHistory && state.guildPointHistory.lastObservation) || history.trackedWeeks.length
-      );
-      const currentWeekLabel = hasCurrentWeekPoints
-        ? "currentWeekGuildPoints"
-        : predictsCurrentWeek
-          ? "predictedCurrentWeekGuildPoints"
-          : "latestWeeklyGuildPoints";
-      return `<section class="mwi-guild-point-forecast" aria-label="${escapeHtml(t("guildPointStatisticsHeading"))}"><div class="mwi-guild-point-forecast-heading"><span><h4>${escapeHtml(t("guildPointStatisticsHeading"))}</h4><small>${escapeHtml(t("guildPointTrendHint"))}</small></span><span class="mwi-guild-point-autosaved" data-source="${state.guildPointSummaryCached ? "cache" : "live"}">${escapeHtml(t(state.guildPointSummaryCached ? "guildPointSavedSnapshot" : "guildPointAutoSaved"))}</span></div><div class="mwi-guild-point-forecast-grid"><div><small>${escapeHtml(t(currentWeekLabel))}</small><strong data-role="latest-weekly-guild-points">${latestPoints}</strong></div><div data-trend="${Number.isFinite(growth) ? (growth > 0 ? "up" : growth < 0 ? "down" : "flat") : "unknown"}"><small>${escapeHtml(t("weeklyGuildPointGrowth"))}</small><strong data-role="weekly-guild-point-growth">${growthText}</strong></div><div data-source="${history.forecastSource}"><small>${escapeHtml(t("nextWeekGuildPointForecast"))}</small><strong data-role="next-week-guild-point-forecast">${forecastText}</strong></div></div><div class="mwi-guild-point-forecast-footer"><p class="mwi-guild-point-forecast-status">${escapeHtml(status)}</p><span class="mwi-guild-point-history-actions"><button data-role="export-guild-point-history" type="button"${canExport ? "" : " disabled"}>${escapeHtml(t("exportGuildPointHistory"))}</button><button data-role="reset-guild-point-history" type="button"${canReset ? "" : " disabled"}>${escapeHtml(t("resetGuildPointHistory"))}</button></span></div>${renderManualGuildPointHistory(history)}</section>`;
+      const canReset = Boolean(state.guildPointHistory?.lastObservation || history.trackedWeeks.length);
+      return `<section class="mwi-guild-point-forecast" aria-label="${escapeHtml(t("guildPointStatisticsHeading"))}"><div class="mwi-guild-point-forecast-heading"><span><h4>${escapeHtml(t("guildPointStatisticsHeading"))}</h4></span><span class="mwi-guild-point-autosaved" data-source="${state.guildPointSummaryCached ? "cache" : "live"}">${escapeHtml(t(state.guildPointSummaryCached ? "guildPointSavedSnapshot" : "guildPointAutoSaved"))}</span></div><div class="mwi-guild-point-forecast-grid" data-source="${history.forecastSource}">${metrics.map(([label, role, value]) => `<div><small>${escapeHtml(t(label))}</small><strong data-role="${role}">${escapeHtml(show(value))}</strong></div>`).join("")}</div><div class="mwi-guild-point-forecast-footer"><p class="mwi-guild-point-forecast-status">${status ? `${escapeHtml(status)}<br>` : ""}${escapeHtml(t("weeklyGuildPointGrowth"))}：<span data-role="weekly-guild-point-growth">${escapeHtml(growthText)}</span></p><span class="mwi-guild-point-history-actions"><button data-role="export-guild-point-history" type="button"${canExport ? "" : " disabled"}>${escapeHtml(t("exportGuildPointHistory"))}</button><button data-role="reset-guild-point-history" type="button"${canReset ? "" : " disabled"}>${escapeHtml(t("resetGuildPointHistory"))}</button></span></div>${renderGuildPointForecastSettings()}${renderManualGuildPointHistory(history)}</section>`;
     }
 
     function discardGuildBuildingClearUndo() {
@@ -11472,7 +11937,7 @@ window.MwiGuildCreditVersion = "1.2.52";
     }
 
     function guildConstructionBudgetSummary(plan, definitions) {
-      if (!plan.steps.length) return t("constructionBudgetEmptySummary");
+      if (!plan.steps.length) return "";
       if (plan.availableGuildPoints === null)
         return t("constructionNoBudgetSummary", { total: formatNumber(plan.steps.length) });
       if (!plan.overBudget) return t("constructionBudgetAllFit", { total: formatNumber(plan.steps.length) });
@@ -11554,7 +12019,7 @@ window.MwiGuildCreditVersion = "1.2.52";
         known: formatNumber(levels.knownCount),
         total: formatNumber(levels.totalCount)
       });
-      return `<section class="mwi-building-picker" data-open="${String(constructionUi.pickerOpen)}"><button class="mwi-building-picker-toggle" data-role="toggle-building-picker" type="button" aria-expanded="${String(constructionUi.pickerOpen)}" aria-controls="mwi-building-picker-body"><span class="mwi-building-picker-plus" aria-hidden="true">${constructionIcon("add")}</span><span><strong>${escapeHtml(constructionUi.pickerOpen ? t("closeBuildingPicker") : t("addBuilding"))}</strong><small class="mwi-building-level-status" data-known-count="${levels.knownCount}" data-total-count="${levels.totalCount}" data-complete="${String(levels.knownCount === levels.totalCount)}">${escapeHtml(status)}</small></span><span class="mwi-building-picker-chevron" aria-hidden="true">${constructionIcon("chevron")}</span></button><div id="mwi-building-picker-body" class="mwi-building-picker-body"${constructionUi.pickerOpen ? "" : " hidden"}><div class="mwi-building-pane-heading"><span><h4>${escapeHtml(t("buildingCatalog"))}</h4><small>${escapeHtml(unknownCount ? t("buildingLevelsPartialHint", { unknown: formatNumber(unknownCount) }) : t("buildingCatalogHint"))}</small></span><input data-role="building-search" type="search" placeholder="${escapeHtml(t("searchBuildings"))}" aria-label="${escapeHtml(t("searchBuildings"))}" value="${escapeHtml(state.buildingSearch)}"></div><div class="mwi-building-categories" role="group" aria-label="${escapeHtml(t("buildingCategoryFilter"))}">${categories}</div><div class="mwi-building-grid">${tiles}</div><div class="mwi-empty" data-role="building-filter-empty" role="status" aria-live="polite" aria-atomic="true" hidden></div></div></section>`;
+      return `<section class="mwi-building-picker" data-open="${String(constructionUi.pickerOpen)}"><button class="mwi-building-picker-toggle" data-role="toggle-building-picker" type="button" aria-expanded="${String(constructionUi.pickerOpen)}" aria-controls="mwi-building-picker-body"><span class="mwi-building-picker-plus" aria-hidden="true">${constructionIcon("add")}</span><span><strong>${escapeHtml(constructionUi.pickerOpen ? t("closeBuildingPicker") : t("addBuilding"))}</strong><small class="mwi-building-level-status" data-known-count="${levels.knownCount}" data-total-count="${levels.totalCount}" data-complete="${String(levels.knownCount === levels.totalCount)}">${escapeHtml(status)}</small></span><span class="mwi-building-picker-chevron" aria-hidden="true">${constructionIcon("chevron")}</span></button><div id="mwi-building-picker-body" class="mwi-building-picker-body"${constructionUi.pickerOpen ? "" : " hidden"}><div class="mwi-building-pane-heading"><span><h4>${escapeHtml(t("buildingCatalog"))}</h4>${unknownCount ? `<small>${escapeHtml(t("buildingLevelsPartialHint", { unknown: formatNumber(unknownCount) }))}</small>` : ""}</span><input data-role="building-search" type="search" placeholder="${escapeHtml(t("searchBuildings"))}" aria-label="${escapeHtml(t("searchBuildings"))}" value="${escapeHtml(state.buildingSearch)}"></div><div class="mwi-building-categories" role="group" aria-label="${escapeHtml(t("buildingCategoryFilter"))}">${categories}</div><div class="mwi-building-grid">${tiles}</div><div class="mwi-empty" data-role="building-filter-empty" role="status" aria-live="polite" aria-atomic="true" hidden></div></div></section>`;
     }
 
     function renderGuildConstructionActions(plan) {
@@ -11603,9 +12068,9 @@ window.MwiGuildCreditVersion = "1.2.52";
               `<div class="mwi-construction-step" data-over-budget="${String(step.fitsBudget === false)}"><span class="mwi-construction-step-index">${formatNumber(step.globalIndex + 1)}</span><span class="mwi-construction-step-copy"><small>${formatNumber(step.fromLevel)} → ${formatNumber(step.toLevel)} · ${escapeHtml(step.fitsBudget === false ? t("constructionOverBudget") : t("constructionWithinBudget"))}</small></span><span class="mwi-construction-step-cost">${formatNumber(step.cost)}</span></div>`
           )
           .join("");
-        return `<li class="mwi-construction-group" data-sort-key="${escapeHtml(buildingPlan.buildingHrid)}" data-building-hrid="${escapeHtml(buildingPlan.buildingHrid)}" data-budget-state="${buildingPlan.budgetState}" data-expanded="${String(expanded)}" aria-posinset="${planIndex + 1}" aria-setsize="${plan.plans.length}"><div class="mwi-construction-row"><button class="mwi-construction-drag-handle" data-role="construction-drag-handle" data-building-hrid="${escapeHtml(buildingPlan.buildingHrid)}" type="button" aria-describedby="mwi-construction-sort-hint" aria-label="${escapeHtml(t("dragConstructionPlan", { building: label }))}" title="${escapeHtml(t("dragConstructionPlan", { building: label }))}"><span aria-hidden="true"></span></button><span class="mwi-construction-building-icon">${guildBuildingIconMarkup(definition, spriteBaseHref)}</span><span class="mwi-construction-identity"><strong title="${escapeHtml(label)}">${escapeHtml(label)}</strong><small>${escapeHtml(t("constructionPlanRowMeta", { position: formatNumber(planIndex + 1), start: formatNumber(buildingPlan.startLevel), target: formatNumber(buildingPlan.targetLevel), count: formatNumber(buildingPlan.steps.length) }))}</small></span><span class="mwi-construction-cost"><small>${escapeHtml(t("buildingPlanCost"))}</small><strong>${formatNumber(buildingPlan.totalCost)}</strong><em>${escapeHtml(t(budgetStateKey))}</em></span><div class="mwi-construction-row-actions"><label class="mwi-construction-target"><span>${escapeHtml(t("targetLevel"))}</span><select data-role="building-target" data-building-hrid="${escapeHtml(buildingPlan.buildingHrid)}" aria-label="${escapeHtml(t("buildingTargetLabel", { building: label }))}">${options}</select></label><button class="mwi-construction-level-button" data-role="adjust-building-target" data-building-hrid="${escapeHtml(buildingPlan.buildingHrid)}" data-delta="1" type="button" aria-label="${escapeHtml(t("increaseBuildingTarget", { building: label, count: formatNumber(1) }))}" title="${escapeHtml(t("increaseBuildingTarget", { building: label, count: formatNumber(1) }))}"${buildingPlan.targetLevel >= definition.maxLevel ? " disabled" : ""}>+1</button><button class="mwi-construction-level-button" data-role="adjust-building-target" data-building-hrid="${escapeHtml(buildingPlan.buildingHrid)}" data-delta="5" type="button" aria-label="${escapeHtml(t("increaseBuildingTarget", { building: label, count: formatNumber(5) }))}" title="${escapeHtml(t("increaseBuildingTarget", { building: label, count: formatNumber(5) }))}"${buildingPlan.targetLevel >= definition.maxLevel ? " disabled" : ""}>+5</button><span class="mwi-construction-order-actions"><button class="mwi-icon-button mwi-icon-up" data-role="move-building-plan" data-building-hrid="${escapeHtml(buildingPlan.buildingHrid)}" data-direction="-1" type="button" aria-label="${escapeHtml(t("movePlanUp", { building: label }))}" title="${escapeHtml(t("movePlanUp", { building: label }))}"${planIndex <= 0 ? " disabled" : ""}>${constructionIcon("up")}</button><button class="mwi-icon-button mwi-icon-down" data-role="move-building-plan" data-building-hrid="${escapeHtml(buildingPlan.buildingHrid)}" data-direction="1" type="button" aria-label="${escapeHtml(t("movePlanDown", { building: label }))}" title="${escapeHtml(t("movePlanDown", { building: label }))}"${planIndex >= plan.plans.length - 1 ? " disabled" : ""}>${constructionIcon("down")}</button></span><button class="mwi-construction-expand" data-role="toggle-building-steps" data-building-hrid="${escapeHtml(buildingPlan.buildingHrid)}" type="button" aria-expanded="${String(expanded)}" aria-controls="${stepsId}" aria-label="${escapeHtml(t(expanded ? "collapseBuildingSteps" : "expandBuildingSteps", { building: label }))}" title="${escapeHtml(t(expanded ? "collapseBuildingSteps" : "expandBuildingSteps", { building: label }))}">${constructionIcon("chevron")}</button><button class="mwi-construction-remove" data-role="remove-building-plan" data-building-hrid="${escapeHtml(buildingPlan.buildingHrid)}" type="button" aria-label="${escapeHtml(t("removeBuildingFromPlan", { building: label }))}" title="${escapeHtml(t("removeBuildingFromPlan", { building: label }))}">${constructionIcon("close")}</button></div></div>${cutoff}<div id="${stepsId}" class="mwi-construction-group-steps"${expanded ? "" : " hidden"}>${steps}</div></li>`;
+        return `<li class="mwi-construction-group" data-sort-key="${escapeHtml(buildingPlan.buildingHrid)}" data-building-hrid="${escapeHtml(buildingPlan.buildingHrid)}" data-budget-state="${buildingPlan.budgetState}" data-expanded="${String(expanded)}" aria-posinset="${planIndex + 1}" aria-setsize="${plan.plans.length}"><div class="mwi-construction-row"><button class="mwi-construction-drag-handle" data-role="construction-drag-handle" data-building-hrid="${escapeHtml(buildingPlan.buildingHrid)}" type="button" aria-label="${escapeHtml(t("dragConstructionPlan", { building: label }))}" title="${escapeHtml(t("dragConstructionPlan", { building: label }))}"><span aria-hidden="true"></span></button><span class="mwi-construction-building-icon">${guildBuildingIconMarkup(definition, spriteBaseHref)}</span><span class="mwi-construction-identity"><strong title="${escapeHtml(label)}">${escapeHtml(label)}</strong><small>${escapeHtml(t("constructionPlanRowMeta", { position: formatNumber(planIndex + 1), start: formatNumber(buildingPlan.startLevel), target: formatNumber(buildingPlan.targetLevel), count: formatNumber(buildingPlan.steps.length) }))}</small></span><span class="mwi-construction-cost"><small>${escapeHtml(t("buildingPlanCost"))}</small><strong>${formatNumber(buildingPlan.totalCost)}</strong><em>${escapeHtml(t(budgetStateKey))}</em></span><div class="mwi-construction-row-actions"><label class="mwi-construction-target"><span>${escapeHtml(t("targetLevel"))}</span><select data-role="building-target" data-building-hrid="${escapeHtml(buildingPlan.buildingHrid)}" aria-label="${escapeHtml(t("buildingTargetLabel", { building: label }))}">${options}</select></label><button class="mwi-construction-level-button" data-role="adjust-building-target" data-building-hrid="${escapeHtml(buildingPlan.buildingHrid)}" data-delta="1" type="button" aria-label="${escapeHtml(t("increaseBuildingTarget", { building: label, count: formatNumber(1) }))}" title="${escapeHtml(t("increaseBuildingTarget", { building: label, count: formatNumber(1) }))}"${buildingPlan.targetLevel >= definition.maxLevel ? " disabled" : ""}>+1</button><button class="mwi-construction-level-button" data-role="adjust-building-target" data-building-hrid="${escapeHtml(buildingPlan.buildingHrid)}" data-delta="5" type="button" aria-label="${escapeHtml(t("increaseBuildingTarget", { building: label, count: formatNumber(5) }))}" title="${escapeHtml(t("increaseBuildingTarget", { building: label, count: formatNumber(5) }))}"${buildingPlan.targetLevel >= definition.maxLevel ? " disabled" : ""}>+5</button><span class="mwi-construction-order-actions"><button class="mwi-icon-button mwi-icon-up" data-role="move-building-plan" data-building-hrid="${escapeHtml(buildingPlan.buildingHrid)}" data-direction="-1" type="button" aria-label="${escapeHtml(t("movePlanUp", { building: label }))}" title="${escapeHtml(t("movePlanUp", { building: label }))}"${planIndex <= 0 ? " disabled" : ""}>${constructionIcon("up")}</button><button class="mwi-icon-button mwi-icon-down" data-role="move-building-plan" data-building-hrid="${escapeHtml(buildingPlan.buildingHrid)}" data-direction="1" type="button" aria-label="${escapeHtml(t("movePlanDown", { building: label }))}" title="${escapeHtml(t("movePlanDown", { building: label }))}"${planIndex >= plan.plans.length - 1 ? " disabled" : ""}>${constructionIcon("down")}</button></span><button class="mwi-construction-expand" data-role="toggle-building-steps" data-building-hrid="${escapeHtml(buildingPlan.buildingHrid)}" type="button" aria-expanded="${String(expanded)}" aria-controls="${stepsId}" aria-label="${escapeHtml(t(expanded ? "collapseBuildingSteps" : "expandBuildingSteps", { building: label }))}" title="${escapeHtml(t(expanded ? "collapseBuildingSteps" : "expandBuildingSteps", { building: label }))}">${constructionIcon("chevron")}</button><button class="mwi-construction-remove" data-role="remove-building-plan" data-building-hrid="${escapeHtml(buildingPlan.buildingHrid)}" type="button" aria-label="${escapeHtml(t("removeBuildingFromPlan", { building: label }))}" title="${escapeHtml(t("removeBuildingFromPlan", { building: label }))}">${constructionIcon("close")}</button></div></div>${cutoff}<div id="${stepsId}" class="mwi-construction-group-steps"${expanded ? "" : " hidden"}>${steps}</div></li>`;
       });
-      return `<section class="mwi-construction-queue" aria-label="${escapeHtml(t("constructionQueue"))}"><div class="mwi-construction-queue-heading"><span><h4>${escapeHtml(t("constructionQueue"))}</h4><small id="mwi-construction-sort-hint">${escapeHtml(t("constructionQueueDragHint"))}</small></span><span class="mwi-construction-queue-meta"><small>${escapeHtml(t("constructionSummary", { buildings: formatNumber(plan.plans.length), steps: formatNumber(plan.steps.length) }))}</small>${renderGuildConstructionActions(plan)}</span></div>${groups.length ? `<ol class="mwi-construction-rail" data-role="construction-sort-list">${groups.join("")}</ol>` : `<div class="mwi-construction-empty"><strong>${escapeHtml(t("constructionQueueEmptyTitle"))}</strong><small>${escapeHtml(t("constructionQueueEmpty"))}</small></div>`}</section>`;
+      return `<section class="mwi-construction-queue" aria-label="${escapeHtml(t("constructionQueue"))}"><div class="mwi-construction-queue-heading"><span><h4>${escapeHtml(t("constructionQueue"))}</h4></span><span class="mwi-construction-queue-meta"><small>${escapeHtml(t("constructionSummary", { buildings: formatNumber(plan.plans.length), steps: formatNumber(plan.steps.length) }))}</small>${renderGuildConstructionActions(plan)}</span></div>${groups.length ? `<ol class="mwi-construction-rail" data-role="construction-sort-list">${groups.join("")}</ol>` : `<div class="mwi-construction-empty"><strong>${escapeHtml(t("constructionQueueEmptyTitle"))}</strong></div>`}</section>`;
     }
 
     function renderGuildPointPlanning(plan, definitions, historySummary) {
@@ -11794,18 +12259,31 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       const history = guildPointHistorySummary();
       const escapeCsv = (value) => `"${String(value).replaceAll('"', '""')}"`;
       const rows = [[t("guildPointCsvWeekStart"), t("guildPointCsvEarned"), t("guildPointCsvStatus")]];
-      for (const record of history.trackedWeeks) {
+      const exported = new Map(history.trackedWeeks.map((record) => [record.weekStartAt, record]));
+      for (const raw of state.guildPointHistory?.weeks || []) {
+        if (!exported.has(raw.weekStartAt)) exported.set(raw.weekStartAt, raw);
+      }
+      for (const entry of [...exported.values()].sort((left, right) => left.weekStartAt - right.weekStartAt)) {
+        const raw = (state.guildPointHistory?.weeks || []).find((record) => record.weekStartAt === entry.weekStartAt);
+        const partial =
+          raw &&
+          raw.weekStartAt < history.currentWeekStartAt &&
+          raw.coverage !== "verified" &&
+          entry.source !== "manual";
+        const record = partial ? raw : entry;
         rows.push([
           new Date(record.weekStartAt).toISOString(),
           record.earnedPoints,
           t(
-            record.complete
-              ? record.source === "manual"
-                ? "guildPointCsvManual"
-                : record.source === "estimated"
-                  ? "guildPointCsvEstimated"
-                  : "guildPointCsvComplete"
-              : "guildPointCsvTracking"
+            partial
+              ? "guildPointCsvPartial"
+              : record.complete
+                ? record.source === "manual"
+                  ? "guildPointCsvManual"
+                  : record.source === "estimated"
+                    ? "guildPointCsvEstimated"
+                    : "guildPointCsvComplete"
+                : "guildPointCsvTracking"
           )
         ]);
       }
@@ -11866,7 +12344,13 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
           }).history;
           continue;
         }
-        if (trackedRecord && !existingManualRecord && Number(rawPoints) === trackedRecord.earnedPoints) continue;
+        if (
+          trackedRecord &&
+          !existingManualRecord &&
+          Number(rawPoints) === trackedRecord.earnedPoints &&
+          !constructionUi.trackedGuildPointEditWeekStarts.has(weekStartAt)
+        )
+          continue;
         const result = core.setManualGuildPointWeek(
           nextHistory,
           weekStartAt,
@@ -11927,7 +12411,6 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       reorderGuildBuildingPlan,
       setGuildBuildingPickerOpen,
       setGuildPointHistoryOpen,
-      setGuildPointPlanningOptionsOpen,
       openTrackedGuildPointEditWarning,
       cancelTrackedGuildPointEditWarning,
       confirmTrackedGuildPointEditWarning,
@@ -11973,6 +12456,35 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     ["stamina", "intelligence", "attack", "defense"],
     ["melee", "ranged", "magic"]
   ];
+  // Official house room HRIDs, in the same skill order as the native profile.
+  const SKILL_ROOMS = {
+    milking: "dairy_barn",
+    foraging: "garden",
+    woodcutting: "log_shed",
+    cheesesmithing: "forge",
+    crafting: "workshop",
+    tailoring: "sewing_parlor",
+    cooking: "kitchen",
+    brewing: "brewery",
+    alchemy: "laboratory",
+    enhancing: "observatory",
+    stamina: "dining_room",
+    intelligence: "library",
+    attack: "dojo",
+    defense: "armory",
+    melee: "gym",
+    ranged: "archery_range",
+    magic: "mystical_study"
+  };
+  function skillHouseLevel(roomMap, skillKey) {
+    const room = SKILL_ROOMS[skillKey];
+    if (!room || !roomMap || typeof roomMap !== "object" || Array.isArray(roomMap)) return null;
+    const hrid = `/house_rooms/${room}`;
+    if (!Object.hasOwn(roomMap, hrid)) return null;
+    const level = roomMap[hrid]?.level;
+    return Number.isSafeInteger(level) && level >= 0 ? level : null;
+  }
+
   function skillLayout(skills) {
     const slots = SKILL_ROWS.flatMap((keys, row) =>
       keys.map((key, column) => ({
@@ -12053,6 +12565,62 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     };
   }
 
+  // Resolve CSS-module hashes from the loaded game stylesheet, so custom
+  // gradients, shadows and pseudo-elements keep the game's own implementation.
+  function nativeNameClasses(document) {
+    const classes = new Map();
+    const visit = (rules) => {
+      for (const rule of rules || []) {
+        for (const match of (rule.selectorText || "").matchAll(/\.(CharacterName_([A-Za-z0-9_]+?)__[A-Za-z0-9_-]+)/g))
+          classes.set(match[2], match[1]);
+        if (rule.cssRules) visit(rule.cssRules);
+      }
+    };
+    for (const sheet of document.styleSheets || []) {
+      try {
+        visit(sheet.cssRules);
+      } catch (_) {
+        // Cross-origin stylesheets may be unreadable; names remain usable.
+      }
+    }
+    return classes;
+  }
+
+  function createMemberNameRenderer({ escapeHtml: e, formatMemberName, isPlain, gameIcon, document }) {
+    let classes = new Map();
+    let cosmetics = new Map();
+    const validHrid = (value, type) => typeof value === "string" && new RegExp(`^/${type}/[a-z0-9_]+$`).test(value);
+    const render = (member, saved) => {
+      const name = formatMemberName(member);
+      if (isPlain()) return `<span class="mwi-trial-member-name">${e(name)}</span>`;
+      const appearance = member.id == null ? saved : cosmetics.get(String(member.id)) || saved;
+      const icons = [appearance?.specialChatIconHrid, appearance?.chatIconHrid]
+        .filter((hrid) => validHrid(hrid, "chat_icons"))
+        .map((hrid) => gameIcon("chat_icons_sprite", hrid.split("/").pop(), "mwi-trial-name-icon"))
+        .join("");
+      const color = validHrid(appearance?.nameColorHrid, "name_colors")
+        ? classes.get(appearance.nameColorHrid.split("/").pop())
+        : null;
+      const native = color && classes.get("characterName") && classes.get("name");
+      return `<span class="mwi-trial-member-name${native ? ` ${e(classes.get("characterName"))}` : ""}" translate="no">${icons}<span class="mwi-trial-name-text${native ? ` ${e(classes.get("name"))} ${e(color)}` : ""}"${native ? ` data-name="${e(name)}"` : ""}><span>${e(name)}</span></span></span>`;
+    };
+    render.refresh = (records, context = {}) => {
+      classes = nativeNameClasses(document);
+      cosmetics = new Map();
+      // Most recently observed appearance wins; never match separate identities by name.
+      for (const record of [...records].sort((a, b) => (a.capturedAt || 0) - (b.capturedAt || 0))) {
+        for (const row of record.rows) {
+          if (row.characterId == null) continue;
+          const saved = record.members?.[row.memberKey ?? row.characterId];
+          if (saved) cosmetics.set(String(row.characterId), saved);
+        }
+      }
+      for (const [id, member] of Object.entries(context.members || {}))
+        cosmetics.set(id, { ...cosmetics.get(id), ...member });
+    };
+    return render;
+  }
+
   function createRenderer({
     t,
     escapeHtml: e,
@@ -12067,6 +12635,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     renderRail,
     memberIdentityAttributes,
     formatMemberName,
+    renderMemberName = (member) => e(formatMemberName(member)),
     isScreenshotMode
   }) {
     const tooltipRecords = new Map();
@@ -12134,15 +12703,18 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         })
         .join("")}</div>`;
     }
-    function skillsMarkup(skills) {
+    function skillsMarkup(skills, roomMap) {
       if (!skills.some((skill) => suffix(skill.skillHrid) !== "total_level")) return "";
       return `<div class="mwi-trial-skill-grid" aria-label="${e(t("trialProfileSkills"))}">${skillLayout(skills)
         .map(({ key, row, column, skill }) => {
           const hrid = skill?.skillHrid || `/skills/${key}`;
           const name = label(hrid);
           const level = `Lv.${number(skill?.level)}`;
-          const description = `${name} ${level}`;
-          return `<div class="mwi-trial-equipment-slot mwi-trial-skill-slot" data-profile-skill="${e(key)}" ${tooltipAttribute("skill", skill)} style="grid-row:${row};grid-column:${column}" tabindex="0" role="img" aria-label="${e(description)}" title="${e(description)}">${profileIcon("skill", hrid) || `<span class="mwi-trial-slot-label">${e(name)}</span>`}<span class="mwi-trial-equipment-level">${e(level)}</span></div>`;
+          const houseLevel = skillHouseLevel(roomMap, key);
+          const houseLabel = t("trialProfileHouseLevel", { level: number(houseLevel) });
+          const description = `${name} ${level} · ${houseLabel}`;
+          const houseBadge = `<span class="mwi-trial-skill-house" data-house-level="${e(number(houseLevel))}"${houseLevel === null ? ' data-unknown="true"' : ""} aria-hidden="true"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m1.5 7 6.5-5.5L14.5 7M3.5 5.5v8h9v-8M6.5 13.5v-5h3v5"/></svg><span>${e(number(houseLevel))}</span></span>`;
+          return `<div class="mwi-trial-equipment-slot mwi-trial-skill-slot" data-profile-skill="${e(key)}" ${tooltipAttribute("skill", skill)} style="grid-row:${row};grid-column:${column}" tabindex="0" role="img" aria-label="${e(description)}" title="${e(description)}">${profileIcon("skill", hrid) || `<span class="mwi-trial-slot-label">${e(name)}</span>`}<span class="mwi-trial-equipment-level">${e(level)}</span>${houseBadge}</div>`;
         })
         .join("")}</div>`;
     }
@@ -12167,12 +12739,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
           return `<table class="mwi-trial-player-overview" data-trial-overview-kind="${kind}"><caption>${e(t(kind === "skilling" ? "trialSkilling" : "trialCombat"))}</caption><colgroup><col class="mwi-trial-overview-name"><col class="mwi-trial-overview-count"><col><col></colgroup><thead><tr><th scope="col">${e(t("trialOverviewProject"))}</th><th scope="col">${e(t("trialRankingCount"))}</th><th scope="col">${e(t("trialOverviewAverage"))}</th><th scope="col">${e(t("trialOverviewTotal"))}</th></tr></thead><tbody>${rows}</tbody><tfoot><tr data-trial-overview-summary="${kind}"><th scope="row">${e(t("trialOverviewAllProjects"))}</th>${cells(summary)}</tr></tfoot></table>`;
         })
         .join("");
-      return profileSection(
-        "overview",
-        "trialPlayerOverview",
-        `${tables}<details class="mwi-trial-overview-help"><summary>${e(t("trialOverviewMethod"))}</summary><p>${e(t("trialOverviewHelp"))}</p></details>`,
-        sectionOpen
-      );
+      return profileSection("overview", "trialPlayerOverview", tables, sectionOpen);
     }
     function joiningTime(value) {
       if (value === null) return e(t("trialProfileJoinedAtUnknown"));
@@ -12182,19 +12749,44 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       return `<time datetime="${e(date.toISOString())}">${e(local)}</time>`;
     }
     function joinedAtMarkup(member) {
-      return `<div data-trial-profile-joined-at title="${e(t("trialProfileJoinedAtHelp"))}"><dt><span>${e(t("trialProfileJoinedAt"))}</span></dt><dd>${joiningTime(api.currentMemberJoinedAt(getBridge()?.trialHistoryContext, member))}</dd></div>`;
+      return `<div data-trial-profile-joined-at><dt><span>${e(t("trialProfileJoinedAt"))}</span></dt><dd>${joiningTime(api.currentMemberJoinedAt(getBridge()?.trialHistoryContext, member))}</dd></div>`;
     }
+    function activityMarkup(profile) {
+      const character = profile?.sharableCharacter;
+      const action =
+        typeof character?.actionType === "string" && /^\/action_types\/([a-z_]+)$/.exec(character.actionType)?.[1];
+      const activity = SKILL_ROWS.slice(0, 2).flat().includes(action)
+        ? t(`trialName_${action}`)
+        : ["combat", "labyrinth", "special"].includes(action)
+          ? t(`trialActivity_${action}`)
+          : t("trialActivityUnknown");
+      const presence =
+        character?.hideOnlineStatus === true
+          ? "hidden"
+          : character?.isOnline === true
+            ? "online"
+            : character?.isOnline === false
+              ? "offline"
+              : "unknown";
+      return `<div data-trial-profile-activity><dt><span>${e(t("trialProfileActivity"))}</span></dt><dd>${e(activity)}</dd></div><div data-trial-profile-presence="${presence}"><dt><span>${e(t("trialProfilePresence"))}</span></dt><dd>${e(t(`trialPresence_${presence}`))}</dd></div>`;
+    }
+
     function profileMarkup(state, sectionOpen, projects, member) {
       const overview = overviewMarkup(projects, sectionOpen);
       const joinedAt = joinedAtMarkup(member);
       if (state.status !== "ready")
-        return `<p class="mwi-trial-meta" role="status">${e(t(state.status === "loading" ? "trialProfileLoading" : state.status === "timeout" ? "trialProfileTimeout" : state.status === "mismatch" ? "trialProfileMismatch" : "trialProfileUnavailable"))}</p><dl class="mwi-trial-profile-facts">${joinedAt}</dl>${overview}`;
+        return `<p class="mwi-trial-meta" role="status">${e(t(state.status === "loading" ? "trialProfileLoading" : state.status === "timeout" ? "trialProfileTimeout" : state.status === "mismatch" ? "trialProfileMismatch" : "trialProfileUnavailable"))}</p><dl class="mwi-trial-profile-facts">${activityMarkup(null)}${joinedAt}</dl>${overview}`;
       const profile = state.profile;
       const skills = entries(profile.characterSkills).filter((item) => item && item.skillHrid);
       const total = skills.find((item) => suffix(item.skillHrid) === "total_level");
-      let html = `<dl class="mwi-trial-profile-facts">${metric(t("trialProfileTotalLevel"), number(total?.level ?? profile.totalLevel))}${metric(t("trialProfileCombatLevel"), number(profile.combatLevel, 1))}${joinedAt}</dl>`;
+      let html = `<dl class="mwi-trial-profile-facts">${activityMarkup(profile)}${metric(t("trialProfileTotalLevel"), number(total?.level ?? profile.totalLevel))}${metric(t("trialProfileCombatLevel"), number(profile.combatLevel, 1))}${joinedAt}</dl>`;
       html += overview;
-      html += profileSection("skills", "trialProfileSkills", skillsMarkup(skills), sectionOpen);
+      html += profileSection(
+        "skills",
+        "trialProfileSkills",
+        skillsMarkup(skills, profile.characterHouseRoomMap),
+        sectionOpen
+      );
       html += profileSection(
         "equipment",
         "trialProfileEquipment",
@@ -12269,8 +12861,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
           const value = score(entry);
           if (value !== previous) rank = index + 1;
           previous = value;
-          const name = formatMemberName(entry);
-          return `<tr data-trial-ranking-row="${e(entry.key)}"><td>${value === null ? "—" : rank}</td><th scope="row"${memberIdentityAttributes(entry)}>${entry.name ? `<button type="button" class="mwi-trial-heading-link" data-trial-ranking-player="${e(entry.key)}">${e(name)}</button>` : e(name)}</th><td><span data-trial-ranking-value>${metric === "joinedAt" ? joiningTime(value) : value === null ? "—" : metric === "participations" ? value : `${value.toFixed(2)}×`}</span></td>${metric === "average" ? `<td data-trial-ranking-samples>${entry[scope].sampleCount}</td>` : ""}</tr>`;
+          const name = renderMemberName(entry);
+          return `<tr data-trial-ranking-row="${e(entry.key)}"><td>${value === null ? "—" : rank}</td><th scope="row"${memberIdentityAttributes(entry)}>${entry.name ? `<button type="button" class="mwi-trial-heading-link" data-trial-ranking-player="${e(entry.key)}">${name}</button>` : name}</th><td><span data-trial-ranking-value>${metric === "joinedAt" ? joiningTime(value) : value === null ? "—" : metric === "participations" ? value : `${value.toFixed(2)}×`}</span></td>${metric === "average" ? `<td data-trial-ranking-samples>${entry[scope].sampleCount}</td>` : ""}</tr>`;
         })
         .join("");
       const title =
@@ -12284,11 +12876,11 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       const key = metric === "average" ? scope : metric;
       const icon = (path) =>
         `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="${path}"/></svg>`;
-      const controls = `<div class="mwi-trial-ranking-controls"><button type="button" data-trial-ranking-move="${key}" data-direction="-1" aria-label="${e(t("trialRankingMoveLeft", { name: title }))}" title="${e(t("trialRankingMoveLeft", { name: title }))}"${index === 0 ? " disabled" : ""}>${icon("m9 4-4 4 4 4")}</button><button type="button" data-trial-ranking-drag="${key}" aria-label="${e(t("trialRankingDrag", { name: title }))}" title="${e(t("trialRankingDrag", { name: title }))}" aria-describedby="mwi-trial-ranking-order-hint">${icon("M5 3v2m6-2v2M5 7v2m6-2v2M5 11v2m6-2v2")}</button><button type="button" data-trial-ranking-move="${key}" data-direction="1" aria-label="${e(t("trialRankingMoveRight", { name: title }))}" title="${e(t("trialRankingMoveRight", { name: title }))}"${index === count - 1 ? " disabled" : ""}>${icon("m7 4 4 4-4 4")}</button></div>`;
+      const controls = `<div class="mwi-trial-ranking-controls"><button type="button" data-trial-ranking-move="${key}" data-direction="-1" aria-label="${e(t("trialRankingMoveLeft", { name: title }))}" title="${e(t("trialRankingMoveLeft", { name: title }))}"${index === 0 ? " disabled" : ""}>${icon("m9 4-4 4 4 4")}</button><button type="button" data-trial-ranking-drag="${key}" aria-label="${e(t("trialRankingDrag", { name: title }))}" title="${e(t("trialRankingDrag", { name: title }))}">${icon("M5 3v2m6-2v2M5 7v2m6-2v2M5 11v2m6-2v2")}</button><button type="button" data-trial-ranking-move="${key}" data-direction="1" aria-label="${e(t("trialRankingMoveRight", { name: title }))}" title="${e(t("trialRankingMoveRight", { name: title }))}"${index === count - 1 ? " disabled" : ""}>${icon("m7 4 4 4-4 4")}</button></div>`;
       return `<article class="mwi-trial-column" data-sort-key="${key}" data-trial-ranking-column="${key}"><h4>${e(title)}</h4>${controls}${entries.length ? `<table class="mwi-trial-table mwi-trial-ranking-table"><caption>${e(title)}</caption><thead><tr><th scope="col">${e(t("trialRankingRank"))}</th><th scope="col">${e(t("trialMember"))}</th><th scope="col">${e(t(metric === "joinedAt" ? "trialProfileJoinedAt" : metric === "participations" ? "trialRankingCount" : scope === "all" ? "trialRankingTotalMultiple" : "trialRankingMultiple"))}</th>${metric === "average" ? `<th scope="col">${e(t("trialRankingSamples"))}</th>` : ""}</tr></thead><tbody>${rows}</tbody></table>` : `<p class="mwi-trial-empty">${e(t(metric === "joinedAt" ? "trialRankingRosterEmpty" : "trialPlayerEmpty"))}</p>`}</article>`;
     }
 
-    function renderRankings({ records, helpOpen, rankingOrder, orderSaveFailed }) {
+    function renderRankings({ records, rankingOrder, orderSaveFailed }) {
       const players = api.playerRankings(records);
       const members = api.currentMembershipRankings(getBridge()?.trialHistoryContext);
       const columns = rankingOrder
@@ -12302,16 +12894,24 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
           )
         )
         .join("");
-      return `<div class="mwi-trial-rankings"><details class="mwi-trial-guide" data-trial-ranking-help ${helpOpen ? "open" : ""}><summary>${e(t("trialRankingMethod"))}</summary><p>${e(t("trialRankingCountHelp"))}</p><p>${e(t("trialRankingAverageHelp"))}</p><p>${e(t("trialRankingJoinedAtHelp"))}</p></details><p class="mwi-trial-help" id="mwi-trial-ranking-order-hint" data-trial-ranking-order-hint>${e(t("trialRankingOrderHint"))}</p><p class="mwi-trial-help" data-trial-ranking-order-status role="status">${orderSaveFailed ? e(t("trialRankingOrderSaveFailed")) : ""}</p>${renderRail("player-rankings", t("trialPlayerRankings"), columns, "rankings")}</div>`;
+      return `<div class="mwi-trial-rankings"><p class="mwi-trial-help" data-trial-ranking-order-status role="status">${orderSaveFailed ? e(t("trialRankingOrderSaveFailed")) : ""}</p>${renderRail("player-rankings", t("trialPlayerRankings"), columns, "rankings")}</div>`;
     }
 
     function render({ member, weeks, projects = [], profileState, profileSectionsOpen = {} }) {
       tooltipRecords.clear();
-      return `<div class="mwi-trial-player-toolbar"><button type="button" data-trial-player-back>${e(t("trialPlayerBack"))}</button><h3 tabindex="-1" data-trial-player-title>${e(formatMemberName(member))} · ${e(t("trialPlayerHistory"))}</h3></div><div class="mwi-trial-player-layout"><aside class="mwi-trial-player-profile" aria-label="${e(t("trialPlayerProfile"))}"><header><h3>${e(t("trialPlayerProfile"))}</h3><button type="button" data-trial-profile-refresh ${profileState.status === "loading" ? "disabled" : ""}>${e(t("trialProfileRefresh"))}</button></header><div data-trial-profile-content>${profileMarkup(profileState, profileSectionsOpen, projects, member)}</div></aside><div class="mwi-trial-player-history">${historyMarkup(weeks)}</div></div>`;
+      return `<div class="mwi-trial-player-toolbar"><button type="button" data-trial-player-back>${e(t("trialPlayerBack"))}</button><h3 tabindex="-1" data-trial-player-title>${renderMemberName(member)} · ${e(t("trialPlayerHistory"))}</h3></div><div class="mwi-trial-player-layout"><aside class="mwi-trial-player-profile" aria-label="${e(t("trialPlayerProfile"))}"><header><h3>${e(t("trialPlayerProfile"))}</h3><button type="button" data-trial-profile-refresh ${profileState.status === "loading" ? "disabled" : ""}>${e(t("trialProfileRefresh"))}</button></header><div data-trial-profile-content>${profileMarkup(profileState, profileSectionsOpen, projects, member)}</div></aside><div class="mwi-trial-player-history">${historyMarkup(weeks)}</div></div>`;
     }
     return { render, renderRankings, tooltipData: (key) => tooltipRecords.get(key) };
   }
-  return { createRenderer, createMemberNameFormatter, equipmentLayout, skillLayout };
+  return {
+    createRenderer,
+    createMemberNameFormatter,
+    createMemberNameRenderer,
+    nativeNameClasses,
+    equipmentLayout,
+    skillLayout,
+    skillHouseLevel
+  };
 });
 
 
@@ -12470,7 +13070,9 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     "word-break overflow-wrap vertical-align overflow overflow-x overflow-y position top right bottom left z-index " +
     "flex-direction flex-wrap flex-grow flex-shrink flex-basis align-items align-self align-content justify-content " +
     "gap justify-items grid-template-columns grid-auto-flow grid-auto-columns grid-column grid-row " +
-    "list-style-type clip-path visibility fill stroke stroke-width"
+    "list-style-type clip-path visibility fill stroke stroke-width background-image background-size background-position " +
+    "background-repeat background-clip -webkit-background-clip -webkit-text-fill-color text-shadow filter transform " +
+    "grid-template-rows grid-area"
   ).split(" ");
 
   function snapshot(host, document, pageWindow) {
@@ -12535,6 +13137,40 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       copy.style.width = `${width}px`;
       imageSize(width, Math.max(copy.scrollHeight, copy.getBoundingClientRect().height));
       // Freeze computed styles while still under the real panel's CSS selectors.
+      // Native custom names can draw additional text layers with pseudo-elements.
+      // Materialize those layers before serializing the detached screenshot.
+      const pseudoLayers = [];
+      for (const element of copy.querySelectorAll(".mwi-trial-name-text[data-name]")) {
+        for (const pseudo of ["::before", "::after"]) {
+          const computed = pageWindow.getComputedStyle(element, pseudo);
+          const content = computed.content;
+          if (!content || content === "none" || content === "normal") continue;
+          let text;
+          if (/^attr\(data-name\)$/.test(content)) text = element.dataset.name;
+          else {
+            try {
+              text = JSON.parse(content);
+            } catch (_) {
+              continue;
+            }
+          }
+          if (typeof text !== "string") continue;
+          const layer = document.createElement("span");
+          layer.textContent = text;
+          layer.setAttribute("aria-hidden", "true");
+          layer.style.cssText = STYLE_PROPERTIES.map((name) => `${name}:${computed.getPropertyValue(name)};`).join("");
+          pseudoLayers.push({ element, layer, pseudo });
+        }
+      }
+      if (pseudoLayers.length) {
+        const style = document.createElement("style");
+        style.textContent =
+          ".mwi-trial-name-text[data-name]::before,.mwi-trial-name-text[data-name]::after{content:none!important}";
+        copy.append(style);
+        for (const { element, layer, pseudo } of pseudoLayers)
+          if (pseudo === "::before") element.prepend(layer);
+          else element.append(layer);
+      }
       const nodes = [copy, ...copy.querySelectorAll("*")];
       const styles = nodes.map((element) => {
         const computed = pageWindow.getComputedStyle(element);
@@ -12716,14 +13352,130 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 });
 
 
+// SOURCE: src/ui/trial-signup-warning.js
+(function (root, factory) {
+  const api = factory();
+  if (typeof module !== "undefined" && module.exports) module.exports = api;
+  root.MwiGuildTrialSignupWarning = api;
+})(typeof globalThis !== "undefined" ? globalThis : this, function () {
+  "use strict";
+
+  const MODAL = '[class*="GuildPanel_signupModal__"]';
+  const NAME = '[class*="GuildPanel_memberName__"]';
+  const MARK = "data-mwi-trial-low-work";
+
+  // Only decorate native signup names. React keeps the original nodes/handlers.
+  function create({ document, pageWindow, trialHistoryApi, getRecords, getContext, t }) {
+    const marked = new Map();
+    let observer = null;
+    let frame = null;
+    let active = false;
+    function restore(node, old) {
+      node.removeAttribute(MARK);
+      for (const key of ["title", "aria-description"])
+        if (node.getAttribute(key) === old.message) {
+          if (old[key] === null) node.removeAttribute(key);
+          else node.setAttribute(key, old[key]);
+        }
+    }
+    function refresh() {
+      frame = null;
+      if (!active) return;
+      const context = getContext() || {};
+      const wanted = new Map();
+      for (const modal of document.querySelectorAll(MODAL)) {
+        const heading = modal.querySelector('[class*="GuildPanel_name__"]')?.textContent.trim();
+        // Resolve the project using the visible native title and known skilling
+        // signups. Combat titles never enter this candidate set.
+        const projects = [
+          ...new Set(Object.values(context.signups || {}).map((s) => s?.signedUpSkillingTrialHrid))
+        ].filter((hrid) => hrid && t(`trialName_${hrid.split("/").pop()}`) === heading);
+        if (projects.length !== 1) continue;
+        const warnings = trialHistoryApi.signupWorkWarnings(getRecords(), context, projects[0]);
+        const byName = new Map();
+        for (const [id, member] of Object.entries(context.roster || {})) {
+          const name = member?.name || context.members?.[id]?.name;
+          if (name) byName.set(name, byName.has(name) ? null : id);
+        }
+        for (const node of modal.querySelectorAll(NAME)) {
+          const warning = warnings.get(byName.get(node.textContent.trim()));
+          if (warning)
+            wanted.set(
+              node,
+              t("trialSignupLowWork", {
+                share: Math.floor(warning.share * 10000) / 10000,
+                week: trialHistoryApi.weekNumber(warning.weekStartAt)
+              })
+            );
+        }
+      }
+      for (const [node, old] of marked) {
+        if (wanted.get(node) === old.message) continue;
+        restore(node, old);
+        marked.delete(node);
+      }
+      for (const [node, message] of wanted) {
+        if (marked.has(node)) continue;
+        marked.set(node, {
+          title: node.getAttribute("title"),
+          "aria-description": node.getAttribute("aria-description"),
+          message
+        });
+        node.setAttribute(MARK, "true");
+        node.setAttribute("title", message);
+        node.setAttribute("aria-description", message);
+      }
+    }
+    function schedule() {
+      if (active && frame === null) frame = pageWindow.requestAnimationFrame(refresh);
+    }
+    function start() {
+      if (active) return;
+      active = true;
+      observer = new pageWindow.MutationObserver((changes) => {
+        if (
+          changes.some((change) => {
+            const target = change.target.nodeType === 1 ? change.target : change.target.parentElement;
+            return (
+              target?.closest?.(MODAL) ||
+              [...change.addedNodes, ...change.removedNodes].some(
+                (node) => node.nodeType === 1 && (node.matches(MODAL) || node.querySelector(MODAL))
+              )
+            );
+          })
+        )
+          schedule();
+      });
+      // The development runtime can arrive at document-start, before body exists.
+      // Watching the document also catches the initial body and later replacements.
+      observer.observe(document, { childList: true, subtree: true, characterData: true });
+      refresh();
+    }
+    function dispose() {
+      active = false;
+      observer?.disconnect();
+      if (frame !== null) pageWindow.cancelAnimationFrame(frame);
+      frame = null;
+      for (const [node, old] of marked) restore(node, old);
+      marked.clear();
+    }
+    return { start, refresh: schedule, dispose };
+  }
+  return { create };
+});
+
+
 // SOURCE: src/ui/trial-history-view.js
 (function (root, factory) {
   const api = factory(
-    typeof module !== "undefined" && module.exports ? require("../trial-display.js") : root.MwiGuildTrialDisplay
+    typeof module !== "undefined" && module.exports ? require("../trial-display.js") : root.MwiGuildTrialDisplay,
+    typeof module !== "undefined" && module.exports
+      ? require("./trial-signup-warning.js")
+      : root.MwiGuildTrialSignupWarning
   );
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.MwiGuildTrialHistoryView = api;
-})(typeof globalThis !== "undefined" ? globalThis : this, function (displayApi) {
+})(typeof globalThis !== "undefined" ? globalThis : this, function (displayApi, signupWarningApi) {
   "use strict";
 
   function projectIconSpec(record, detail = record.trialDetail) {
@@ -12771,11 +13523,18 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   }) {
     let mode = "week";
     let screenshotMode = false;
+    let simpleNames = false;
     let screenshotBusy = false;
     let screenshotNotice = "";
-    let screenshotHelpOpen = false;
     const isScreenshotMode = () => screenshotMode;
     const formatMemberName = playerViewApi.createMemberNameFormatter({ t, isScreenshotMode });
+    const renderMemberName = playerViewApi.createMemberNameRenderer({
+      document,
+      escapeHtml,
+      formatMemberName,
+      isPlain: () => screenshotMode || simpleNames,
+      gameIcon
+    });
     let selectedWeek = "";
     let selectedProject = "";
     let resetScroll = false;
@@ -12788,9 +13547,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     let importNotice = null;
     let importBusy = false;
     let importRevision = 0;
-    let guideOpen = false;
     let displaySettingsOpen = false;
-    let displayHelpOpen = false;
     let displaySaveFailed = false;
     let rankingOrder = displayApi.normalizeRankingOrder(pluginStorage.loadTrialRankingOrder());
     let rankingOrderSaveFailed = false;
@@ -12832,7 +13589,11 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
     function gameIcon(sprite, symbol, className) {
       if (!/^[a-z0-9_]+$/.test(symbol || "")) return "";
-      let base = spriteBases[sprite] || domApi.findSpriteBaseHref(document, sprite);
+      const nativeChatBase =
+        sprite === "chat_icons_sprite"
+          ? domApi.findSpriteBaseHref(document.querySelector('[class*="CharacterName_chatIcon__"]'), sprite)
+          : "";
+      let base = nativeChatBase || spriteBases[sprite] || domApi.findSpriteBaseHref(document, sprite);
       if (base) spriteBases[sprite] = base;
       else if (!spriteLoadPromise && pageWindow.fetch && pageWindow.location?.origin) {
         spriteLoadPromise = pageWindow
@@ -12844,10 +13605,14 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
               "items_sprite",
               "abilities_sprite",
               "combat_monsters_sprite",
-              "misc_sprite"
+              "misc_sprite",
+              "chat_icons_sprite"
             ]) {
               const reference = domApi.spriteBaseFromAssetManifest(manifest, sprite);
-              if (reference) spriteBases[sprite] = new URL(reference, pageWindow.location.origin).href;
+              // A cached manifest can predate the running game. Never replace a
+              // sprite URL already observed in the native DOM with that cache.
+              if (reference && !spriteBases[sprite])
+                spriteBases[sprite] = new URL(reference, pageWindow.location.origin).href;
             }
             const panel = getPanel();
             if (!disposed && panel?.isConnected && panel.dataset.activeView === "trials") refresh(panel);
@@ -12867,12 +13632,22 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     };
     const number = (value) => (typeof value === "number" && Number.isFinite(value) ? String(value) : "—");
 
+    const signupWarning = signupWarningApi.create({
+      document,
+      pageWindow,
+      trialHistoryApi,
+      t,
+      getRecords: () => records,
+      getContext: () => getBridge()?.trialHistoryContext
+    });
+
     function reload() {
       const loaded = pluginStorage.loadTrialHistory();
       loadFailed = loaded.failed;
       const merged = new Map(loaded.records.map((record) => [record.key, record]));
       for (const [key, record] of unsaved) merged.set(key, record);
       records = Array.from(merged.values()).sort(trialHistoryApi.compareSnapshots);
+      signupWarning.refresh();
       multipleGuilds =
         new Set(
           records.map((record) => JSON.stringify([record.guildId, record.guildId == null ? record.guildName : null]))
@@ -12918,12 +13693,12 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         conflicts: count("conflict")
       };
       let markup = `<section class="mwi-trial-import" aria-label="${escapeHtml(t("trialDataTransfer"))}" aria-busy="${importBusy}">
-        <header class="mwi-trial-toolbar"><div class="mwi-trial-heading"><h2>${escapeHtml(t("trialHistory"))}</h2><p class="mwi-trial-notice" data-state="${unsaved.size || loadFailed ? "warning" : "saved"}" role="status" aria-live="polite">${escapeHtml(t(unsaved.size ? "trialSaveFailed" : loadFailed ? "trialLoadFailed" : "trialSavedCount", { count: records.length }))}</p></div><div class="mwi-trial-controls"><button type="button" data-trial-screenshot-mode aria-pressed="${screenshotMode}" title="${escapeHtml(t("trialScreenshotHint"))}">${escapeHtml(t(screenshotMode ? "trialScreenshotExit" : "trialScreenshotMode"))}</button><button type="button" data-trial-image="copy"${screenshotBusy || !records.length ? " disabled" : ""}>${escapeHtml(t("trialScreenshotCopy"))}</button><button type="button" data-trial-image="download"${screenshotBusy || !records.length ? " disabled" : ""}>${escapeHtml(t("trialScreenshotDownload"))}</button><button type="button" data-role="trial-import-open"${importBusy ? " disabled" : ""}>${escapeHtml(t("trialImport"))}</button>
+        <header class="mwi-trial-toolbar"><div class="mwi-trial-heading"><h2>${escapeHtml(t("trialHistory"))}</h2><p class="mwi-trial-notice" data-state="${unsaved.size || loadFailed ? "warning" : "saved"}" role="status" aria-live="polite">${escapeHtml(t(unsaved.size ? "trialSaveFailed" : loadFailed ? "trialLoadFailed" : "trialSavedCount", { count: records.length }))}</p></div><div class="mwi-trial-controls"><button type="button" data-trial-simple-names aria-pressed="${simpleNames}">${escapeHtml(t("trialSimpleNames"))}</button><button type="button" data-trial-screenshot-mode aria-pressed="${screenshotMode}">${escapeHtml(t(screenshotMode ? "trialScreenshotExit" : "trialScreenshotMode"))}</button><button type="button" data-trial-image="copy"${screenshotBusy || !records.length ? " disabled" : ""}>${escapeHtml(t("trialScreenshotCopy"))}</button><button type="button" data-trial-image="download"${screenshotBusy || !records.length ? " disabled" : ""}>${escapeHtml(t("trialScreenshotDownload"))}</button><button type="button" data-role="trial-import-open"${importBusy ? " disabled" : ""}>${escapeHtml(t("trialImport"))}</button>
         <button type="button" data-role="trial-export"${records.length ? "" : ` disabled title="${escapeHtml(t("trialHistoryEmpty"))}"`}>${escapeHtml(t("trialExport"))}</button></div></header>
-        <details class="mwi-trial-guide" data-trial-image-help${screenshotHelpOpen ? " open" : ""}><summary>${escapeHtml(t("trialScreenshotGuide"))}</summary><p class="mwi-trial-help">${escapeHtml(t("trialScreenshotHelp"))}</p><p class="mwi-trial-help">${escapeHtml(t("trialScreenshotReady"))}</p></details>
+
         <p class="mwi-trial-help" data-trial-image-status role="status" aria-live="polite">${escapeHtml(screenshotBusy ? t("trialScreenshotWorking") : screenshotNotice ? t(screenshotNotice) : "")}</p>
         <input type="file" accept=".json,application/json" data-role="trial-import-file" aria-label="${escapeHtml(t("trialImportFile"))}" hidden>
-        <details class="mwi-trial-guide"${guideOpen ? " open" : ""}><summary>${escapeHtml(t("trialGuide"))}</summary><div class="mwi-trial-purpose" data-role="trial-purpose"><p>${escapeHtml(t("trialDisplayNotice"))}</p><p>${escapeHtml(t("trialFeedbackNotice"))}</p></div><p class="mwi-trial-help">${escapeHtml(t("trialHistoryHint"))}</p><p class="mwi-trial-help">${escapeHtml(t("trialImportHint"))}</p></details>
+
         <p data-role="trial-import-status" role="status" aria-live="polite" tabindex="-1">${escapeHtml(importBusy ? t("trialImportReading") : importNotice ? t(importNotice.key, importNotice.values) : "")}</p>`;
       if (importPreview) {
         markup += `<div class="mwi-trial-import-preview"><h3>${escapeHtml(t("trialImportPreview"))}</h3>
@@ -13041,6 +13816,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       renderRail,
       memberIdentityAttributes,
       formatMemberName,
+      renderMemberName,
       isScreenshotMode
     });
 
@@ -13069,15 +13845,22 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       playerPickerOpen = true;
     }
 
-    function renderMember(record, row) {
+    function renderMember(record, row, workSummary) {
       const rawName = record.members?.[row.memberKey ?? row.characterId]?.name;
-      const name = formatMemberName(trialHistoryApi.memberIdentity(record, row));
+      const identity = trialHistoryApi.memberIdentity(record, row);
+      const name = formatMemberName(identity);
+      const markup = renderMemberName(identity, record.members?.[row.memberKey ?? row.characterId]);
+      const share = trialHistoryApi.lowWorkShare(record, row, workSummary);
+      const warning = share === null ? "" : t("trialLowWork", { share: Math.floor(share * 10000) / 10000 });
+      const warningAttributes = warning
+        ? ` data-mwi-trial-low-work="true" title="${escapeHtml(warning)}" aria-description="${escapeHtml(warning)}"`
+        : "";
       const absent = trialHistoryApi.memberAbsent(record, row, getBridge()?.trialHistoryContext);
       const label = escapeHtml(t("trialMemberAbsent"));
       return (
         (rawName
-          ? `<button type="button" class="mwi-trial-profile-link" data-trial-profile="${escapeHtml(rawName)}" data-trial-identity="${escapeHtml(JSON.stringify(trialHistoryApi.memberIdentity(record, row)))}" aria-label="${escapeHtml(t("trialOpenProfile", { name }))}">${escapeHtml(name)}</button>`
-          : escapeHtml(name)) +
+          ? `<button type="button" class="mwi-trial-profile-link"${warningAttributes} data-trial-profile="${escapeHtml(rawName)}" data-trial-identity="${escapeHtml(JSON.stringify(trialHistoryApi.memberIdentity(record, row)))}" aria-label="${escapeHtml(t("trialOpenProfile", { name }))}">${markup}</button>`
+          : `<span${warningAttributes}>${markup}</span>`) +
         (absent
           ? ` <span class="mwi-trial-member-absent" role="img" tabindex="0" title="${label}" aria-label="${label}"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 4.5v4M8 10.5v1"/></svg></span>`
           : "")
@@ -13135,9 +13918,9 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       });
       return `<details class="mwi-trial-display-settings" ${displaySettingsOpen ? "open" : ""}>
         <summary><span>${escapeHtml(t("trialMemberColumns"))}</span><small>${escapeHtml(counts)}</small><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></summary>
-        <div class="mwi-trial-display-body"><div class="mwi-trial-display-toolbar"><p>${escapeHtml(t("trialColumnsHint"))}</p><div class="mwi-trial-display-presets" role="group" aria-label="${escapeHtml(t("trialColumnsPresets"))}">${["compact", "all", "default"].map((preset) => `<button type="button" data-trial-display-preset="${preset}">${escapeHtml(t(`trialColumnsPreset_${preset}`))}</button>`).join("")}</div></div>
+        <div class="mwi-trial-display-body"><div class="mwi-trial-display-toolbar"><div class="mwi-trial-display-presets" role="group" aria-label="${escapeHtml(t("trialColumnsPresets"))}">${["compact", "all", "default"].map((preset) => `<button type="button" data-trial-display-preset="${preset}">${escapeHtml(t(`trialColumnsPreset_${preset}`))}</button>`).join("")}</div></div>
         <div class="mwi-trial-display-groups">${displayApi.groups.map(({ key, fields }) => `<fieldset><legend>${escapeHtml(t(`trialColumnsGroup_${key}`))}<span>${fields.filter((field) => displaySettings[field]).length}/${fields.length}</span></legend><div class="mwi-trial-display-options">${fields.map((field) => `<label><input type="checkbox" role="switch" data-trial-display="${field}" ${displaySettings[field] ? "checked" : ""}><span>${escapeHtml(displayLabel(field))}</span><span class="mwi-trial-switch" aria-hidden="true"></span></label>`).join("")}</div></fieldset>`).join("")}</div>
-        <details class="mwi-trial-display-help"${displayHelpOpen ? " open" : ""}><summary>${escapeHtml(t("trialColumnsCalculations"))}</summary><p>${escapeHtml(t("trialDisplaySettingsHint"))}</p></details></div>
+</div>
         ${displaySaveFailed ? `<p role="status">${escapeHtml(t("trialDisplaySaveFailed"))}</p>` : ""}</details>`;
     }
 
@@ -13163,17 +13946,11 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
             (aggregate) => displaySettings[`${field}_${aggregate}`]
           );
           if (!aggregates.length) return "";
-          return `<div class="mwi-trial-overview-metric" data-trial-overview="${field}"><dl>${aggregates.map((aggregate) => `<div><dt>${escapeHtml(t(`trialAggregate_${field}_${aggregate}`))}</dt><dd data-trial-aggregate="${aggregate}">${escapeHtml(summaryNumber(stats[aggregate]))}</dd></div>`).join("")}</dl>${stats.missing ? `<p>${escapeHtml(t("trialKnownCoverage", { field: t(`trialField_${field}`), count: stats.count, total: record.rows.length }))}</p>` : ""}</div>`;
+          return `<div class="mwi-trial-overview-metric" data-trial-overview="${field}"><dl>${aggregates.map((aggregate) => `<div><dt>${escapeHtml(t(`trialAggregate_${field}_${aggregate}`))}</dt><dd data-trial-aggregate="${aggregate}">${escapeHtml(summaryNumber(stats[aggregate]))}</dd></div>`).join("")}</dl></div>`;
         })
         .join("");
-      const partial = Object.entries(summaries).some(([field, stats]) => {
-        const prefix = field === "workDone" ? "work" : field;
-        return stats.missing && (displaySettings[`${prefix}Share`] || displaySettings[`${prefix}Multiple`]);
-      })
-        ? `<p>${escapeHtml(t("trialPartialShare"))}</p>`
-        : "";
-      if (!items && !partial) return "";
-      return `<div class="mwi-trial-overview" data-role="trial-overview" aria-label="${escapeHtml(t("trialOverview"))}">${items}${partial}</div>`;
+      if (!items) return "";
+      return `<div class="mwi-trial-overview" data-role="trial-overview" aria-label="${escapeHtml(t("trialOverview"))}">${items}</div>`;
     }
 
     function renderRecord(record, showIdentity) {
@@ -13222,7 +13999,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
                 .displayRows(record, sort)
                 .map(
                   (row) =>
-                    `<tr${mode === "player" && trialHistoryApi.sameMember(selectedMember, trialHistoryApi.memberIdentity(record, row)) ? ' class="mwi-trial-player-selected" data-trial-selected-member' : ""}>${fields.map((field) => (field === "member" ? `<th scope="row"${memberAttributes(record, row)}>${renderMember(record, row)}</th>` : `<td data-trial-field="${field}">${escapeHtml(cellValue(row, field))}</td>`)).join("")}</tr>`
+                    `<tr${mode === "player" && trialHistoryApi.sameMember(selectedMember, trialHistoryApi.memberIdentity(record, row)) ? ' class="mwi-trial-player-selected" data-trial-selected-member' : ""}>${fields.map((field) => (field === "member" ? `<th scope="row"${memberAttributes(record, row)}>${renderMember(record, row, summaries.workDone)}</th>` : `<td data-trial-field="${field}">${escapeHtml(cellValue(row, field))}</td>`)).join("")}</tr>`
                 )
                 .join("")}</tbody></table>`
             : `<p class="mwi-trial-columns-empty">${escapeHtml(t("trialColumnsEmpty"))}</p>`
@@ -13266,7 +14043,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         .map((result) => result.member);
       const names = new Map();
       for (const member of members) names.set(member.name, (names.get(member.name) || 0) + 1);
-      return `<p class="mwi-trial-search-count" role="status">${escapeHtml(t("trialPlayerSearchCount", { count: results.length, total: members.length }))}</p><div class="mwi-trial-choices mwi-trial-player-results" data-role="trial-player" role="group" aria-label="${escapeHtml(t("trialChoosePlayer"))}">${results.map((member) => `<button type="button" data-trial-choice="player" value="${escapeHtml(member.key)}" aria-pressed="${member.key === current}"><span>${escapeHtml(formatMemberName(member))}</span>${!screenshotMode && names.get(member.name) > 1 ? `<small>${escapeHtml(member.id === null ? t("trialManualSource") : `ID ${member.id}`)}</small>` : ""}</button>`).join("")}</div>${results.length ? "" : `<p class="mwi-trial-empty">${escapeHtml(t(members.length ? "trialPlayerSearchEmpty" : "trialNoNamedPlayers"))}</p>`}`;
+      return `<p class="mwi-trial-search-count" role="status">${escapeHtml(t("trialPlayerSearchCount", { count: results.length, total: members.length }))}</p><div class="mwi-trial-choices mwi-trial-player-results" data-role="trial-player" role="group" aria-label="${escapeHtml(t("trialChoosePlayer"))}">${results.map((member) => `<button type="button" data-trial-choice="player" value="${escapeHtml(member.key)}" aria-pressed="${member.key === current}">${renderMemberName(member)}${!screenshotMode && names.get(member.name) > 1 ? `<small>${escapeHtml(member.id === null ? t("trialManualSource") : `ID ${member.id}`)}</small>` : ""}</button>`).join("")}</div>${results.length ? "" : `<p class="mwi-trial-empty">${escapeHtml(t(members.length ? "trialPlayerSearchEmpty" : "trialNoNamedPlayers"))}</p>`}`;
     }
 
     function renderPlayerPicker(members, current) {
@@ -13325,13 +14102,13 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       bindRankingSortable(panel);
       profileTooltip?.hide();
       capture();
+      renderMemberName.refresh(records, getBridge()?.trialHistoryContext);
       const host = panel?.querySelector('[data-role="trials-view"]');
       if (!host) return;
       for (const section of host.querySelectorAll("[data-trial-profile-section]"))
         profileSectionsOpen[section.dataset.trialProfileSection] = section.open;
       const searchInput = document.activeElement?.matches("[data-trial-player-search]") ? document.activeElement : null;
       const searchSelection = searchInput ? [searchInput.selectionStart, searchInput.selectionEnd] : null;
-      const rankingHelpOpen = Boolean(host.querySelector("[data-trial-ranking-help]")?.open);
       displayedMembers = [];
       highlightedMember = null;
       hoveredMemberCell = null;
@@ -13364,7 +14141,6 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         if (!selectedMember)
           markup += playerRenderer.renderRankings({
             records,
-            helpOpen: rankingHelpOpen,
             rankingOrder,
             orderSaveFailed: rankingOrderSaveFailed
           });
@@ -13541,10 +14317,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       host.addEventListener(
         "toggle",
         (event) => {
-          if (event.target.matches("[data-trial-image-help]")) screenshotHelpOpen = event.target.open;
-          else if (event.target.matches(".mwi-trial-guide")) guideOpen = event.target.open;
           if (event.target.matches(".mwi-trial-display-settings")) displaySettingsOpen = event.target.open;
-          if (event.target.matches(".mwi-trial-display-help")) displayHelpOpen = event.target.open;
           if (event.target.matches(".mwi-trial-player-picker") && event.target.isConnected)
             playerPickerOpen = event.target.open;
         },
@@ -13616,6 +14389,12 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         const imageButton = event.target.closest("[data-trial-image]");
         if (imageButton) {
           void exportScreenshot(host, imageButton.dataset.trialImage);
+          return;
+        }
+        if (event.target.closest("[data-trial-simple-names]")) {
+          simpleNames = !simpleNames;
+          refresh(panel);
+          host.querySelector("[data-trial-simple-names]")?.focus({ preventScroll: true });
           return;
         }
         if (event.target.closest("[data-trial-screenshot-mode]")) {
@@ -13804,8 +14583,10 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       const bridge = getBridge();
       if (bridge) bridge.onTrialStatsUpdated = onStats;
       capture();
+      signupWarning.start();
     }
     function dispose() {
+      signupWarning.dispose();
       rankingSortable?.destroy();
       rankingSortableHost = null;
       profileTooltip?.dispose();
@@ -14578,9 +15359,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
           button.disabled = !ready;
           button.title =
             excludedDomainNotice ||
-            (ready
-              ? t("targetButtonReady")
-              : t("targetButtonMissing", { missing: missing.join(ui().locale === "zh-CN" ? "、" : ", ") }));
+            (ready ? "" : t("targetButtonMissing", { missing: missing.join(ui().locale === "zh-CN" ? "、" : ", ") }));
         }
         const count = Object.keys(targets).filter((shrineHrid) =>
           domainEntries.some((entry) => entry.detail.shrineHrid === shrineHrid)
@@ -14681,7 +15460,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
           ${cap === null ? `<p class="mwi-shrine-warning">${escapeHtml(t("shrineCapUnknown"))}</p>` : aboveCap ? `<p class="mwi-shrine-warning" data-shrine-cap-warning>${escapeHtml(t("shrineAboveCap", { level: formatNumber(cap) }))}</p>` : ""}
           <section class="mwi-shrine-plan-effects" aria-label="${escapeHtml(t("shrineEffectComparison"))}"><h4>${escapeHtml(t("shrineEffectComparison"))}<small>${escapeHtml(t("shrineLevelRange", { start: plan.startLevel, target: plan.targetLevel }))}</small></h4>${renderPlanEffects(preview)}</section>
           <section class="mwi-shrine-plan-cost" aria-label="${escapeHtml(t("shrineRangeCost"))}"><h4>${escapeHtml(t("shrineRangeCost"))}</h4>${renderPlanMaterials(preview)}</section>
-          <details class="mwi-shrine-steps" data-shrine-steps${openPlans.has(plan.id) ? " open" : ""}><summary data-shrine-steps-summary>${escapeHtml(t("shrineSteps", { count: preview.steps.length }))}</summary><p class="mwi-shrine-muted">${escapeHtml(t("shrineStepsHint"))}</p><ol>${preview.steps.map((step) => `<li data-shrine-step="${step.level}"><div class="mwi-shrine-step-heading"><strong>${escapeHtml(t("shrineStepLevel", { start: step.level - 1, target: step.level }))}</strong><span>${step.effects.length ? step.effects.map((effect) => escapeHtml(`${effects.name(effect)} ${effects.value(effect, effect.value)}`)).join(" · ") : escapeHtml(t("shrineEffectsUnavailable"))}</span></div>${renderPlanMaterials({ status: "ok", totals: step.totals })}</li>`).join("")}</ol>${preview.status !== "ok" ? renderPlanMaterials(preview) : ""}</details>
+          <details class="mwi-shrine-steps" data-shrine-steps${openPlans.has(plan.id) ? " open" : ""}><summary data-shrine-steps-summary>${escapeHtml(t("shrineSteps", { count: preview.steps.length }))}</summary><ol>${preview.steps.map((step) => `<li data-shrine-step="${step.level}"><div class="mwi-shrine-step-heading"><strong>${escapeHtml(t("shrineStepLevel", { start: step.level - 1, target: step.level }))}</strong><span>${step.effects.length ? step.effects.map((effect) => escapeHtml(`${effects.name(effect)} ${effects.value(effect, effect.value)}`)).join(" · ") : escapeHtml(t("shrineEffectsUnavailable"))}</span></div>${renderPlanMaterials({ status: "ok", totals: step.totals })}</li>`).join("")}</ol>${preview.status !== "ok" ? renderPlanMaterials(preview) : ""}</details>
           </div>
         </article>`;
         })
@@ -14741,14 +15520,14 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       const selection = guildTokenCreditSelectionState();
       const activeState = selection.allSelected ? "true" : selection.partiallySelected ? "mixed" : "false";
       const indicator = selection.allSelected ? "✓" : selection.partiallySelected ? "−" : "";
-      return `<button class="mwi-token-credit-plan-toggle" data-role="toggle-guild-token-credit-plan" data-active="${activeState}" type="button" aria-pressed="${activeState}"><span class="mwi-token-credit-plan-indicator" aria-hidden="true">${indicator}</span><span class="mwi-token-credit-plan-copy"><strong>${escapeHtml(t("useGuildTokensForMissingCredits"))}</strong><small>${escapeHtml(t("useGuildTokensForMissingCreditsHint"))}</small></span></button>`;
+      return `<button class="mwi-token-credit-plan-toggle" data-role="toggle-guild-token-credit-plan" data-active="${activeState}" type="button" aria-pressed="${activeState}"><span class="mwi-token-credit-plan-indicator" aria-hidden="true">${indicator}</span><span class="mwi-token-credit-plan-copy"><strong>${escapeHtml(t("useGuildTokensForMissingCredits"))}</strong></span></button>`;
     }
 
     function renderGuildTokenBudgetControl() {
       const snapMarks = GUILD_TOKEN_BUDGET_SNAP_PERCENTAGES.map(
         (percentage) => `<i data-percentage="${percentage}" style="--mwi-snap-position:${percentage}%"></i>`
       ).join("");
-      return `<section class="mwi-token-budget" data-role="guild-token-budget-control"><div class="mwi-token-budget-heading"><strong>${escapeHtml(t("autoGuildTokenBudget"))}</strong><small>${escapeHtml(t("autoGuildTokenBudgetHint"))}</small></div><div class="mwi-token-budget-inputs"><span class="mwi-token-budget-range-wrap"><input data-role="guild-token-budget-range" type="range" min="0" max="0" step="1" value="0" disabled aria-label="${escapeHtml(t("autoGuildTokenBudget"))}"><span class="mwi-token-budget-snap-points" aria-hidden="true">${snapMarks}</span></span><output class="mwi-token-budget-percent" data-role="guild-token-budget-percent" aria-live="polite">0%</output><label><input data-role="guild-token-budget-number" type="number" min="0" max="0" step="1" value="0" disabled><span>${escapeHtml(t("guildTokens"))}</span></label></div><span class="mwi-token-budget-available" data-role="guild-token-budget-available">${escapeHtml(t("autoGuildTokenBudgetAvailable", { count: "0" }))}</span></section>`;
+      return `<section class="mwi-token-budget" data-role="guild-token-budget-control"><div class="mwi-token-budget-heading"><strong>${escapeHtml(t("autoGuildTokenBudget"))}</strong></div><div class="mwi-token-budget-inputs"><span class="mwi-token-budget-range-wrap"><input data-role="guild-token-budget-range" type="range" min="0" max="0" step="1" value="0" disabled aria-label="${escapeHtml(t("autoGuildTokenBudget"))}"><span class="mwi-token-budget-snap-points" aria-hidden="true">${snapMarks}</span></span><output class="mwi-token-budget-percent" data-role="guild-token-budget-percent" aria-live="polite">0%</output><label><input data-role="guild-token-budget-number" type="number" min="0" max="0" step="1" value="0" disabled><span>${escapeHtml(t("guildTokens"))}</span></label></div><span class="mwi-token-budget-available" data-role="guild-token-budget-available">${escapeHtml(t("autoGuildTokenBudgetAvailable", { count: "0" }))}</span></section>`;
     }
 
     function updateGuildTokenBudgetPercentage(panel, value, max, snappedTo = null) {
@@ -14884,7 +15663,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
           const accent = credit ? credit[1] : item.itemHrid === "/items/guild_token" ? "#e65d68" : "#7778b4";
           const exchangeMode = useGuildTokens ? t("guildTokenCreditMode") : t("optimalItemCreditMode");
           const exchangeModeMarkup = isGuildCredit
-            ? `<button class="mwi-material-exchange-mode" data-role="toggle-credit-token-mode" data-credit-hrid="${escapeHtml(item.itemHrid)}" data-active="${String(useGuildTokens)}" type="button" aria-pressed="${String(useGuildTokens)}" title="${escapeHtml(t("creditExchangeModeTitle", { mode: exchangeMode }))}">${escapeHtml(exchangeMode)}</button>`
+            ? `<button class="mwi-material-exchange-mode" data-role="toggle-credit-token-mode" data-credit-hrid="${escapeHtml(item.itemHrid)}" data-active="${String(useGuildTokens)}" type="button" aria-pressed="${String(useGuildTokens)}">${escapeHtml(exchangeMode)}</button>`
             : "";
           const conversionPlans = [];
           if (row && row.missing > 0 && isGuildCredit) {
@@ -14963,12 +15742,11 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         const hasAvailableUpgrade = entries.some((entry) => currentGuildBuffLevel(entry) < entry.maxLevel);
         const emptyStatus =
           state.upgradePresetNotice || (hasAvailableUpgrade ? t("noUpgradePlans") : t("allBuffsMaxed"));
-        const emptyMessage =
-          state.upgradePresetNotice || (hasAvailableUpgrade ? t("noUpgradePlansHint") : t("noUpgradeMaterials"));
+        const emptyMessage = state.upgradePresetNotice || (hasAvailableUpgrade ? "" : t("noUpgradeMaterials"));
         setShrineGuideContext({ plans: [], estimate: { rows: [] }, creditMaterialPlans: {} });
         updateGuildTokenBudgetControl(panel, null, Array.isArray(state.characterItems));
         status.textContent = emptyStatus;
-        updateRenderedMarkup(results, `<div class="mwi-empty">${escapeHtml(emptyMessage)}</div>`);
+        updateRenderedMarkup(results, emptyMessage ? `<div class="mwi-empty">${escapeHtml(emptyMessage)}</div>` : "");
         return;
       }
 
@@ -15115,6 +15893,94 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 })(typeof globalThis !== "undefined" ? globalThis : this, function (effectApi) {
   "use strict";
 
+  const HELP_SECTIONS = [
+    [
+      "guildPointOverview",
+      [
+        ["guildPointStartingBalance", ["guildPointStartingBalanceHint"]],
+        ["guildPointPlanningWeeks", ["guildPointPlanningWeeksHint"]],
+        ["guildPointForecastWeeks", ["guildPointForecastWeeksHint"]],
+        ["guildPointStatisticsHeading", ["guildPointTrendHint", "helpForecastEvidence", "helpForecastBacktest"]],
+        ["guildPointHelpDataTitle", ["guildPointHelpData"]],
+        ["guildPointHelpMethodTitle", ["guildPointHelpMethod"]],
+        ["guildPointHelpResultTitle", ["guildPointHelpResult"]],
+        ["recentGuildPointHistory", ["manualGuildPointHint"]]
+      ]
+    ],
+    [
+      "constructionQueue",
+      [
+        ["buildingCatalog", ["buildingCatalogHint", "constructionQueueEmpty"]],
+        ["constructionQueue", ["constructionQueueDragHint"]],
+        ["guildPointPlanningHeading", ["constructionBudgetEmptySummary"]],
+        ["constructionEta", ["constructionEtaNoPlanHint", "constructionEtaCoveredHint", "helpConstructionEta"]]
+      ]
+    ],
+    [
+      "trialScreenshotGuide",
+      [
+        ["trialHelpScreenshotScope", ["trialHelpScreenshotPreview", "trialScreenshotHelp"]],
+        ["trialHelpSharing", ["trialScreenshotReady"]],
+        ["trialSimpleNames", ["trialSimpleNamesHint"]],
+        ["trialScreenshotMode", ["trialScreenshotHint"]]
+      ]
+    ],
+    [
+      "trialHistory",
+      [
+        ["trialHelpCollection", ["trialHelpHistoryPreview", "trialHistoryHint"]],
+        ["trialHelpImport", ["trialImportHint"]],
+        ["trialHelpPurpose", ["trialDisplayNotice"]],
+        ["trialHelpFeedback", ["trialFeedbackNotice"]]
+      ]
+    ],
+    [
+      "trialColumnsCalculations",
+      [
+        ["trialMemberColumns", ["trialColumnsHint"]],
+        ["trialColumnsCalculations", ["trialHelpColumnsPreview"]],
+        ["trialHelpShare", ["trialHelpShareBody"]],
+        ["trialHelpAverage", ["trialHelpAverageBody"]],
+        ["trialHelpMissing", ["trialHelpMissingBody", "helpTrialCoverage", "trialPartialShare"]]
+      ]
+    ],
+    [
+      "trialPlayerRankings",
+      [
+        ["trialPlayerOverview", ["trialHelpOverviewPreview", "trialOverviewHelp"]],
+        ["trialRankingMethod", ["trialHelpRankingPreview"]],
+        ["trialHelpCounts", ["trialRankingCountHelp"]],
+        ["trialHelpRankingAverage", ["trialRankingAverageHelp"]],
+        ["trialRankingJoinedAt", ["trialRankingJoinedAtHelp"]],
+        ["helpRankingOrder", ["trialRankingOrderHint"]],
+        ["trialProfileJoinedAt", ["trialProfileJoinedAtHelp"]],
+        ["trialPlayerProfile", ["trialProfileObservation"]]
+      ]
+    ],
+    [
+      "shrineUpgrade",
+      [
+        ["shrineUpgrade", ["noUpgradePlansHint", "targetButtonReady"]],
+        ["shrineEffectComparison", ["shrineStepsHint"]],
+        ["useGuildTokensForMissingCredits", ["useGuildTokensForMissingCreditsHint", "helpCreditExchangeMode"]],
+        ["autoGuildTokenBudget", ["autoGuildTokenBudgetHint"]],
+        ["guideEnable", ["guideReadyHint", "guideNoPlansHint"]]
+      ]
+    ],
+    [
+      "helpSettingsAndMarket",
+      [
+        ["interfaceSettings", ["interfaceSettingsHint"]],
+        ["shrineAutofillRange", ["shrineAutofillRangeHint"]],
+        ["sidebarDisplayName", ["sidebarDisplayNameHint"]],
+        ["showConstructionView", ["showConstructionViewHint"]],
+        ["showTrialHistoryView", ["showTrialHistoryViewHint"]],
+        ["priceReference", ["priceReferenceATitle", "priceReferenceBTitle"]],
+        ["maxItemUnitPriceInput", ["maxItemUnitPriceHint"]]
+      ]
+    ]
+  ];
+
   function createSettingsView(dependencies) {
     const {
       state,
@@ -15187,22 +16053,29 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       )}${renderGuildBuffDomain("combat", snapshot.entries, spriteBaseHref)}</div>`;
     }
 
+    function renderHelp() {
+      const sections = HELP_SECTIONS.map(([title, topics]) => {
+        const body = topics
+          .map(
+            ([heading, keys]) =>
+              `<div><dt>${escapeHtml(t(heading))}</dt><dd>${keys
+                .flatMap((key) => t(key).split("\n"))
+                .filter(Boolean)
+                .map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`)
+                .join("")}</dd></div>`
+          )
+          .join("");
+        return `<details class="mwi-context-help" data-settings-help-topic="${title}"><summary class="mwi-help-toggle" id="mwi-help-${title}">${escapeHtml(t(title))}</summary><dl class="mwi-help-sections">${body}</dl></details>`;
+      }).join("");
+      return `<section class="mwi-settings-block mwi-settings-help" data-role="settings-help" aria-labelledby="mwi-settings-help-heading"><div class="mwi-settings-block-heading"><h4 id="mwi-settings-help-heading">${escapeHtml(t("settingsHelp"))}</h4></div>${sections}</section>`;
+    }
+
     function renderSettingsContent(snapshot) {
-      return `<section class="mwi-settings-block" aria-labelledby="mwi-settings-autofill-heading"><div class="mwi-settings-block-heading"><h4 id="mwi-settings-autofill-heading">${escapeHtml(
-        t("shrineAutofillRange")
-      )}</h4><p>${escapeHtml(t("shrineAutofillRangeHint"))}</p></div>${renderShrineAutofillSettings(
-        snapshot
-      )}</section><section class="mwi-settings-block" aria-labelledby="mwi-settings-interface-heading"><div class="mwi-settings-block-heading"><h4 id="mwi-settings-interface-heading">${escapeHtml(
-        t("interfaceVisibility")
-      )}</h4></div><form class="mwi-settings-name" data-role="settings-sidebar-name-form"><label for="mwi-settings-sidebar-name">${escapeHtml(t("sidebarDisplayName"))}</label><div class="mwi-settings-name-controls"><input id="mwi-settings-sidebar-name" data-role="settings-sidebar-name" type="text" value="${escapeHtml(state.sidebarDisplayName || "")}" placeholder="${escapeHtml(t("sidebarCredit"))}" aria-describedby="mwi-settings-sidebar-name-hint" autocomplete="off"><button id="mwi-settings-sidebar-name-save" type="submit">${escapeHtml(t("sidebarNameSave"))}</button><button id="mwi-settings-sidebar-name-reset" type="button" data-role="settings-sidebar-name-reset">${escapeHtml(t("sidebarNameReset"))}</button></div><p id="mwi-settings-sidebar-name-hint">${escapeHtml(t("sidebarDisplayNameHint"))}</p></form><label class="mwi-settings-switch"><span class="mwi-settings-switch-copy"><strong>${escapeHtml(
-        t("showConstructionView")
-      )}</strong><small id="mwi-settings-construction-hint">${escapeHtml(
-        t("showConstructionViewHint")
-      )}</small></span><input id="mwi-settings-show-construction" class="mwi-settings-switch-input" data-role="settings-show-construction" type="checkbox" role="switch" aria-describedby="mwi-settings-construction-hint"></label><label class="mwi-settings-switch"><span class="mwi-settings-switch-copy"><strong>${escapeHtml(
-        t("showTrialHistoryView")
-      )}</strong><small id="mwi-settings-trials-hint">${escapeHtml(
-        t("showTrialHistoryViewHint")
-      )}</small></span><input id="mwi-settings-show-trials" class="mwi-settings-switch-input" data-role="settings-show-trials" type="checkbox" role="switch" aria-describedby="mwi-settings-trials-hint"></label></section>`;
+      return `<section class="mwi-settings-block" aria-labelledby="mwi-settings-autofill-heading"><div class="mwi-settings-block-heading"><h4 id="mwi-settings-autofill-heading">${escapeHtml(t("shrineAutofillRange"))}</h4></div>${renderShrineAutofillSettings(snapshot)}</section>
+      <section class="mwi-settings-block" aria-labelledby="mwi-settings-interface-heading"><div class="mwi-settings-block-heading"><h4 id="mwi-settings-interface-heading">${escapeHtml(t("interfaceVisibility"))}</h4></div>
+      <form class="mwi-settings-name" data-role="settings-sidebar-name-form"><label for="mwi-settings-sidebar-name">${escapeHtml(t("sidebarDisplayName"))}</label><div class="mwi-settings-name-controls"><input id="mwi-settings-sidebar-name" data-role="settings-sidebar-name" type="text" value="${escapeHtml(state.sidebarDisplayName || "")}" placeholder="${escapeHtml(t("sidebarCredit"))}" autocomplete="off"><button id="mwi-settings-sidebar-name-save" type="submit">${escapeHtml(t("sidebarNameSave"))}</button><button id="mwi-settings-sidebar-name-reset" type="button">${escapeHtml(t("sidebarNameReset"))}</button></div></form>
+      <label class="mwi-settings-switch"><span class="mwi-settings-switch-copy"><strong>${escapeHtml(t("showConstructionView"))}</strong></span><input id="mwi-settings-show-construction" class="mwi-settings-switch-input" data-role="settings-show-construction" type="checkbox" role="switch"></label>
+      <label class="mwi-settings-switch"><span class="mwi-settings-switch-copy"><strong>${escapeHtml(t("showTrialHistoryView"))}</strong></span><input id="mwi-settings-show-trials" class="mwi-settings-switch-input" data-role="settings-show-trials" type="checkbox" role="switch"></label></section>${renderHelp()}`;
     }
 
     function renderSettingsMarkup() {
@@ -15210,9 +16083,9 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       const hidden = state.settingsOpen === true ? "" : " hidden";
       return `<section id="mwi-settings-panel" class="mwi-settings-panel" data-role="settings-panel" aria-labelledby="mwi-settings-title" tabindex="-1"${hidden}><header class="mwi-settings-header"><span><h3 id="mwi-settings-title">${escapeHtml(
         t("interfaceSettings")
-      )}</h3><p>${escapeHtml(t("interfaceSettingsHint"))}</p></span><button class="mwi-settings-close" data-role="settings-close" type="button" title="${escapeHtml(
-        t("closeInterfaceSettings")
-      )}" aria-label="${escapeHtml(t("closeInterfaceSettings"))}">×</button></header><div class="mwi-settings-content" data-role="settings-content">${renderSettingsContent(
+      )}</h3></span><button class="mwi-settings-close" data-role="settings-close" type="button" title="${escapeHtml(
+        t("backFromSettings")
+      )}" aria-label="${escapeHtml(t("backFromSettings"))}">${escapeHtml(t("backFromSettings"))}</button></header><div class="mwi-settings-content" data-role="settings-content">${renderSettingsContent(
         snapshot
       )}</div><p class="mwi-settings-status" data-role="settings-status" role="status" aria-live="polite" aria-atomic="true"></p></section>`;
     }
@@ -15231,7 +16104,15 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       const focused = content?.ownerDocument?.activeElement;
       const focusedId = focused && content.contains(focused) ? focused.id : "";
       const selection = focused === nameInput ? [nameInput.selectionStart, nameInput.selectionEnd] : null;
+      const openHelpTopics = new Set(
+        Array.from(
+          content?.querySelectorAll("[data-settings-help-topic][open]") || [],
+          (node) => node.dataset.settingsHelpTopic
+        )
+      );
       updateRenderedMarkup(content, renderSettingsContent(snapshot));
+      for (const topic of content?.querySelectorAll("[data-settings-help-topic]") || [])
+        topic.open = openHelpTopics.has(topic.dataset.settingsHelpTopic);
       const updatedNameInput = settingsPanel.querySelector('[data-role="settings-sidebar-name"]');
       if (updatedNameInput && draftName !== undefined) updatedNameInput.value = draftName;
       const excludedHrids = currentExcludedGuildBuffHrids();
@@ -15549,8 +16430,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     }
 
     function shrineGuideStatusCopy(model) {
-      if (!model || model.status === "inactive") return { title: t("guideReady"), detail: t("guideReadyHint") };
-      if (model.status === "no_plans") return { title: t("guideNoPlans"), detail: t("guideNoPlansHint") };
+      if (!model || model.status === "inactive") return { title: t("guideReady"), detail: "" };
+      if (model.status === "no_plans") return { title: t("guideNoPlans"), detail: "" };
       if (model.status === "loading") return { title: t("guideLoading"), detail: t("guideLoadingHint") };
       if (model.status === "complete") return { title: t("guideComplete"), detail: t("guideCompleteHint") };
       if (model.status === "choose_credit") {
@@ -16599,23 +17480,14 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       if (status) status.hidden = !hasGuildBuildingClearUndo();
     }
 
-    function setPanelView(panel, view) {
+    function setPanelView(panel, view, { preserveSettings = false } = {}) {
       const selectedView = normalizePanelView(view);
       if (!panelViewEnabled(selectedView)) return false;
-      for (const candidate of PANEL_VIEWS) {
-        const content = panel.querySelector(`[data-role="${candidate}-view"]`);
-        const tab = panel.querySelector(`[data-role="view-${candidate}"]`);
-        const active = candidate === selectedView;
-        if (content) content.hidden = !active;
-        if (tab) {
-          tab.setAttribute("aria-selected", String(active));
-          tab.setAttribute("tabindex", active ? "0" : "-1");
-          tab.classList.toggle("mwi-view-tab-active", active);
-        }
-      }
+      if (!preserveSettings) state.settingsOpen = false;
       panel.dataset.activeView = selectedView;
       state.activeView = selectedView;
       const persisted = persistPluginUiState();
+      syncSettingsPage(panel);
       if (selectedView === "upgrade") refreshGuildUpgrade(panel);
       else if (selectedView === "construction") refreshGuildConstruction(panel);
       else if (selectedView === "trials") refreshTrialHistory(panel);
@@ -16639,8 +17511,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       }
     }
 
-    function setSettingsOpen(panel, open, { restoreFocus = false } = {}) {
-      state.settingsOpen = Boolean(open);
+    function syncSettingsPage(panel) {
+      panel.dataset.settingsOpen = String(state.settingsOpen);
       const trigger = panel.querySelector('[data-role="toggle-settings"]');
       const settings = panel.querySelector('[data-role="settings-panel"]');
       if (settings) settings.hidden = !state.settingsOpen;
@@ -16650,6 +17522,24 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         trigger.setAttribute("aria-label", label);
         trigger.setAttribute("title", label);
       }
+      trigger?.setAttribute("aria-current", state.settingsOpen ? "page" : "false");
+      for (const candidate of PANEL_VIEWS) {
+        const active = candidate === state.activeView && !state.settingsOpen;
+        const content = panel.querySelector(`[data-role="${candidate}-view"]`);
+        const tab = panel.querySelector(`[data-role="view-${candidate}"]`);
+        if (content) content.hidden = !active;
+        if (tab) {
+          tab.setAttribute("aria-selected", String(active));
+          tab.setAttribute("tabindex", candidate === state.activeView ? "0" : "-1");
+          tab.classList.toggle("mwi-view-tab-active", active);
+        }
+      }
+    }
+
+    function setSettingsOpen(panel, open, { restoreFocus = false } = {}) {
+      state.settingsOpen = Boolean(open);
+      syncSettingsPage(panel);
+      const trigger = panel.querySelector('[data-role="toggle-settings"]');
       if (state.settingsOpen) {
         const refreshedSettings = refreshSettings(panel);
         const firstControl =
@@ -16676,7 +17566,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       const statusPrefix = construction ? "constructionView" : "trialHistoryView";
       state[stateKey] = Boolean(visible);
       if (!state[stateKey] && state.activeView === view) {
-        setPanelView(panel, nearestVisiblePanelView(view));
+        setPanelView(panel, nearestVisiblePanelView(view), { preserveSettings: true });
       }
       syncPanelViewVisibility(panel);
       const persisted = persistPluginUiState();
@@ -16884,10 +17774,10 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         <div id="mwi-view-panel-credit" data-role="credit-view" role="tabpanel" aria-labelledby="mwi-view-tab-credit"${state.activeView === "credit" ? "" : " hidden"}>
           <div class="mwi-controls">
             <div class="mwi-number-field"><label for="mwi-target-credit">${escapeHtml(t("targetCredits"))}</label><span class="mwi-number-stepper mwi-target-credit-stepper"><input id="mwi-target-credit" data-role="target" type="number" min="1" step="100" inputmode="numeric" value="${state.targetCredit}"><span class="mwi-stepper-buttons"><button class="mwi-stepper-button mwi-stepper-up" data-role="number-step" data-input-role="target" data-direction="1" type="button" aria-label="${escapeHtml(t("increaseTargetCredits"))}" title="${escapeHtml(t("increaseTargetCredits"))}"><svg viewBox="0 0 16 10" aria-hidden="true"><path d="M2 8 8 2l6 6"></path></svg></button><button class="mwi-stepper-button mwi-stepper-down" data-role="number-step" data-input-role="target" data-direction="-1" type="button" aria-label="${escapeHtml(t("decreaseTargetCredits"))}" title="${escapeHtml(t("decreaseTargetCredits"))}"><svg viewBox="0 0 16 10" aria-hidden="true"><path d="M2 2l6 6 6-6"></path></svg></button></span></span></div>
-            <div class="mwi-price-reference" role="group" aria-label="${escapeHtml(t("marketReference"))}"><span class="mwi-price-reference-label">${escapeHtml(t("priceReference"))}</span><button data-role="price-reference" data-price-reference="a" type="button" title="${escapeHtml(priceReference("a").title)}">${escapeHtml(priceReference("a").label)}</button><button data-role="price-reference" data-price-reference="b" type="button" title="${escapeHtml(priceReference("b").title)}">${escapeHtml(priceReference("b").label)}</button></div>
+            <div class="mwi-price-reference" role="group" aria-label="${escapeHtml(t("marketReference"))}"><span class="mwi-price-reference-label">${escapeHtml(t("priceReference"))}</span><button data-role="price-reference" data-price-reference="a" type="button">${escapeHtml(priceReference("a").label)}</button><button data-role="price-reference" data-price-reference="b" type="button">${escapeHtml(priceReference("b").label)}</button></div>
             <button data-role="refresh" type="button">${escapeHtml(t("refreshEstimate"))}</button>
             <div class="mwi-price-limit-control">
-              <div class="mwi-price-limit" title="${escapeHtml(t("maxItemUnitPriceHint"))}"><span>${escapeHtml(t("maxItemUnitPricePrefix"))}</span><span class="mwi-number-stepper mwi-price-limit-stepper"><input data-role="max-item-unit-price-millions" type="number" min="10" step="10" inputmode="decimal" value="${escapeHtml(maxItemUnitPriceMillionsValue())}" placeholder="${escapeHtml(t("maxItemUnitPricePlaceholder"))}" aria-label="${escapeHtml(t("maxItemUnitPriceInput"))}" aria-describedby="mwi-max-item-unit-price-error" aria-invalid="false"><span class="mwi-stepper-buttons"><button class="mwi-stepper-button mwi-stepper-up" data-role="number-step" data-input-role="max-item-unit-price-millions" data-direction="1" type="button" aria-label="${escapeHtml(t("increaseMaxItemUnitPrice"))}" title="${escapeHtml(t("increaseMaxItemUnitPrice"))}"><svg viewBox="0 0 16 10" aria-hidden="true"><path d="M2 8 8 2l6 6"></path></svg></button><button class="mwi-stepper-button mwi-stepper-down" data-role="number-step" data-input-role="max-item-unit-price-millions" data-direction="-1" type="button" aria-label="${escapeHtml(t("decreaseMaxItemUnitPrice"))}" title="${escapeHtml(t("decreaseMaxItemUnitPrice"))}"><svg viewBox="0 0 16 10" aria-hidden="true"><path d="M2 2l6 6 6-6"></path></svg></button></span></span><span>${escapeHtml(t("maxItemUnitPriceSuffix"))}</span></div>
+              <div class="mwi-price-limit"><span>${escapeHtml(t("maxItemUnitPricePrefix"))}</span><span class="mwi-number-stepper mwi-price-limit-stepper"><input data-role="max-item-unit-price-millions" type="number" min="10" step="10" inputmode="decimal" value="${escapeHtml(maxItemUnitPriceMillionsValue())}" placeholder="${escapeHtml(t("maxItemUnitPricePlaceholder"))}" aria-label="${escapeHtml(t("maxItemUnitPriceInput"))}" aria-describedby="mwi-max-item-unit-price-error" aria-invalid="false"><span class="mwi-stepper-buttons"><button class="mwi-stepper-button mwi-stepper-up" data-role="number-step" data-input-role="max-item-unit-price-millions" data-direction="1" type="button" aria-label="${escapeHtml(t("increaseMaxItemUnitPrice"))}" title="${escapeHtml(t("increaseMaxItemUnitPrice"))}"><svg viewBox="0 0 16 10" aria-hidden="true"><path d="M2 8 8 2l6 6"></path></svg></button><button class="mwi-stepper-button mwi-stepper-down" data-role="number-step" data-input-role="max-item-unit-price-millions" data-direction="-1" type="button" aria-label="${escapeHtml(t("decreaseMaxItemUnitPrice"))}" title="${escapeHtml(t("decreaseMaxItemUnitPrice"))}"><svg viewBox="0 0 16 10" aria-hidden="true"><path d="M2 2l6 6 6-6"></path></svg></button></span></span><span>${escapeHtml(t("maxItemUnitPriceSuffix"))}</span></div>
               <small id="mwi-max-item-unit-price-error" class="mwi-price-limit-error" data-role="max-item-unit-price-error" role="status" aria-live="polite" hidden></small>
             </div>
           </div>
@@ -16905,7 +17795,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
           </section>
           <section class="mwi-shrine-guide-route" data-role="shrine-guide-route" data-active="${String(state.shrineGuideEnabled)}" data-status="inactive" aria-live="polite">
             <button class="mwi-shrine-guide-toggle" data-role="toggle-shrine-guide" type="button" aria-pressed="${String(state.shrineGuideEnabled)}"><span class="mwi-shrine-guide-beacon" aria-hidden="true"></span><span>${escapeHtml(state.shrineGuideEnabled ? t("guideDisable") : t("guideEnable"))}</span></button>
-            <span class="mwi-shrine-guide-copy"><strong data-role="shrine-guide-title">${escapeHtml(t("guideReady"))}</strong><small data-role="shrine-guide-detail">${escapeHtml(t("guideReadyHint"))}</small></span>
+            <span class="mwi-shrine-guide-copy"><strong data-role="shrine-guide-title">${escapeHtml(t("guideReady"))}</strong><small data-role="shrine-guide-detail"></small></span>
           </section>
           ${renderGuildTokenBudgetControl()}
           ${renderGuildTokenCreditPlanToggle()}
@@ -17145,12 +18035,14 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         (event) => {
           if (event.target.matches(".mwi-guild-point-history"))
             constructionView.setGuildPointHistoryOpen(event.target.open);
-          if (event.target.matches(".mwi-guild-point-planning-options"))
-            constructionView.setGuildPointPlanningOptionsOpen(event.target.open);
         },
         true
       );
       constructionResults.addEventListener("click", (event) => {
+        // Native toggle is queued; preserve the intended state before a refresh can replace the node.
+        const disclosure = event.target.closest("summary")?.parentElement;
+        if (!event.defaultPrevented && disclosure?.matches(".mwi-guild-point-history"))
+          constructionView.setGuildPointHistoryOpen(!disclosure.open);
         const button = event.target.closest("button");
         if (!button) return;
         const definitions = guildBuildingDefinitions();
@@ -17465,6 +18357,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       panel.__mwiSortableControllers = [tabSortable, constructionSortable];
       sortableControllers.push(tabSortable, constructionSortable);
       if (state.activeView !== savedActiveView) persistPluginUiState();
+      syncSettingsPage(panel);
       checkPluginUpdate(panel);
       return panel;
     }
