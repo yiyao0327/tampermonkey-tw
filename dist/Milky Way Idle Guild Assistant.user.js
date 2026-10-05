@@ -2,7 +2,7 @@
 // @name         公會助手
 // @name:en      Milky Way Idle Guild Assistant
 // @namespace    https://www.milkywayidle.com/
-// @version      1.2.56
+// @version      1.2.58
 // @author       柆雨
 // @license      MIT
 // @homepageURL  https://github.com/LaYuDr/milky-way-idle-guild-credit-optimizer
@@ -19,7 +19,7 @@
 // ==/UserScript==
 
 // MWI_GUILD_CREDIT_RUNTIME
-window.MwiGuildCreditVersion = "1.2.56";
+window.MwiGuildCreditVersion = "1.2.58";
 
 // SOURCE: src/market-data.js
 (function (root, factory) {
@@ -4523,6 +4523,9 @@ window.MwiGuildCreditVersion = "1.2.56";
       trialPlayerBack: "返回歷史列表",
       trialPlayerHistory: "參試歷史",
       trialPlayerProfile: "個人資料",
+      trialProfileShrines: "神龕",
+      trialShrineLife: "生活神龕",
+      trialShrineCombat: "戰鬥神龕",
       trialProfileRefresh: "重新整理資料",
       trialProfileLoading: "正在讀取資料…",
       trialProfileTimeout: "資料查詢超時，可點選重新整理資料重試。",
@@ -5350,6 +5353,9 @@ window.MwiGuildCreditVersion = "1.2.56";
       trialPlayerBack: "Back to history",
       trialPlayerHistory: "Trial history",
       trialPlayerProfile: "Player profile",
+      trialProfileShrines: "Shrines",
+      trialShrineLife: "Life shrines",
+      trialShrineCombat: "Combat shrines",
       trialProfileRefresh: "Refresh profile",
       trialProfileLoading: "Loading profile…",
       trialProfileTimeout: "Profile request timed out. Use Refresh profile to try again.",
@@ -11251,6 +11257,11 @@ window.MwiGuildCreditVersion = "1.2.56";
         #mwi-credit-optimizer .mwi-trial-profile-facts dd{margin:0;max-width:20ch;overflow-wrap:anywhere}
         #mwi-credit-optimizer .mwi-trial-profile-icon{width:20px;height:20px;flex:0 0 20px}
         #mwi-credit-optimizer .mwi-trial-skill-grid,#mwi-credit-optimizer .mwi-trial-equipment-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;margin-top:8px}
+        #mwi-credit-optimizer .mwi-trial-shrine-groups{display:grid;gap:10px;margin-top:12px}
+        #mwi-credit-optimizer .mwi-trial-shrine-group h4{margin:0 0 4px;font-size:13px;color:var(--trial-accent)}
+        #mwi-credit-optimizer .mwi-trial-shrine-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px}
+        #mwi-credit-optimizer .mwi-trial-shrine-slot{position:relative;aspect-ratio:1;min-width:0}
+        #mwi-credit-optimizer .mwi-trial-shrine-slot>svg{width:72%;height:72%;align-self:center}
         #mwi-credit-optimizer .mwi-trial-equipment-slot{position:relative;display:grid;place-items:center;min-width:0;aspect-ratio:1;border:1px solid #9da5df;border-radius:4px;background:#2c2c45;overflow-wrap:anywhere}
         #mwi-credit-optimizer .mwi-trial-equipment-slot .mwi-trial-profile-icon{width:82%;height:82%}
         #mwi-credit-optimizer .mwi-trial-equipment-empty{align-items:start;border-style:dashed;background:transparent;color:var(--trial-muted);font-size:12px;text-align:center;padding:2px}
@@ -12590,6 +12601,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     ranged: "archery_range",
     magic: "mystical_study"
   };
+  const SHRINE_KEYS = ["tempo", "spirit", "force", "rarity", "scholar"];
   function skillHouseLevel(roomMap, skillKey) {
     const room = SKILL_ROOMS[skillKey];
     if (!room || !roomMap || typeof roomMap !== "object" || Array.isArray(roomMap)) return null;
@@ -12715,8 +12727,9 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       const color = validHrid(appearance?.nameColorHrid, "name_colors")
         ? classes.get(appearance.nameColorHrid.split("/").pop())
         : null;
-      const native = color && classes.get("characterName") && classes.get("name");
-      return `<span class="mwi-trial-member-name${native ? ` ${e(classes.get("characterName"))}` : ""}" translate="no">${icons}<span class="mwi-trial-name-text${native ? ` ${e(classes.get("name"))} ${e(color)}` : ""}"${native ? ` data-name="${e(name)}"` : ""}><span>${e(name)}</span></span></span>`;
+      // Ranking overlays identify every native name, including names without a color.
+      const native = classes.get("characterName") && classes.get("name");
+      return `<span class="mwi-trial-member-name${native ? ` ${e(classes.get("characterName"))}` : ""}" translate="no">${icons}<span class="mwi-trial-name-text${native ? ` ${e(classes.get("name"))}${color ? ` ${e(color)}` : ""}` : ""}"${native ? ` data-name="${e(name)}"` : ""}><span>${e(name)}</span></span></span>`;
     };
     render.refresh = (records, context = {}) => {
       classes = nativeNameClasses(document);
@@ -12832,6 +12845,30 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         })
         .join("")}</div>`;
     }
+    function shrineBuffLevel(profile, hrid) {
+      const source = profile.guildBuffLevelMap || profile.characterGuildBuffMap;
+      const value = source && source[hrid];
+      const level = value && typeof value === "object" ? (value.level ?? value.currentLevel) : value;
+      return Number.isSafeInteger(level) && level >= 0 ? level : null;
+    }
+    function shrineMarkup(profile) {
+      const groups = [
+        ["life", "trialShrineLife", "skilling"],
+        ["combat", "trialShrineCombat", "combat"]
+      ];
+      return `<div class="mwi-trial-shrine-groups">${groups
+        .map(([domain, heading, suffix]) => {
+          const tiles = SHRINE_KEYS.map((key) => {
+            const hrid = `/guild_buffs/${key}_${suffix}`;
+            const name = t(`shrine${key[0].toUpperCase()}${key.slice(1)}`);
+            const level = shrineBuffLevel(profile, hrid);
+            const description = `${name} · ${t(heading)} Lv.${number(level)}`;
+            return `<div class="mwi-trial-equipment-slot mwi-trial-shrine-slot" data-trial-shrine="${domain}-${key}" ${tooltipAttribute("shrine", { guildBuffHrid: hrid, level })} tabindex="0" role="img" aria-label="${e(description)}" title="${e(description)}">${profileIcon?.("shrine", `/guild_shrines/${key}`) || ""}<span class="mwi-trial-equipment-level">Lv.${e(number(level))}</span></div>`;
+          }).join("");
+          return `<section class="mwi-trial-shrine-group" data-trial-shrine-domain="${domain}"><div class="mwi-trial-shrine-grid" aria-label="${e(t(heading))}">${tiles}</div></section>`;
+        })
+        .join("")}</div>`;
+    }
     function profileSection(key, title, content, sectionOpen) {
       if (!content) return "";
       return `<details class="mwi-trial-profile-section" data-trial-profile-section="${key}" ${sectionOpen[key] !== false ? "open" : ""}><summary>${e(t(title))}</summary>${content}</details>`;
@@ -12907,6 +12944,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         equipmentMarkup(profile) + abilitiesMarkup(profile),
         sectionOpen
       );
+      html += profileSection("shrines", "trialProfileShrines", shrineMarkup(profile), sectionOpen);
       for (const [field, heading, hrid] of [["characterHouseRoomMap", "trialProfileHouse", "roomHrid"]]) {
         const values = entries(profile[field]).filter((item) => item?.[hrid]);
         if (values.length)
@@ -13036,7 +13074,17 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   root.MwiGuildProfileTooltip = api;
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
   "use strict";
-  function createTooltip({ document, pageWindow, host, getData, getProfile, getBridge, t }) {
+  function createTooltip({
+    document,
+    pageWindow,
+    host,
+    getData,
+    getProfile,
+    getBridge,
+    t,
+    shrineEffects,
+    guildBuffEntries
+  }) {
     let anchor = null;
     let tooltip = null;
     let originalTitle = null;
@@ -13095,7 +13143,12 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       document.body.appendChild(tooltip);
       const hasExperience =
         data.kind === "item" || (Number.isFinite(data.record.level) && Number.isFinite(data.record.experience));
-      if (!hasExperience || getBridge()?.renderProfileTooltip?.(tooltip, profile, data.kind, data.record) !== true) {
+      if (data.kind === "shrine") {
+        tooltip.textContent = `${anchor.getAttribute("aria-label")}\n${shrineEffects?.profileSummary(guildBuffEntries?.() || [], data.record.guildBuffHrid, data.record.level) || t("shrineEffectsUnavailable")}`;
+      } else if (
+        !hasExperience ||
+        getBridge()?.renderProfileTooltip?.(tooltip, profile, data.kind, data.record) !== true
+      ) {
         tooltip.textContent = `${anchor.getAttribute("aria-label")}\n${t("trialProfileTooltipUnavailable")}`;
       }
       anchor.setAttribute("aria-describedby", tooltip.id);
@@ -13618,6 +13671,21 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     return sprite && /^[a-z0-9_]+$/.test(symbol || "") ? { sprite, symbol } : null;
   }
 
+  function profileIconSpec(kind, hrid) {
+    const name = String(hrid || "")
+      .split("/")
+      .pop();
+    const sprite =
+      kind === "skill"
+        ? "skills_sprite"
+        : kind === "ability"
+          ? "abilities_sprite"
+          : kind === "shrine"
+            ? "misc_sprite"
+            : "items_sprite";
+    return { sprite, symbol: kind === "shrine" ? `guild_shrine_${name}` : name };
+  }
+
   function createTrialHistoryView({
     document,
     domApi,
@@ -13630,6 +13698,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     sortableApi,
     screenshotApi,
     profileTooltipApi,
+    shrineEffects,
+    guildBuffEntries,
     profileReaderApi,
     resolveItemName,
     getBridge,
@@ -13693,13 +13763,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     }
 
     function profileIcon(kind, hrid) {
-      return gameIcon(
-        kind === "skill" ? "skills_sprite" : kind === "ability" ? "abilities_sprite" : "items_sprite",
-        String(hrid || "")
-          .split("/")
-          .pop(),
-        "mwi-trial-profile-icon"
-      );
+      const { sprite, symbol } = profileIconSpec(kind, hrid);
+      return gameIcon(sprite, symbol, "mwi-trial-profile-icon");
     }
 
     function gameIcon(sprite, symbol, className) {
@@ -14413,6 +14478,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       bindRankingSortable(panel);
       profileTooltip?.dispose();
       profileTooltip = profileTooltipApi?.createTooltip({
+        shrineEffects,
+        guildBuffEntries,
         document,
         pageWindow,
         host,
@@ -14780,7 +14847,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         trialHistoryApi.estimateCurrentTrialPoints(records, getBridge()?.trialHistoryContext)
     };
   }
-  return { createTrialHistoryView, projectIconSpec };
+  return { createTrialHistoryView, projectIconSpec, profileIconSpec };
 });
 
 
@@ -14874,7 +14941,27 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         ? t("shrineEffectsPerLevel", { effects: describe("increment") })
         : t("shrineEffectsFirstAndPerLevel", { first: describe("first"), later: describe("increment") });
     }
-    return { name, value, perLevel, summary };
+    function atLevel(detail, level) {
+      if (!Number.isSafeInteger(level) || level < 0) return t("shrineEffectsUnavailable");
+      const effects = core.guildBuffLevelEffects(detail);
+      if (!effects.length) return t("shrineEffectsUnavailable");
+      return effects
+        .map((effect) => `${name(effect)} ${value(effect, core.guildBuffEffectAtLevel(effect, level))}`)
+        .join("\n");
+    }
+    function profileSummary(entries, hrid, level) {
+      const match = /^\/guild_buffs\/(tempo|spirit|force|rarity|scholar)_(skilling|life|combat)$/.exec(hrid || "");
+      const exact = entries.find((entry) => entry.hrid === hrid);
+      const entry =
+        exact ||
+        (match &&
+          entries.find(
+            ({ detail }) =>
+              detail?.shrineHrid === `/guild_shrines/${match[1]}` && detail.isCombat === (match[2] === "combat")
+          ));
+      return Number.isSafeInteger(level) && level >= 0 ? atLevel(entry?.detail, level) : perLevel(entry?.detail, "\n");
+    }
+    return { name, value, perLevel, summary, atLevel, profileSummary };
   }
   return { createFormatter };
 });
@@ -19436,6 +19523,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     screenshotApi: window.MwiGuildTrialScreenshot,
     profileReaderApi: window.MwiGuildProfileReader,
     profileTooltipApi: window.MwiGuildProfileTooltip,
+    shrineEffects: window.MwiGuildShrineEffects.createFormatter({ core, t, ui }),
+    guildBuffEntries,
     resolveItemName,
     getBridge: () => window.__mwiGuildCreditBridge,
     getPanel: () => state.panel,
