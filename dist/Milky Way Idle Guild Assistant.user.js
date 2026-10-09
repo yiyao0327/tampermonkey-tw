@@ -2,7 +2,7 @@
 // @name         公會助手
 // @name:en      Milky Way Idle Guild Assistant
 // @namespace    https://www.milkywayidle.com/
-// @version      1.2.58
+// @version      1.2.61
 // @author       柆雨
 // @license      MIT
 // @homepageURL  https://github.com/LaYuDr/milky-way-idle-guild-credit-optimizer
@@ -19,7 +19,7 @@
 // ==/UserScript==
 
 // MWI_GUILD_CREDIT_RUNTIME
-window.MwiGuildCreditVersion = "1.2.58";
+window.MwiGuildCreditVersion = "1.2.61";
 
 // SOURCE: src/market-data.js
 (function (root, factory) {
@@ -3687,12 +3687,12 @@ window.MwiGuildCreditVersion = "1.2.58";
     { hrid: "/guild_buildings/kitchen", nameKey: "buildingKitchen", category: "life", costMultiplier: 0.5 },
     { hrid: "/guild_buildings/sewing_parlor", nameKey: "buildingSewingParlor", category: "life", costMultiplier: 0.5 },
     { hrid: "/guild_buildings/brewery", nameKey: "buildingBrewery", category: "life", costMultiplier: 0.5 },
-    { hrid: "/guild_buildings/library", nameKey: "buildingLibrary", category: "life", costMultiplier: 0.5 },
+    { hrid: "/guild_buildings/library", nameKey: "buildingLibrary", category: "combat", costMultiplier: 0.5 },
     { hrid: "/guild_buildings/laboratory", nameKey: "buildingLaboratory", category: "life", costMultiplier: 0.5 },
     {
       hrid: "/guild_buildings/mystical_study",
       nameKey: "buildingMysticalStudy",
-      category: "life",
+      category: "combat",
       costMultiplier: 0.5
     },
     {
@@ -7537,6 +7537,66 @@ window.MwiGuildCreditVersion = "1.2.58";
     return displayApi.normalize(value);
   }
 
+  function shortText(value, limit = 200) {
+    return typeof value === "string" ? value.slice(0, limit) : "";
+  }
+
+  function normalizeTrialViewState(value) {
+    const source = value && typeof value === "object" ? value : {};
+    const member = source.selectedMember;
+    const tableSorts = (Array.isArray(source.tableSorts) ? source.tableSorts : [])
+      .filter(
+        (entry) =>
+          Array.isArray(entry) &&
+          typeof entry[0] === "string" &&
+          entry[0].length <= 500 &&
+          entry[1] &&
+          Object.hasOwn(displayApi.defaults, entry[1].field) &&
+          ["asc", "desc"].includes(entry[1].direction)
+      )
+      .slice(-500)
+      .map(([key, sort]) => [key, { field: sort.field, direction: sort.direction }]);
+    return {
+      mode: ["week", "project", "player"].includes(source.mode) ? source.mode : "week",
+      selectedWeek: shortText(source.selectedWeek, 500),
+      selectedProject: shortText(source.selectedProject, 500),
+      selectedMember:
+        member &&
+        typeof member.name === "string" &&
+        member.name.trim() &&
+        (member.id == null || typeof member.id === "string" || Number.isSafeInteger(member.id))
+          ? { id: member.id == null ? null : String(member.id).slice(0, 160), name: shortText(member.name) }
+          : null,
+      returnMode: ["week", "project", "player"].includes(source.returnMode) ? source.returnMode : "week",
+      playerSearch: shortText(source.playerSearch),
+      playerPickerOpen: source.playerPickerOpen !== false,
+      simpleNames: source.simpleNames === true,
+      screenshotMode: source.screenshotMode === true,
+      displaySettingsOpen: source.displaySettingsOpen === true,
+      profileSectionsOpen: Object.fromEntries(
+        ["overview", "skills", "equipment", "shrines"].map((key) => [key, source.profileSectionsOpen?.[key] !== false])
+      ),
+      tableSorts
+    };
+  }
+
+  function normalizeConstructionUi(value, plans = []) {
+    const source = value && typeof value === "object" ? value : {};
+    const planned = new Set(plans.map((plan) => plan.buildingHrid));
+    return {
+      pickerOpen: typeof source.pickerOpen === "boolean" ? source.pickerOpen : plans.length === 0,
+      guildPointHistoryOpen: source.guildPointHistoryOpen === true,
+      expandedBuildingHrids: [
+        ...new Set(
+          (Array.isArray(source.expandedBuildingHrids) || source.expandedBuildingHrids instanceof Set
+            ? Array.from(source.expandedBuildingHrids)
+            : []
+          ).filter((hrid) => planned.has(hrid))
+        )
+      ]
+    };
+  }
+
   function createPluginStorage(options) {
     const { storage, location, config, buildingDataApi, marketDataApi, trialHistoryApi } = options;
     const creditHrids = new Set(config.CREDIT_TYPES.map(([hrid]) => hrid));
@@ -7588,6 +7648,25 @@ window.MwiGuildCreditVersion = "1.2.58";
     function saveTrialRankingOrder(value) {
       try {
         storage.setItem(`${trialDisplayKey()}:ranking-order`, JSON.stringify(displayApi.normalizeRankingOrder(value)));
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    function loadTrialViewState() {
+      try {
+        return normalizeTrialViewState(JSON.parse(storage.getItem(`${trialDisplayKey()}:view`)));
+      } catch (_) {
+        return normalizeTrialViewState(null);
+      }
+    }
+
+    function saveTrialViewState(value) {
+      try {
+        const key = `${trialDisplayKey()}:view`;
+        const text = JSON.stringify(normalizeTrialViewState(value));
+        if (storage.getItem(key) !== text) storage.setItem(key, text);
         return true;
       } catch (_) {
         return false;
@@ -7729,6 +7808,8 @@ window.MwiGuildCreditVersion = "1.2.58";
         showConstructionView: true,
         showTrialHistoryView: true,
         sidebarDisplayName: "",
+        settingsOpen: false,
+        openHelpTopics: [],
         activeView: "credit",
         panelOrder: normalizePanelOrder([], config.PANEL_VIEWS, config.DEFAULT_PANEL_ORDER),
         targetCredit: config.DEFAULT_TARGET_CREDIT,
@@ -7755,7 +7836,8 @@ window.MwiGuildCreditVersion = "1.2.58";
                 guildBuffHrid: plan.guildBuffHrid,
                 startLevel: plan.startLevel,
                 targetLevel: plan.targetLevel,
-                ...(plan.collapsed === true ? { collapsed: true } : {})
+                ...(plan.collapsed === true ? { collapsed: true } : {}),
+                ...(plan.stepsExpanded === true ? { stepsExpanded: true } : {})
               }))
           : [];
         const targetCredit = Number(stored.targetCredit);
@@ -7792,6 +7874,16 @@ window.MwiGuildCreditVersion = "1.2.58";
           showConstructionView: stored.showConstructionView !== false,
           showTrialHistoryView: stored.showTrialHistoryView !== false,
           sidebarDisplayName: normalizeSidebarDisplayName(stored.sidebarDisplayName),
+          settingsOpen: stored.settingsOpen === true,
+          openHelpTopics: Array.isArray(stored.openHelpTopics)
+            ? [
+                ...new Set(
+                  stored.openHelpTopics.filter(
+                    (key) => typeof key === "string" && /^[A-Za-z][A-Za-z0-9]{0,99}$/.test(key)
+                  )
+                )
+              ].slice(0, 50)
+            : [],
           activeView: normalizePanelView(stored.activeView, config.PANEL_VIEWS),
           panelOrder: normalizePanelOrder(stored.panelOrder, config.PANEL_VIEWS, config.DEFAULT_PANEL_ORDER),
           targetCredit: Number.isSafeInteger(targetCredit) && targetCredit > 0 ? targetCredit : fallback.targetCredit,
@@ -7808,6 +7900,8 @@ window.MwiGuildCreditVersion = "1.2.58";
         manualGuildPoints: null,
         guildPointSettings: { guildPointForecastWeeks: 6, guildPointPlanningWeeks: 0 },
         category: "all",
+        search: "",
+        constructionUi: normalizeConstructionUi(null),
         guildPointHistory: normalizeGuildPointHistory(null),
         guildPointSnapshot: null
       };
@@ -7867,6 +7961,8 @@ window.MwiGuildCreditVersion = "1.2.58";
                 : 0
           },
           category,
+          search: shortText(stored.search),
+          constructionUi: normalizeConstructionUi(stored.constructionUi, plans),
           guildPointHistory: migrateLegacyGuildPointManualWeeks(
             stored.guildPointHistory,
             stored.schemaVersion,
@@ -7897,6 +7993,8 @@ window.MwiGuildCreditVersion = "1.2.58";
               guildPointForecastWeeks: state.guildPointForecastWeeks,
               guildPointPlanningWeeks: state.guildPointPlanningWeeks,
               category: state.buildingCategory,
+              search: shortText(state.buildingSearch),
+              constructionUi: normalizeConstructionUi(state.constructionUi, state.buildingPlans),
               guildPointHistory: normalizeGuildPointHistory(state.guildPointHistory),
               guildPointSnapshot: normalizeGuildPointSnapshot({
                 ...state.guildPointSummary,
@@ -7922,7 +8020,8 @@ window.MwiGuildCreditVersion = "1.2.58";
           guildBuffHrid: plan.guildBuffHrid,
           startLevel: plan.startLevel,
           targetLevel: plan.targetLevel,
-          ...(plan.collapsed === true ? { collapsed: true } : {})
+          ...(plan.collapsed === true ? { collapsed: true } : {}),
+          ...(plan.stepsExpanded === true ? { stepsExpanded: true } : {})
         }));
         storage.setItem(
           config.UI_STATE_STORAGE_KEY,
@@ -7942,6 +8041,8 @@ window.MwiGuildCreditVersion = "1.2.58";
             showConstructionView: state.showConstructionView === true,
             showTrialHistoryView: state.showTrialHistoryView === true,
             sidebarDisplayName: normalizeSidebarDisplayName(state.sidebarDisplayName),
+            settingsOpen: state.settingsOpen === true,
+            openHelpTopics: Array.isArray(state.openHelpTopics) ? state.openHelpTopics.slice(0, 50) : [],
             activeView: state.activeView,
             panelOrder: normalizePanelOrder(state.panelOrder, config.PANEL_VIEWS, config.DEFAULT_PANEL_ORDER),
             useGuildTokensForMissingCredits: config.CREDIT_TYPES.every(([hrid]) =>
@@ -8095,6 +8196,8 @@ window.MwiGuildCreditVersion = "1.2.58";
     return {
       guildBuildingPlannerStorageKey,
       loadTrialHistory,
+      loadTrialViewState,
+      saveTrialViewState,
       loadTrialDisplay,
       saveTrialDisplay,
       loadTrialRankingOrder,
@@ -8117,6 +8220,8 @@ window.MwiGuildCreditVersion = "1.2.58";
   }
 
   return {
+    normalizeTrialViewState,
+    normalizeConstructionUi,
     normalizeSidebarDisplayName,
     normalizeTrialDisplay,
     normalizePanelView,
@@ -11374,14 +11479,16 @@ window.MwiGuildCreditVersion = "1.2.58";
     } = dependencies;
 
     const constructionUi = {
-      pickerOpen: state.buildingPlans.length === 0,
-      expandedBuildingHrids: new Set(),
-      guildPointHistoryOpen: false,
+      pickerOpen: state.constructionUi?.pickerOpen ?? state.buildingPlans.length === 0,
+      expandedBuildingHrids: new Set(state.constructionUi?.expandedBuildingHrids || []),
+      guildPointHistoryOpen: state.constructionUi?.guildPointHistoryOpen === true,
       trackedGuildPointEditWeekStarts: new Set(),
       trackedGuildPointEditWarning: null,
       clearUndoPlans: null,
       clearUndoTimer: null
     };
+
+    state.constructionUi = constructionUi;
 
     function guildPointForecastWeekCount() {
       return core.normalizeGuildPointForecastWeeks(state.guildPointForecastWeeks);
@@ -11743,6 +11850,7 @@ window.MwiGuildCreditVersion = "1.2.58";
 
     function setGuildPointHistoryOpen(open) {
       constructionUi.guildPointHistoryOpen = Boolean(open);
+      persistGuildBuildingPlannerState();
     }
 
     function openTrackedGuildPointEditWarning(weekStartAt) {
@@ -11915,6 +12023,7 @@ window.MwiGuildCreditVersion = "1.2.58";
 
     function setGuildBuildingPickerOpen(open) {
       constructionUi.pickerOpen = Boolean(open);
+      persistGuildBuildingPlannerState();
       return constructionUi.pickerOpen;
     }
 
@@ -12007,9 +12116,11 @@ window.MwiGuildCreditVersion = "1.2.58";
     function toggleGuildBuildingSteps(buildingHrid) {
       if (constructionUi.expandedBuildingHrids.has(buildingHrid)) {
         constructionUi.expandedBuildingHrids.delete(buildingHrid);
+        persistGuildBuildingPlannerState();
         return false;
       }
       constructionUi.expandedBuildingHrids.add(buildingHrid);
+      persistGuildBuildingPlannerState();
       return true;
     }
 
@@ -12847,7 +12958,10 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     }
     function shrineBuffLevel(profile, hrid) {
       const source = profile.guildBuffLevelMap || profile.characterGuildBuffMap;
-      const value = source && source[hrid];
+      if (!source || typeof source !== "object" || Array.isArray(source)) return null;
+      // Native profiles use a sparse level map: omitted shrines have level 0.
+      if (!Object.hasOwn(source, hrid)) return 0;
+      const value = source[hrid];
       const level = value && typeof value === "object" ? (value.level ?? value.currentLevel) : value;
       return Number.isSafeInteger(level) && level >= 0 ? level : null;
     }
@@ -13706,9 +13820,10 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     getPanel,
     onRecordsChanged = () => {}
   }) {
-    let mode = "week";
-    let screenshotMode = false;
-    let simpleNames = false;
+    const savedView = pluginStorage.loadTrialViewState?.() || {};
+    let mode = savedView.mode || "week";
+    let screenshotMode = savedView.screenshotMode === true;
+    let simpleNames = savedView.simpleNames === true;
     let screenshotBusy = false;
     let screenshotNotice = "";
     const isScreenshotMode = () => screenshotMode;
@@ -13720,8 +13835,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       isPlain: () => screenshotMode || simpleNames,
       gameIcon
     });
-    let selectedWeek = "";
-    let selectedProject = "";
+    let selectedWeek = savedView.selectedWeek || "";
+    let selectedProject = savedView.selectedProject || "";
     let resetScroll = false;
     let resizeObserver = null;
     let profileTooltip = null;
@@ -13732,7 +13847,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     let importNotice = null;
     let importBusy = false;
     let importRevision = 0;
-    let displaySettingsOpen = false;
+    let displaySettingsOpen = savedView.displaySettingsOpen === true;
+    let viewSaveFailed = false;
     let displaySaveFailed = false;
     let rankingOrder = displayApi.normalizeRankingOrder(pluginStorage.loadTrialRankingOrder());
     let rankingOrderSaveFailed = false;
@@ -13747,13 +13863,19 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     let highlightedMember = null;
     let hoveredMemberCell = null;
     let focusedMemberCell = null;
-    let selectedMember = null;
-    let profileState = { status: "loading" };
-    const profileSectionsOpen = { overview: true, skills: true, equipment: true };
+    let selectedMember = savedView.selectedMember || null;
+    let profileState = { status: "unavailable" };
+    const profileSectionsOpen = {
+      overview: true,
+      skills: true,
+      equipment: true,
+      shrines: true,
+      ...savedView.profileSectionsOpen
+    };
     let profileRevision = 0;
-    let playerReturn = null;
-    let playerSearch = "";
-    let playerPickerOpen = true;
+    let playerReturn = { mode: savedView.returnMode || "week" };
+    let playerSearch = savedView.playerSearch || "";
+    let playerPickerOpen = savedView.playerPickerOpen !== false;
     let playerSearchComposing = false;
 
     function projectIcon(record) {
@@ -13966,7 +14088,24 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       });
     }
 
-    const tableSorts = new Map();
+    const tableSorts = new Map(savedView.tableSorts || []);
+    function persistView() {
+      viewSaveFailed =
+        pluginStorage.saveTrialViewState?.({
+          mode,
+          screenshotMode,
+          simpleNames,
+          selectedWeek,
+          selectedProject,
+          selectedMember,
+          returnMode: playerReturn?.mode,
+          playerSearch,
+          playerPickerOpen,
+          displaySettingsOpen,
+          profileSectionsOpen,
+          tableSorts: [...tableSorts]
+        }) === false;
+    }
     function getSort(key, kind) {
       const fields = visibleFields(kind);
       const saved = tableSorts.get(key);
@@ -14236,6 +14375,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       const input = host.querySelector("[data-trial-player-search]");
       if (!input) return;
       playerSearch = input.value;
+      persistView();
       const members = trialHistoryApi.historyMembers(records);
       const current =
         host.querySelector('[data-trial-choice="player"][aria-pressed="true"]')?.value ||
@@ -14307,7 +14447,22 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       const project = projects.find((entry) => entry.key === selectedProject) || projects[0];
       selectedWeek = week?.key || "";
       selectedProject = project?.key || "";
+      // Restore navigation only to identities present in the saved history or current guild.
+      // Profile contents remain live reads: a reload does not silently request a profile.
+      if (
+        selectedMember &&
+        records.length &&
+        !trialHistoryApi.historyMembers(records).some((member) => trialHistoryApi.sameMember(member, selectedMember)) &&
+        !Object.entries(getBridge()?.trialHistoryContext?.members || {}).some(([id, member]) =>
+          trialHistoryApi.sameMember({ id, name: member.name }, selectedMember)
+        )
+      ) {
+        selectedMember = null;
+        playerPickerOpen = true;
+      }
+      persistView();
       let markup = renderImport();
+      if (viewSaveFailed) markup += `<p role="status">${escapeHtml(t("trialDisplaySaveFailed"))}</p>`;
       markup += `<div class="mwi-trial-display-controls"><div class="mwi-trial-mode" role="group" aria-label="${escapeHtml(t("trialDisplayMode"))}">${["week", "project", "player"].map((value) => `<button type="button" data-trial-mode="${value}" aria-pressed="${mode === value}">${escapeHtml(t(value === "week" ? "trialByWeek" : value === "project" ? "trialByProject" : "trialByPlayer"))}</button>`).join("")}</div>`;
       if (mode === "player") {
         const members = trialHistoryApi.historyMembers(records);
@@ -14500,9 +14655,16 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       host.addEventListener(
         "toggle",
         (event) => {
+          if (!event.target.isConnected) return;
           if (event.target.matches(".mwi-trial-display-settings")) displaySettingsOpen = event.target.open;
-          if (event.target.matches(".mwi-trial-player-picker") && event.target.isConnected)
-            playerPickerOpen = event.target.open;
+          else if (event.target.matches(".mwi-trial-player-picker")) playerPickerOpen = event.target.open;
+          else if (
+            event.target.matches("[data-trial-profile-section]") &&
+            Object.hasOwn(profileSectionsOpen, event.target.dataset.trialProfileSection)
+          )
+            profileSectionsOpen[event.target.dataset.trialProfileSection] = event.target.open;
+          else return;
+          persistView();
         },
         true
       );
@@ -15681,11 +15843,12 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       }
       const pickerSnapshot = picker.capture();
       const plannedHrids = new Set(state.upgradePlans.map((plan) => plan.guildBuffHrid));
-      const openPlans = new Set(
-        [...list.querySelectorAll("details[data-shrine-steps][open]")].map(
-          (node) => node.closest("[data-plan-id]").dataset.planId
-        )
-      );
+      const openPlans = new Set(state.upgradePlans.filter((plan) => plan.stepsExpanded).map((plan) => plan.id));
+      for (const node of list.querySelectorAll("details[data-shrine-steps]")) {
+        const id = node.closest("[data-plan-id]").dataset.planId;
+        if (node.open) openPlans.add(id);
+        else openPlans.delete(id);
+      }
       const active = list.ownerDocument.activeElement;
       const focusedPlan = list.contains(active) ? active.closest("[data-plan-id]")?.dataset.planId : null;
       const focusedRole = active?.dataset?.role;
@@ -16332,7 +16495,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
                 .join("")}</dd></div>`
           )
           .join("");
-        return `<details class="mwi-context-help" data-settings-help-topic="${title}"><summary class="mwi-help-toggle" id="mwi-help-${title}">${escapeHtml(t(title))}</summary><dl class="mwi-help-sections">${body}</dl></details>`;
+        return `<details class="mwi-context-help" data-settings-help-topic="${title}"${state.openHelpTopics?.includes(title) ? " open" : ""}><summary class="mwi-help-toggle" id="mwi-help-${title}">${escapeHtml(t(title))}</summary><dl class="mwi-help-sections">${body}</dl></details>`;
       }).join("");
       return `<section class="mwi-settings-block mwi-settings-help" data-role="settings-help" aria-labelledby="mwi-settings-help-heading"><div class="mwi-settings-block-heading"><h4 id="mwi-settings-help-heading">${escapeHtml(t("settingsHelp"))}</h4></div>${sections}</section>`;
     }
@@ -16371,12 +16534,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       const focused = content?.ownerDocument?.activeElement;
       const focusedId = focused && content.contains(focused) ? focused.id : "";
       const selection = focused === nameInput ? [nameInput.selectionStart, nameInput.selectionEnd] : null;
-      const openHelpTopics = new Set(
-        Array.from(
-          content?.querySelectorAll("[data-settings-help-topic][open]") || [],
-          (node) => node.dataset.settingsHelpTopic
-        )
-      );
+      const openHelpTopics = new Set(state.openHelpTopics || []);
       updateRenderedMarkup(content, renderSettingsContent(snapshot));
       for (const topic of content?.querySelectorAll("[data-settings-help-topic]") || [])
         topic.open = openHelpTopics.has(topic.dataset.settingsHelpTopic);
@@ -17805,6 +17963,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
     function setSettingsOpen(panel, open, { restoreFocus = false } = {}) {
       state.settingsOpen = Boolean(open);
+      persistPluginUiState();
       syncSettingsPage(panel);
       const trigger = panel.querySelector('[data-role="toggle-settings"]');
       if (state.settingsOpen) {
@@ -18099,6 +18258,29 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
           return;
         applyMaxItemUnitPrice(panel, event.target);
       });
+      panel.addEventListener(
+        "toggle",
+        (event) => {
+          if (!event.target.isConnected) return;
+          if (event.target.matches("[data-settings-help-topic]")) {
+            const topics = new Set(state.openHelpTopics || []);
+            const key = event.target.dataset.settingsHelpTopic;
+            if (event.target.open) topics.add(key);
+            else topics.delete(key);
+            state.openHelpTopics = [...topics];
+            persistPluginUiState();
+          }
+          if (event.target.matches("[data-shrine-steps]")) {
+            const id = event.target.closest("[data-plan-id]")?.dataset.planId;
+            const plan = state.upgradePlans.find((entry) => entry.id === id);
+            if (plan && plan.stepsExpanded !== event.target.open) {
+              plan.stepsExpanded = event.target.open;
+              persistPluginUiState();
+            }
+          }
+        },
+        true
+      );
       const settingsTrigger = panel.querySelector('[data-role="toggle-settings"]');
       const settingsPanel = panel.querySelector('[data-role="settings-panel"]');
       settingsTrigger.addEventListener("click", () => setSettingsOpen(panel, !state.settingsOpen));
@@ -18223,6 +18405,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         }
         if (event.target.matches('[data-role="building-search"]')) {
           state.buildingSearch = event.target.value;
+          persistGuildBuildingPlannerState();
           applyGuildBuildingFilters(constructionResults);
         }
       });
@@ -18258,6 +18441,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         }
         if (event.target.matches('[data-role="building-search"]')) {
           state.buildingSearch = event.target.value;
+          persistGuildBuildingPlannerState();
           applyGuildBuildingFilters(constructionResults);
           return;
         }
@@ -18963,7 +19147,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     showConstructionView: savedUiState.showConstructionView,
     showTrialHistoryView: savedUiState.showTrialHistoryView,
     sidebarDisplayName: savedUiState.sidebarDisplayName,
-    settingsOpen: false,
+    settingsOpen: savedUiState.settingsOpen,
+    openHelpTopics: savedUiState.openHelpTopics,
     shrineGuideContext: null,
     shrineGuideModel: null,
     shrineGuideFrame: null,
@@ -19015,7 +19200,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   state.manualGuildPoints = savedBuildingPlannerState.manualGuildPoints;
   state.guildPointHistory = savedBuildingPlannerState.guildPointHistory;
   state.buildingCategory = savedBuildingPlannerState.category;
-  state.buildingSearch = "";
+  state.buildingSearch = savedBuildingPlannerState.search;
+  state.constructionUi = savedBuildingPlannerState.constructionUi;
   state.buildingPlanNotice = "";
   let guildBuildingSpriteHref = "";
   let guildBuildingSpriteLoadPromise = null;
