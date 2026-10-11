@@ -3,7 +3,7 @@
 // @name:zh-CN         MWI Sunrishe 工具箱
 // @name:en            MWI Sunrishe Toolkit
 // @namespace          http://tampermonkey.net/
-// @version            2.18.0
+// @version            2.19.0
 // @description        MWI Sunrishe 綜合工具箱：提供角色/隊伍名片、技能/房屋/戰鬥升級規劃、裝備提升計算器、地下城收益、配裝同步和市場伴侶增強。
 // @description:zh-CN  MWI Sunrishe 綜合工具箱：提供角色/隊伍名片、技能/房屋/戰鬥升級規劃、裝備提升計算器、地下城收益、配裝同步和市場伴侶增強。
 // @description:en     MST toolkit for character/party cards, ability/house/combat upgrade planning, equipment comparison, dungeon profit, loadout sync, and Market Mate enhancements.
@@ -57,7 +57,7 @@
   'use strict';
 
   // 構建指令碼會靜態替換這個佔位符，業務程式碼不直接讀取 Node 環境變數。
-  const PACKAGE_VERSION = "2.18.0";
+  const PACKAGE_VERSION = "2.19.0";
 
   const BUILD_FLAGS = Object.freeze({
     // 目前只有語言切換按鈕需要區分 dev/prod：正式包不展示該除錯入口。
@@ -83,8 +83,9 @@
   // 名片角色資料快取佔用上限，超限時按最舊淘汰，防止接近瀏覽器 localStorage 配額。
   const PROFILE_CACHE_MAX_BYTES = 1024 * 1024;
 
-  // 房屋等級上限來自當前官方升級資料，介面批次選擇沿用同一邊界。
-  const HOUSE_MIN_FROM_LEVEL = 1;
+  // 房屋等級上限來自當前官方升級資料，介面批次選擇沿用同一邊界；起始等級額外提供 0
+  // （房間未建造，官方升級配置裡沒有 0 級成本，0 級起步即從 1 級開始逐級累加）。
+  const HOUSE_MIN_FROM_LEVEL = 0;
   const HOUSE_MAX_FROM_LEVEL = 7;
   const HOUSE_MAX_TO_LEVEL = 8;
 
@@ -109,7 +110,9 @@
     SIM_NEW_BATTLE: 'MST_SIM_newBattle',
     SIM_PROFILES: 'MST_SIM_profiles',
     // 訂閱通知：只持久化訂閱與渠道配置；id 基線、計時器、傳送佇列等執行時狀態一律只存記憶體。
-    SUBSCRIBE_NOTIFICATION: 'MST_SUBSCRIBE_config'
+    SUBSCRIBE_NOTIFICATION: 'MST_SUBSCRIBE_config',
+    // 市場交易記錄：GM 儲存（按環境 + 角色分桶），記錄使用者自己的掛牌與直購/直售歷史。
+    MARKET_HISTORY: 'MST_MARKET_history'
   };
 
   function isClientData(data) {
@@ -1821,8 +1824,8 @@
     title: {zh: '房屋升級材料計算器', en: 'House Upgrade Material Calculator'},
     houseCalculatorHelpTitle: {zh: '檢視房屋升級說明', en: 'View house upgrade instructions'},
     houseCalculatorHelp: {
-      zh: '使用：勾選需要升級的房屋，分別設定每個房屋的起始等級和目標等級；也可以用頂部批次等級快速設定。起始等級會優先讀取當前角色房屋資料，重置等級會恢復為當前讀取到的房屋等級。\n\n計算：未勾選任何房屋時不會計算材料。每個房屋按官方升級配置逐級累加材料，並結合當前背包庫存計算缺口；結果會顯示升級房屋、市場資料時間、材料種類、缺少數量、總價值、所需金幣、已有材料價值和缺口價值。\n\n操作：物品顯示格式可在名稱和 HRID 之間切換，匯出 CSV 會匯出當前計算結果。MWITools 購物車就緒後，可以把缺失材料加入購物車；只會加入缺口材料，不會自動下單。\n\n限制：房屋資料、庫存和市場價格來自當前遊戲頁面已載入資料；市場缺價時對應價值可能為 0 或不完整。',
-      en: "Usage: Select the house rooms to upgrade, then set each room's start and target levels. The batch level controls can quickly set multiple rows. Start levels prefer the current character house data, and Reset Levels restores the levels currently read from the game.\n\nCalculation: No materials are calculated until at least one room is selected. Each selected room sums official upgrade costs level by level, then compares them with current inventory to calculate shortages. Results include selected upgrades, market data time, material types, missing quantity, total value, required coins, owned material value, and shortfall value.\n\nActions: Item display can switch between names and HRIDs, and Export CSV exports the current result. When MWI Market Mate is installed and ready, missing materials can be added to its cart; only shortages are added, and no orders are placed automatically.\n\nLimits: House data, inventory, and market prices come from the data currently loaded on the game page. Missing market prices can make related values 0 or incomplete."
+      zh: '使用：勾選需要升級的房屋，分別設定每個房屋的起始等級和目標等級；也可以用頂部批次等級快速設定。起始等級可選 0（房間未建造，即遊戲裡顯示“未建造”的等級，從 0 級起算會包含建到 1 級的材料），會優先讀取當前角色房屋資料，重置等級會恢復為當前讀取到的房屋等級。\n\n計算：未勾選任何房屋時不會計算材料。每個房屋按官方升級配置逐級累加材料，並結合當前背包庫存計算缺口；結果會顯示升級房屋、市場資料時間、材料種類、缺少數量、總價值、所需金幣、已有材料價值和缺口價值。\n\n操作：物品顯示格式可在名稱和 HRID 之間切換，匯出 CSV 會匯出當前計算結果。MWITools 購物車就緒後，可以把缺失材料加入購物車；只會加入缺口材料，不會自動下單。\n\n限制：房屋資料、庫存和市場價格來自當前遊戲頁面已載入資料；市場缺價時對應價值可能為 0 或不完整。',
+      en: "Usage: Select the house rooms to upgrade, then set each room's start and target levels. The batch level controls can quickly set multiple rows. Start levels accept 0 for rooms that are not built yet (the level shown as not built in game, which includes the materials needed to reach level 1), prefer the current character house data, and Reset Levels restores the levels currently read from the game.\n\nCalculation: No materials are calculated until at least one room is selected. Each selected room sums official upgrade costs level by level, then compares them with current inventory to calculate shortages. Results include selected upgrades, market data time, material types, missing quantity, total value, required coins, owned material value, and shortfall value.\n\nActions: Item display can switch between names and HRIDs, and Export CSV exports the current result. When MWI Market Mate is installed and ready, missing materials can be added to its cart; only shortages are added, and no orders are placed automatically.\n\nLimits: House data, inventory, and market prices come from the data currently loaded on the game page. Missing market prices can make related values 0 or incomplete."
     },
     trigger: {zh: '升級計算器', en: 'Upgrade Calculator'},
     selectLife: {zh: '生活', en: 'Skilling'},
@@ -2220,8 +2223,8 @@
   const DUNGEON_CALCULATOR_MESSAGES = {
     dungeonCalculatorHelpTitle: {zh: '檢視地下城收益說明', en: 'View dungeon profit instructions'},
     dungeonCalculatorHelp: {
-      zh: '使用：選擇地下城、難度、隊伍人數和單次耗時；每日固定按 24 小時計算。每日藥品/飲料成本可留空，填寫時單位為 M。工匠茶和暴飲之囊隻影響製作鑰匙成本，暴飲之囊需要勾選後才會按所選強化等級生效。\n\n期望：每日輪次 = 1440 ÷ 單次耗時，計算保留完整精度。普通寶箱按官方公式 5 ÷ 隊伍人數 × (1 + 29.5% 戰鬥掉落數量)計算，5 人時每車 1.295 個；T0 不掉精煉寶箱，T1 精煉寶箱為每車普通寶箱 × 0.33，T2 為每車普通寶箱。門票數量等於普通寶箱期望數量，數量顯示最多保留兩位小數並去掉末尾 0。\n\n成本：默認同時展示製作鑰匙和購買鑰匙。製作鑰匙讀取官方配方並受工匠茶、暴飲之囊影響；購買鑰匙讀取門票和開箱鑰匙的成品市場價。材料成本區只顯示買入方向，預期產出區只顯示賣出方向。自定義模式可選擇鑰匙來源、買入檔位和賣出檔位；左側保留所選來源的區間，右側顯示自定義組合。\n\n收益：寶箱內容按官方掉落率和平均數量遞迴展開，重複物品會合並，巢狀寶箱會繼續展開。“掉落物”頁籤按官方寶箱的掉落物列表直接展示（不遞迴展開巢狀寶箱），普通/精煉寶箱各一小節，每行列出掉率/掉落數量、期望數量（懸浮檢視計算公式）與按市場報價稅前折算的價值。每日普通/精煉寶箱產出完全按市場報價稅前計算（不扣稅）。“收益扣除市場稅”預設勾選，賣出收入按市場稅扣除（普通物品 {0}%、牛鈴/牛鈴袋 {1}%）；不勾選時所有物品都按市場報價直接計算，不扣任何稅。勾選“披風不計算收益”後，所有背部裝備產物按 0 估值；勾選“牛鈴不計算收益”後，牛鈴與牛鈴袋產物按 0 估值。單個普通寶箱收益會扣除單箱分攤的門票和普通開箱鑰匙成本；單個精煉寶箱收益只扣除精煉開箱鑰匙成本。每日期望收益按單箱收益乘每日寶箱數量彙總後，再扣除每日藥品/飲料成本；每車期望收益等於每日期望收益除以每日輪次。\n\n限制：通關耗時和隊伍人數需要手動填寫/選擇，當前不會自動讀取戰鬥耗時和隊伍組成。結果是當前引數和市場價格下的確定性期望，不預測價格變化。完全缺價的物品按 0 估值並提示。\n\n批次模擬：勾選頂部的“批次模擬”核取方塊進入批次模擬，取消勾選回到單圖模擬。批次第一行選項與單圖模擬從“使用工匠茶”開始的選項一致，對列表內全部地圖生效；第二行雙擊地下城卡片把地圖加入列表，右側展示市場資料時間；列表每行單獨設定難度、隊伍人數、單次耗時和每日藥品/飲料成本，期望數量按“普通寶箱 / 精煉寶箱”分兩行展示；“製作鑰匙”與“購買鑰匙”各分“左買/右賣”“右買/左賣”兩列，單元格上行是每日總成本、下行是每日期望收益。序號列可拖動排序，列表預設展示四個地下城。勾選自定義模式後，“購買鑰匙”區域直接改為按所選鑰匙來源和買賣檔位計算的自定義結果。單圖和批次各自的引數都會隨調整自動儲存到本地（共用同一個儲存鍵、兩個模式分別儲存），結果始終按當前市場資料重新計算，不會讀取已儲存的計算結果；恢復預設清空當前模式的已存配置並回到預設引數（批次恢復為四個預設地圖）。',
-      en: 'Usage: Select a dungeon, tier, party size, and clear time. Every day uses a fixed 24-hour calculation. Daily food/drink cost is optional and entered in millions. Artisan Tea and Guzzling Pouch affect crafted-key costs only; Guzzling Pouch applies only when its checkbox is enabled and uses the selected enhancement level.\n\nExpectation: Daily runs = 1440 ÷ clear time, kept at full precision for calculation. Normal Chests use the official formula 5 ÷ Party Size × (1 + 29.5% Combat Drop Quantity); at Party Size 5 that is 1.295 per run. T0 has no Refinement Chest; T1 uses Normal Chests × 0.33 per run; T2 uses the Normal Chest expectation per run. Entry Ticket quantity equals expected Normal Chest quantity, and displayed quantities use at most two decimals and hide trailing zeros.\n\nCosts: Crafted Keys and Purchased Keys are shown by default. Crafted-key costs use official recipes and are affected by Artisan Tea and Guzzling Pouch; purchased-key costs use finished Entry Ticket and Chest Key market prices. The Material Costs section shows purchase sides only, and Expected Output shows sale sides only. Custom Mode selects the key source, buy side, and sell side; the left columns keep the selected source range, while the right column shows the custom combination.\n\nProfit: Chest contents recursively use official drop rates and average quantities; duplicate items are combined and nested chests are expanded. The Loot tab lists the official chest drop entries directly (nested chests are not expanded), split into Normal and Refined Chest sections; each row shows drop rate / drop quantity, expected quantity (hover for the formula), and pretax value at quoted market prices. Daily Normal/Refinement Chest Output is valued at quoted market prices before tax (no tax deducted). Deduct Market Tax is enabled by default and sale revenue deducts the market tax (regular items {0}%, Cowbells and Cowbell Bags {1}%); when disabled, all items use quoted prices directly with no tax deducted. When Exclude Back Equipment Profit is enabled, all back-equipment output is valued at 0; when Exclude Cowbell Profit is enabled, Cowbell and Cowbell Bag output is valued at 0. Each Normal Chest Profit deducts allocated Entry Ticket and Normal Chest Key costs; each Refinement Chest Profit deducts its Refinement Chest Key cost. Daily Expected Profit multiplies per-chest profit by daily chest quantities, then deducts daily food/drink cost; Expected Profit per Run divides it by Daily Runs.\n\nLimits: Clear time is entered manually and party size is selected manually; they are not read from combat automatically. Results are deterministic expectations at current parameters and market prices and do not predict price changes. Items with no valid price are valued at 0 and reported.\n\nBatch simulation: tick the Batch Simulation checkbox on top to switch modes; untick it to return to Single Map. Its first option row mirrors the Single Map options starting from Use Artisan Tea and applies to every map in the list. Double-click a dungeon card in the second row to add a map; the market data time sits on the right. Each list row has its own tier, party size, clear time, and daily food/drink cost, and expected quantity lists Normal and Refined chests on two lines. Craft Keys and Buy Keys each split into Ask Buy/Bid Sell and Bid Buy/Ask Sell columns; every cell shows the daily total cost on the first line and the daily expected profit on the second line. Drag the Sequence cell to reorder rows, and the list defaults to all four dungeons. With Custom Mode enabled, the Buy Keys area directly shows the custom result for the selected key source and trade sides. Parameters of both modes are saved locally automatically as you adjust them (one shared storage key with separate sections for Single Map and Batch), and results are always recalculated from the current market data; saved results are never reused. Restore Defaults removes the stored config of the currently active mode and returns to default parameters (Batch restores the four default dungeons).'
+      zh: '使用：選擇地下城、難度、隊伍人數和單次耗時；每日固定按 24 小時計算。每日藥品/飲料成本可留空，填寫時單位為 M。工匠茶和暴飲之囊隻影響製作鑰匙成本，暴飲之囊需要勾選後才會按所選強化等級生效。\n\n期望：每日輪次 = 1440 ÷ 單次耗時，計算保留完整精度。普通寶箱按官方公式 5 ÷ 隊伍人數 × (1 + 29.5% 戰鬥掉落數量)計算，5 人時每車 1.295 個；T0 不掉精煉寶箱，T1 精煉寶箱為每車普通寶箱 × 0.33，T2 為每車普通寶箱。門票數量等於普通寶箱期望數量，數量顯示最多保留兩位小數並去掉末尾 0。\n\n成本：默認同時展示製作鑰匙和購買鑰匙。製作鑰匙讀取官方配方並受工匠茶、暴飲之囊影響；購買鑰匙讀取門票和開箱鑰匙的成品市場價。材料成本區只顯示買入方向，預期產出區只顯示賣出方向。自定義模式可選擇鑰匙來源、買入檔位和賣出檔位；左側保留所選來源的區間，右側顯示自定義組合。\n\n收益：寶箱內容按官方掉落率和平均數量遞迴展開，重複物品會合並，巢狀寶箱會繼續展開。“掉落物”頁籤按官方寶箱的掉落物列表直接展示（不遞迴展開巢狀寶箱），普通/精煉寶箱各一小節，每行列出掉率/掉落數量、期望數量（懸浮檢視計算公式）與按市場報價稅前折算的價值。每日普通/精煉寶箱產出完全按市場報價稅前計算（不扣稅）。“收益扣除市場稅”預設勾選，賣出收入按市場稅扣除（普通物品 {0}%、牛鈴/牛鈴袋 {1}%）；不勾選時所有物品都按市場報價直接計算，不扣任何稅。勾選“披風不計算收益”後，所有背部裝備產物按 0 估值；勾選“牛鈴不計算收益”後，牛鈴與牛鈴袋產物按 0 估值。單個普通寶箱收益會扣除單箱分攤的門票和普通開箱鑰匙成本；單個精煉寶箱收益只扣除精煉開箱鑰匙成本。每日期望收益按單箱收益乘每日寶箱數量彙總後，再扣除每日藥品/飲料成本；每車期望收益等於每日期望收益除以每日輪次。\n\n限制：通關耗時和隊伍人數需要手動填寫/選擇，當前不會自動讀取戰鬥耗時和隊伍組成。結果是當前引數和市場價格下的確定性期望，不預測價格變化。完全缺價的物品按 0 估值並提示。\n\n批次模擬：點選頂部的“批次模擬”頁籤進入批次模擬，點選“單圖模擬”回到單圖模擬。批次第一行選項與單圖模擬從“使用工匠茶”開始的選項一致，對列表內全部地圖生效；第二行雙擊地下城卡片把地圖加入列表，右側展示市場資料時間；列表每行單獨設定難度、隊伍人數、單次耗時和每日藥品/飲料成本，期望數量按“普通寶箱 / 精煉寶箱”分兩行展示；“製作鑰匙”與“購買鑰匙”各分“左買/右賣”“右買/左賣”兩列，單元格上行是每日總成本、下行是每日期望收益。序號列可拖動排序，列表預設展示四個地下城。勾選自定義模式後，“購買鑰匙”區域直接改為按所選鑰匙來源和買賣檔位計算的自定義結果。單圖和批次各自的引數都會隨調整自動儲存到本地（共用同一個儲存鍵、兩個模式分別儲存），結果始終按當前市場資料重新計算，不會讀取已儲存的計算結果；恢復預設清空當前模式的已存配置並回到預設引數（批次恢復為四個預設地圖）。',
+      en: 'Usage: Select a dungeon, tier, party size, and clear time. Every day uses a fixed 24-hour calculation. Daily food/drink cost is optional and entered in millions. Artisan Tea and Guzzling Pouch affect crafted-key costs only; Guzzling Pouch applies only when its checkbox is enabled and uses the selected enhancement level.\n\nExpectation: Daily runs = 1440 ÷ clear time, kept at full precision for calculation. Normal Chests use the official formula 5 ÷ Party Size × (1 + 29.5% Combat Drop Quantity); at Party Size 5 that is 1.295 per run. T0 has no Refinement Chest; T1 uses Normal Chests × 0.33 per run; T2 uses the Normal Chest expectation per run. Entry Ticket quantity equals expected Normal Chest quantity, and displayed quantities use at most two decimals and hide trailing zeros.\n\nCosts: Crafted Keys and Purchased Keys are shown by default. Crafted-key costs use official recipes and are affected by Artisan Tea and Guzzling Pouch; purchased-key costs use finished Entry Ticket and Chest Key market prices. The Material Costs section shows purchase sides only, and Expected Output shows sale sides only. Custom Mode selects the key source, buy side, and sell side; the left columns keep the selected source range, while the right column shows the custom combination.\n\nProfit: Chest contents recursively use official drop rates and average quantities; duplicate items are combined and nested chests are expanded. The Loot tab lists the official chest drop entries directly (nested chests are not expanded), split into Normal and Refined Chest sections; each row shows drop rate / drop quantity, expected quantity (hover for the formula), and pretax value at quoted market prices. Daily Normal/Refinement Chest Output is valued at quoted market prices before tax (no tax deducted). Deduct Market Tax is enabled by default and sale revenue deducts the market tax (regular items {0}%, Cowbells and Cowbell Bags {1}%); when disabled, all items use quoted prices directly with no tax deducted. When Exclude Back Equipment Profit is enabled, all back-equipment output is valued at 0; when Exclude Cowbell Profit is enabled, Cowbell and Cowbell Bag output is valued at 0. Each Normal Chest Profit deducts allocated Entry Ticket and Normal Chest Key costs; each Refinement Chest Profit deducts its Refinement Chest Key cost. Daily Expected Profit multiplies per-chest profit by daily chest quantities, then deducts daily food/drink cost; Expected Profit per Run divides it by Daily Runs.\n\nLimits: Clear time is entered manually and party size is selected manually; they are not read from combat automatically. Results are deterministic expectations at current parameters and market prices and do not predict price changes. Items with no valid price are valued at 0 and reported.\n\nBatch simulation: click the Batch Simulation tab on top to switch modes; click Single Map to return. Its first option row mirrors the Single Map options starting from Use Artisan Tea and applies to every map in the list. Double-click a dungeon card in the second row to add a map; the market data time sits on the right. Each list row has its own tier, party size, clear time, and daily food/drink cost, and expected quantity lists Normal and Refined chests on two lines. Craft Keys and Buy Keys each split into Ask Buy/Bid Sell and Bid Buy/Ask Sell columns; every cell shows the daily total cost on the first line and the daily expected profit on the second line. Drag the Sequence cell to reorder rows, and the list defaults to all four dungeons. With Custom Mode enabled, the Buy Keys area directly shows the custom result for the selected key source and trade sides. Parameters of both modes are saved locally automatically as you adjust them (one shared storage key with separate sections for Single Map and Batch), and results are always recalculated from the current market data; saved results are never reused. Restore Defaults removes the stored config of the currently active mode and returns to default parameters (Batch restores the four default dungeons).'
     },
     dungeon: {zh: '地下城', en: 'Dungeon'},
     dungeonNameChimericalDen: {zh: '奇幻洞穴', en: 'Chimerical Den'},
@@ -2298,6 +2301,7 @@
       en: 'Expected = {0} {1} × {2} × ({3}+{4})÷2'
     },
     expectedQuantityResult: {zh: '= {0}', en: '= {0}'},
+    simTabSingle: {zh: '單圖模擬', en: 'Single Map'},
     simTabBatch: {zh: '批次模擬', en: 'Batch Simulation'},
     leftBuyRightSell: {zh: '左買/右賣', en: 'Ask Buy/Bid Sell'},
     rightBuyLeftSell: {zh: '右買/左賣', en: 'Bid Buy/Ask Sell'},
@@ -2474,6 +2478,273 @@
     combatSimAiwwb: {zh: '戰鬥模擬 aiwwb', en: 'Combat Sim aiwwb'}
   };
 
+  // market-history-messages
+  const MARKET_HISTORY_MESSAGES = {
+    marketHistory: {zh: '市場交易記錄', en: 'Market History'},
+    marketHistoryEntry: {zh: '交易記錄', en: 'History'},
+    marketHistoryTitle: {zh: '市場交易記錄', en: 'Market History'},
+    marketHistoryTabRecords: {zh: '記錄', en: 'Records'},
+    marketHistoryTabStats: {zh: '統計', en: 'Stats'},
+    marketHistoryTabManage: {zh: '管理', en: 'Manage'},
+    marketHistoryTabHelp: {zh: '幫助', en: 'Help'},
+    marketHistoryHelpBridgeTitle: {
+      zh: '食用工具 → 交易記錄',
+      en: 'Edible Tools → Market History'
+    },
+    marketHistoryHelpBridgeStep1: {
+      zh: '給食用工具加上橋接指令碼：在油猴裡開啟食用工具的指令碼編輯頁，在指令碼頭（// ==UserScript== 塊內）加一行 @require，儲存後重新整理遊戲頁面。找不到編輯頁時，先選中食用工具指令碼再點「編輯」。',
+      en: 'Add the bridge script to Edible Tools: open the Edible Tools script in Tampermonkey, add one @require line inside the // ==UserScript== block, save and reload the game page.'
+    },
+    marketHistoryHelpBridgeCopy: {zh: '複製這一行', en: 'Copy this line'},
+    marketHistoryHelpBridgeCopied: {
+      zh: '已複製，貼上到食用工具的指令碼頭即可',
+      en: 'Copied — paste it into the Edible Tools script header'
+    },
+    marketHistoryHelpBridgePinned: {
+      zh: '上面的地址固定在提交 4851b02（橋接指令碼 v1.2.0），內容不會隨倉庫更新而變；食用工具自身更新指令碼後，需要重新加這一行。',
+      en: 'The URL is pinned to commit 4851b02 (bridge v1.2.0) and will not change; re-add the line after Edible Tools updates its own script.'
+    },
+    marketHistoryHelpBridgeStep2: {
+      zh: '在食用工具裡匯出：開啟食用工具設定面板 → 銀河奶牛資料庫 → 市場資料，點「匯出到 MST 交易記錄」，得到 MWI_Market_History_from_Edible_Tools_<時間>.json。',
+      en: 'Export from Edible Tools: Settings → Milky Way Idle Database → Market Data, click "Export to MST" to get MWI_Market_History_from_Edible_Tools_<time>.json.'
+    },
+    marketHistoryHelpBridgeStep3: {
+      zh: '匯入到交易記錄：切到「管理」頁籤，把檔案內容貼上到「匯入交易記錄」或選擇檔案，先「預覽合併結果」再「執行匯入」（預設合併模式）。',
+      en: 'Import into Market History: open the Manage tab, paste the file into "Import records" or pick the file, then click "Preview" and "Apply import" (merge mode is the default).'
+    },
+    marketHistoryHelpBridgeResult: {
+      zh: '匯入的記錄會帶「來源：食用工具」備註；食用工具不記錄領取，所以「收入/支出」按成交當時的稅率推算並在懸浮提示裡標註——出售扣稅後是收入，購買不扣稅、顯示支出金額；沒有官方訂單 id 的「立即購買 / 立即出售」兜底記錄無法匯入，會計入報告的「跳過」。',
+      en: 'Imported records carry a "Source: Edible Tools" note. Edible Tools does not track collections, so "Income / Expense" is estimated with the tax rate at the time and marked in the tooltip — sells are taxed (income), buys are not (expense). Instant buy/sell fallback records without an official order id cannot be imported and are counted as skipped.'
+    },
+    marketHistoryHelpExportTitle: {
+      zh: '交易記錄 → 食用工具',
+      en: 'Market History → Edible Tools'
+    },
+    marketHistoryHelpExportStep1: {
+      zh: '先按上面的方式給食用工具加上橋接指令碼。',
+      en: 'First add the bridge script to Edible Tools as described above.'
+    },
+    marketHistoryHelpExportStep2: {
+      zh: '在交易記錄裡匯出：「管理」頁籤 → 「匯出交易記錄」，格式選 JSON，點「匯出檔案」。',
+      en: 'Export here: Manage tab → "Export records", choose JSON and click "Export file".'
+    },
+    marketHistoryHelpExportStep3: {
+      zh: '在食用工具的「市場資料」頁點「匯入到食用工具」，選擇該 JSON；彈出的 prompt 裡輸入 1 合併或 2 覆蓋。合併按狀態與更新時間合併同一訂單、新訂單追加；覆蓋先清空食用工具現有的全部訂單（含其它角色）再寫入，會有二次確認且不可撤銷。',
+      en: 'In Edible Tools\' Market Data page click "Import into Edible Tools" and pick the JSON; type 1 (merge) or 2 (overwrite) in the prompt. Merge combines the same order by status and updated time and appends new ones; overwrite clears every existing Edible Tools order (other characters included) first — it asks for confirmation and cannot be undone.'
+    },
+    marketHistoryHelpExportResult: {
+      zh: '適合把記錄遷到食用工具繼續檢視，或與食用工具自己的資料合併；沒有官方訂單 id 的兜底記錄會被跳過並在提示裡報數。',
+      en: 'Useful for moving records into Edible Tools or merging with its own data; fallback records without an official order id are skipped and reported.'
+    },
+    marketHistoryHelpTransferTitle: {
+      zh: '多臺裝置之間遷移',
+      en: 'Moving between devices'
+    },
+    marketHistoryHelpTransferBody: {
+      zh: '匯出的檔案在 MST 與食用工具之間通用（都是 {app:"MST", type:"market-history"} 格式）：同一個檔案可以在交易記錄裡「匯入」，也可以在另一臺裝置的食用工具裡「匯入到食用工具」。兩臺裝置都用交易記錄時，直接匯出、匯入即可，不需要橋接指令碼。',
+      en: 'One exported file works for both MST and Edible Tools (both use the {app:"MST", type:"market-history"} format): import it in Market History, or click "Import into Edible Tools" on another device. If both devices use Market History, plain export/import is enough — no bridge needed.'
+    },
+    marketHistoryHelpNotesTitle: {zh: '注意事項', en: 'Notes'},
+    marketHistoryHelpNoteScope: {
+      zh: '橋接指令碼只讀取食用工具的市場訂單資料，不碰開箱、公會、戰鬥等其他資料。',
+      en: "The bridge only reads Edible Tools' market orders; chest, guild and combat data are untouched."
+    },
+    marketHistoryHelpNoteOfficial: {
+      zh: '只有交易記錄自己觀測到的官方到賬才是權威值；來自食用工具的「收入/支出」是推算值（出售按稅率扣稅，購買不扣稅）。',
+      en: 'Only collections observed by Market History itself are authoritative; "Income / Expense" from Edible Tools is estimated (sells are taxed, buys are not).'
+    },
+    marketHistoryHelpNoteEnvironment: {
+      zh: '食用工具的儲存不分正式服 / 測試服，匯出時按當時所在頁面判定環境，跨環境使用請分開匯出。',
+      en: 'Edible Tools does not separate live and test servers; the environment is taken from the page you export on, so export separately per environment.'
+    },
+    marketHistoryHelpNoteBackup: {
+      zh: '任何覆蓋式操作都不可撤銷，動手前先匯出一份留底。',
+      en: 'Overwrite operations cannot be undone — export a backup first.'
+    },
+    marketHistoryFilterKeyword: {zh: '搜尋物品名稱或 HRID', en: 'Search item name or HRID'},
+    marketHistoryFilterCategoryAll: {zh: '全部分類', en: 'All categories'},
+    marketHistoryFilterStatus: {zh: '狀態', en: 'Status'},
+    marketHistoryFilterPrice: {zh: '單價', en: 'Price'},
+    marketHistoryFilterQuantity: {zh: '數量', en: 'Quantity'},
+    marketHistoryFilterClear: {zh: '清除', en: 'Clear'},
+    marketHistoryCategoryResources: {zh: '資源', en: 'Resources'},
+    marketHistoryCategoryConsumables: {zh: '消耗品', en: 'Consumables'},
+    marketHistoryCategoryBooks: {zh: '技能書', en: 'Books'},
+    marketHistoryCategoryLabyrinth: {zh: '迷宮', en: 'Labyrinth'},
+    marketHistoryCategoryDungeonKeys: {zh: '地下城鑰匙', en: 'Dungeon Keys'},
+    marketHistoryCategoryEquipment: {zh: '裝備', en: 'Equipment'},
+    marketHistoryCategoryAccessories: {zh: '飾品', en: 'Accessories'},
+    marketHistoryCategoryTools: {zh: '工具', en: 'Tools'},
+    marketHistoryTimeAll: {zh: '建立時間', en: 'Created'},
+    marketHistoryTimeToday: {zh: '今天', en: 'Today'},
+    marketHistoryTime7d: {zh: '近 7 天', en: 'Last 7 days'},
+    marketHistoryTime30d: {zh: '近 30 天', en: 'Last 30 days'},
+    marketHistoryTimeCustom: {zh: '自定義', en: 'Custom'},
+    marketHistorySortHint: {zh: '點選切換升序/降序', en: 'Click to toggle ascending/descending'},
+    marketHistoryMoreFilters: {zh: '更多', en: 'More'},
+    marketHistoryFilterAny: {zh: '全部', en: 'Any'},
+    marketHistoryFilterTypeAll: {zh: '全部型別', en: 'All types'},
+    marketHistoryFilterAnyHint: {zh: '不勾選表示不限', en: 'Unchecked means any'},
+    marketHistoryFilterMin: {zh: '最低', en: 'Min'},
+    marketHistoryFilterMax: {zh: '最高', en: 'Max'},
+    marketHistoryColumnIndex: {zh: '序號', en: '#'},
+    marketHistorySelectAllPage: {zh: '全選本頁', en: 'Select page'},
+    marketHistoryPagerCount: {zh: '共 {0} 條', en: '{0} total'},
+    marketHistoryPageJump: {zh: '第', en: 'Go to'},
+    marketHistoryPageJumpUnit: {zh: '頁', en: 'page'},
+    marketHistoryPageSizeOption: {zh: '{0} 條', en: '{0} rows'},
+    marketHistoryTooMany: {
+      zh: '記錄已達 {0} 條，建議匯出備份後刪除部分歷史，避免佔用過多油猴儲存。',
+      en: '{0} records stored. Export a backup and remove old entries to keep storage usage low.'
+    },
+    marketHistoryActionDelete: {zh: '批次刪除', en: 'Batch delete'},
+    marketHistoryActionDeleteOne: {zh: '刪除', en: 'Delete'},
+    marketHistoryEmpty: {zh: '暫無記錄，市場交易後自動記錄', en: 'No records yet. Trades are recorded automatically.'},
+    marketHistoryEmptyFiltered: {zh: '沒有符合條件的記錄', en: 'No records match the filters'},
+    marketHistoryStatusActive: {zh: '有效', en: 'Active'},
+    marketHistoryStatusPartial: {zh: '部分成交', en: 'Partially filled'},
+    marketHistoryStatusFilled: {zh: '已完成', en: 'Filled'},
+    marketHistoryStatusCancelled: {zh: '已取消', en: 'Cancelled'},
+    marketHistoryStatusExpired: {zh: '已過期', en: 'Expired'},
+    marketHistoryStatusPartialCancelled: {zh: '部分成交後取消', en: 'Cancelled (partially filled)'},
+    marketHistoryStatusPartialExpired: {zh: '部分成交後過期', en: 'Expired (partially filled)'},
+    marketHistoryStatusUnobserved: {zh: '結束（未知）', en: 'Ended (unknown)'},
+    marketHistoryTypeSellListing: {zh: '出售掛牌', en: 'Sell listing'},
+    marketHistoryTypeBuyListing: {zh: '購買掛牌', en: 'Buy Listing'},
+    marketHistoryTypeSellInstant: {zh: '立即出售', en: 'Instant sell'},
+    marketHistoryTypeBuyInstant: {zh: '立即購買', en: 'Instant buy'},
+    marketHistoryColumnStatus: {zh: '狀態', en: 'Status'},
+    marketHistoryColumnType: {zh: '型別', en: 'Type'},
+    marketHistoryColumnItem: {zh: '物品', en: 'Item'},
+    marketHistoryColumnProgress: {zh: '已成交/總數', en: 'Filled / total'},
+    marketHistoryColumnPrice: {zh: '單價', en: 'Unit price'},
+    marketHistoryColumnNominal: {zh: '金額', en: 'Amount'},
+    marketHistoryColumnCollected: {zh: '收入/支出', en: 'Income / Expense'},
+    marketHistoryColumnCreatedAt: {zh: '建立時間', en: 'Created'},
+    marketHistoryColumnFilledAt: {zh: '完成時間', en: 'Filled'},
+    marketHistoryColumnActions: {zh: '操作', en: 'Action'},
+    marketHistoryTotalsPage: {zh: '本頁合計', en: 'This page'},
+    marketHistoryTotalsFiltered: {zh: '篩選總計', en: 'Filtered total'},
+    marketHistoryTotalsCount: {zh: '條數', en: 'Records'},
+    marketHistoryTotalsFilled: {zh: '成交數量', en: 'Filled quantity'},
+    marketHistoryTotalsSell: {zh: '出售金額', en: 'Sell amount'},
+    marketHistoryTotalsBuy: {zh: '購買金額', en: 'Buy amount'},
+    marketHistoryTotalsIncome: {zh: '收入金額', en: 'Income'},
+    marketHistoryTotalsExpense: {zh: '支出金額', en: 'Expense'},
+    marketHistoryTotalsPending: {zh: '待領取', en: 'Pending'},
+    marketHistoryPagePrev: {zh: '上一頁', en: 'Prev'},
+    marketHistoryPageNext: {zh: '下一頁', en: 'Next'},
+    marketHistoryStatsTimeField: {zh: '建立時間', en: 'Created'},
+    marketHistoryStatsTime90d: {zh: '近 90 天', en: 'Last 90 days'},
+    marketHistoryStatsSide: {zh: '方向', en: 'Direction'},
+    marketHistoryStatsSideSell: {zh: '出售', en: 'Sells'},
+    marketHistoryStatsSideBuy: {zh: '購買', en: 'Buys'},
+    marketHistoryStatsCategory: {zh: '分類', en: 'Category'},
+    marketHistoryStatsNet: {zh: '淨收支', en: 'Net'},
+    marketHistoryStatsTrendTitle: {zh: '收支趨勢', en: 'Income & expense'},
+    marketHistoryStatsRankTitle: {zh: '物品排行', en: 'Top items'},
+    marketHistoryStatsRankAmount: {zh: '金額', en: 'Amount'},
+    marketHistoryStatsRankQuantity: {zh: '數量', en: 'Quantity'},
+    marketHistoryStatsRankCount: {zh: '筆數', en: 'Trades'},
+    marketHistoryStatsShareTitle: {zh: '分類構成', en: 'By category'},
+    marketHistoryStatsComposeTitle: {zh: '記錄構成', en: 'By status / type'},
+    marketHistoryStatsTableTitle: {zh: '按物品彙總', en: 'By item'},
+    marketHistoryStatsBucketAuto: {zh: '自動', en: 'Auto'},
+    marketHistoryStatsBucketDay: {zh: '日', en: 'Day'},
+    marketHistoryStatsBucketWeek: {zh: '周', en: 'Week'},
+    marketHistoryStatsBucketMonth: {zh: '月', en: 'Month'},
+    marketHistoryStatsBucketForced: {zh: '資料跨度較大，已按{0}聚合', en: 'Long span; aggregated by {0}'},
+    marketHistoryStatsNoData: {zh: '當前篩選沒有可統計的資料', en: 'No data for the current filters'},
+    marketHistoryStatsOthers: {zh: '其它', en: 'Others'},
+    marketHistoryStatsWeightedPrice: {zh: '加權均價', en: 'Weighted price'},
+    marketHistoryCreatedAt: {zh: '建立時間', en: 'Created'},
+    marketHistoryInferredTime: {zh: '推斷時間', en: 'inferred'},
+    marketHistoryFirstFillAt: {zh: '首次成交', en: 'First fill'},
+    marketHistoryFilledAt: {zh: '全部成交', en: 'Filled'},
+    marketHistoryCancelRequestedAt: {zh: '取消請求', en: 'Cancel requested'},
+    marketHistoryCancelledAt: {zh: '取消時間', en: 'Cancelled'},
+    marketHistoryExpiredAt: {zh: '過期時間', en: 'Expired'},
+    marketHistoryExpiresAt: {zh: '過期時間（官方）', en: 'Expires (official)'},
+    marketHistoryTaxTaken: {zh: '稅費', en: 'Tax taken'},
+    marketHistoryClaimRequestedAt: {zh: '領取請求', en: 'Collect requested'},
+    marketHistoryClaimedAt: {zh: '領取時間', en: 'Collected at'},
+    marketHistoryImportNote: {zh: '匯入備註', en: 'Import note'},
+    marketHistoryCollectedEstimated: {
+      zh: '該記錄缺少官方到賬資料，按已成交數量 × 單價 ×（1 − {0}% 稅率）推算',
+      en: 'Missing official collected data; estimated as filled quantity × price × (1 − {0}% tax)'
+    },
+    marketHistoryCollectedEstimatedBuy: {
+      zh: '該記錄缺少官方到賬資料，按已成交數量 × 單價推算（購買不扣稅）',
+      en: 'Missing official collected data; estimated as filled quantity × price (buys are not taxed)'
+    },
+    marketHistoryPending: {zh: '待領取', en: 'Pending'},
+    marketHistoryRawValue: {zh: '原值', en: 'Raw'},
+    marketHistoryCoin: {zh: '金幣', en: 'coins'},
+    marketHistoryInstantFallback: {
+      zh: '未收到官方條目，按委託資訊記錄（實際成交價可能更優，差額會退還）',
+      en: 'No official entry received; recorded from the request (the actual price may be better, with a refund).'
+    },
+    marketHistoryUnobservedNote: {
+      zh: '頁面關閉期間結束，未觀測到結束原因（成交/取消/過期）',
+      en: 'Ended while the page was closed; the exact cause was not observed.'
+    },
+    marketHistoryDeleteDone: {zh: '已刪除 {0} 條記錄', en: '{0} records deleted'},
+    marketHistoryDeleteConfirmClickOne: {zh: '確認刪除', en: 'Confirm'},
+    marketHistoryDeleteConfirmClick: {zh: '確認刪除 {0} 條', en: 'Confirm deleting {0}'},
+    marketHistoryExportTitle: {zh: '匯出交易記錄', en: 'Export records'},
+    marketHistoryExportScopeCurrent: {zh: '當前角色', en: 'Current character'},
+    marketHistoryExportScopeAll: {zh: '全部角色', en: 'All characters'},
+    marketHistoryExportFormatJson: {zh: 'JSON（可用於匯入合併）', en: 'JSON (importable)'},
+    marketHistoryExportFormatCsv: {zh: 'CSV（僅當前篩選結果，不可匯入）', en: 'CSV (filtered, view only)'},
+    marketHistoryExportHint: {zh: '當前角色 {0} 條，全部角色 {1} 條', en: 'Current character: {0}, all characters: {1}'},
+    marketHistoryExportApply: {zh: '匯出檔案', en: 'Export file'},
+    marketHistoryExportPrivacy: {
+      zh: '匯出檔案包含角色名與交易明細，請勿公開分享。',
+      en: 'The file contains your data; do not share it publicly.'
+    },
+    marketHistoryExportFileName: {zh: 'MWI市場交易記錄_{0}', en: 'MWI_Market_History_{0}'},
+    marketHistoryCsvFileName: {zh: 'MWI市場交易記錄', en: 'MWI_Market_History'},
+    marketHistoryExportDone: {zh: '匯出完成', en: 'Export finished'},
+    marketHistoryImportTitle: {zh: '匯入交易記錄', en: 'Import records'},
+    marketHistoryImportPaste: {zh: '貼上匯出的 JSON 內容，或選擇檔案', en: 'Paste exported JSON or choose a file'},
+    marketHistoryImportModeMerge: {
+      zh: '合併（推薦）：按訂單 id 合併欄位，補齊其他裝置的記錄',
+      en: 'Merge (recommended): merge by order id'
+    },
+    marketHistoryImportModeOverwrite: {
+      zh: '覆蓋：替換檔案中涉及的角色記錄',
+      en: 'Overwrite: replace records of the imported characters'
+    },
+    marketHistoryImportPreview: {zh: '預覽合併結果', en: 'Preview'},
+    marketHistoryImportApply: {zh: '執行匯入', en: 'Apply import'},
+    marketHistoryImportHint: {
+      zh: '同一訂單在不同裝置上建立、完成時，合併後得到一條完整記錄。',
+      en: 'Orders created and filled on different devices merge into one record.'
+    },
+    marketHistoryImportReport: {
+      zh: '新增 {0} 條 · 更新 {1} 條 · 內容去重 {2} 條 · 衝突 {3} 條 · 跳過 {4} 條',
+      en: 'Added {0} · updated {1} · deduped {2} · conflicts {3} · skipped {4}'
+    },
+    marketHistoryImportOverwriteConfirm: {
+      zh: '我確認用檔案內容覆蓋匯入檔案中涉及的角色記錄',
+      en: 'I understand overwrite replaces the buckets contained in the file'
+    },
+    marketHistoryImportDone: {zh: '匯入完成', en: 'Import finished'},
+    marketHistoryImportErrorFormat: {
+      zh: '檔案格式不正確，請選擇本功能匯出的 JSON 檔案',
+      en: 'Invalid file format'
+    },
+    marketHistoryImportErrorVersion: {
+      zh: '檔案版本高於當前指令碼支援的版本，請先更新指令碼',
+      en: 'The file was exported by a newer version; update the script first.'
+    },
+    marketHistoryImportErrorEmpty: {zh: '檔案中沒有有效的交易記錄', en: 'No valid records in the file'},
+    marketHistorySaveFailed: {
+      zh: '交易記錄儲存失敗，請檢查油猴儲存空間',
+      en: 'Failed to save market records. Check userscript storage.'
+    }
+  };
+
   // messages
   const I18N_MESSAGE_GROUPS = {
     common: COMMON_MESSAGES,
@@ -2492,6 +2763,7 @@
     combatSimImport: COMBAT_SIM_IMPORT_MESSAGES,
     subscribeNotification: SUBSCRIBE_NOTIFICATION_MESSAGES,
     changelog: CHANGELOG_MESSAGES,
+    marketHistory: MARKET_HISTORY_MESSAGES,
     updateChecker: UPDATE_CHECKER_MESSAGES
   };
 
@@ -2533,6 +2805,14 @@
         labyrinthEntryScreen: '[class*="LabyrinthPanel_entryScreen__"]',
         labyrinthButtonsContainer: '[class*="LabyrinthPanel_buttonsContainer__"]',
         marketplaceNavButtons: '[class*="MarketplacePanel_marketNavButtonContainer__"]',
+        // 市場主標籤欄（「商品列表 / 我的掛牌」所在行，display: flex，與標籤同排）。
+        marketplaceTabs: '[class*="MarketplacePanel_tabsComponentContainer__"]',
+        // 主標籤按鈕所在的 MUI flex 行；優先匹配使用者實測的 MarketplacePanel 直接子級，
+        // 再相容當前遊戲原始碼中的 TabsComponent 巢狀層級。
+        marketplaceTabBar: '[class*="MarketplacePanel_marketplacePanel__"] > .MuiTabs-flexContainer',
+        marketplaceTabBarNested: '[class*="MarketplacePanel_tabsComponentContainer__"] .MuiTabs-flexContainer',
+        marketplaceTabBarLegacy:
+          '[class*="MarketplacePanel_tabsComponentContainer__"] [class*="TabsComponent_tabsContainer__"]',
         equipmentPanel: '[class*="EquipmentPanel_equipmentPanel__"]',
         equipmentButtonContainer: '[class*="EquipmentPanel_buttonContainer__"]',
         selectedLoadout: '[class*="LoadoutsPanel_selectedLoadout__"]',
@@ -3403,6 +3683,7 @@
   // template-renderer
   const TemplateRenderer = {
     _html: null,
+    _svg: null,
     _render: null,
     _Hole: null,
     _unsafe: null,
@@ -3419,6 +3700,7 @@
       }
       this.ready = Promise.resolve(module).then((module) => {
         this._html = module.html;
+        this._svg = module.svg;
         this._render = module.render;
         this._Hole = module.Hole;
         this._unsafe = module.unsafe;
@@ -3430,6 +3712,12 @@
     html(strings, ...values) {
       if (!this._html) throw new Error('uhtml is not ready');
       return this._html(strings, ...values);
+    },
+
+    // SVG 片段必須用 svg 標記：html 標記生成的元素帶 HTML 名稱空間，插進 <svg> 裡不會顯示。
+    svg(strings, ...values) {
+      if (!this._svg) throw new Error('uhtml is not ready');
+      return this._svg(strings, ...values);
     },
 
     raw(markup) {
@@ -6857,6 +7145,24 @@
   // 版本說明只寫使用者可感知的變化，更新版本時先改 docs/changelog.md，再同步這裡並補英文。
   const CHANGELOG_VERSIONS = [
     {
+      version: '2.19.0',
+      date: '2026-10-11',
+      notes: [
+        {
+          zh: '新增“市場交易記錄”：自動記錄自己的掛牌、成交、取消、過期和立即購買 / 立即出售訂單，入口在市場“商品列表 / 我的掛牌”旁邊，也能從工具箱開啟。支援搜尋、篩選、排序、分頁與批次刪除，底部給出成交數量、收入與支出的本頁合計與篩選總計；記錄可匯出匯入，多臺裝置各自記錄的部分會按訂單合併成一條完整記錄。“統計”頁籤用獨立篩選檢視時間範圍、方向、分類與物品關鍵詞，總覽給出筆數、成交數量、收入、支出與淨收支，另有收支趨勢、物品排行、分類構成和記錄構成四張圖表，“按物品彙總”把出售金額與購買金額分列；“幫助”頁簽寫明“食用工具”橋接指令碼的接入方法，可把它的歷史市場訂單匯入，也能把記錄導回食用工具。記錄顯示官方建立時間、過期時間與稅費；缺少官方到賬資料的歷史記錄會按成交當時的市場稅率推算並在懸浮提示裡說明——出售扣稅，購買不扣稅。',
+          en: 'New Market History: automatically records your listings, fills, cancellations, expirations, and instant buy/sell orders; open it next to the market listings tabs or from the Toolkit. Records support search, filters, sorting, paging, and bulk delete, the footer shows this-page and filtered totals of filled quantity, income, and expense, and records can be exported or imported — parts recorded on different devices merge into one complete record per order. The Stats tab has its own filters by time range, direction, category, and item keyword, with an overview of records, filled quantity, income, expense, and net, plus four charts (income and expense over time, top items, category breakdown, record breakdown) and a by-item table that lists sell and buy amounts in separate columns; the Help tab explains how to add the Edible Tools bridge script, which can import its order history and export records back. Records show the official created time, expiration time, and tax taken; records without official collection data are estimated with the market tax rate at the time of the sale and labeled in the tooltip — sells are taxed, buys are not.'
+        }, {
+          zh: '角色名片：評分隨佈局顯示——戰鬥佈局只顯示戰鬥評分、生活佈局只顯示生活評分，選“全部”才同時顯示兩個，只剩一個評分時靠下襬放；裝備與生活工具的等級角標改為遊戲裡的需求等級，項鍊、戒指、耳環和任務徽章沒有等級要求，仍顯示物品等級。',
+          en: 'Character Cards: the score rows follow the layout — the combat layout shows only the combat score, the life layout only the life score, and All shows both, with a single score placed at the bottom; the level badges on equipment and tool icons now show the in-game requirement, while necklaces, rings, earrings, and task badges have no requirement and keep showing their item level.'
+        }, {
+          zh: '房屋升級計算器：起始等級可以選擇 0（未建造），從 0 級起算會把建到 1 級的材料一起算上。',
+          en: 'House Upgrade Calculator: the start level can now be 0 for rooms that are not built, which includes the materials needed to build the room to level 1.'
+        }, {
+          zh: '地下城收益計算器：單圖與批次的切換改為頂部頁籤，開啟預設停在第一個頁籤“批次模擬”，兩個模式的引數照舊分別自動儲存。',
+          en: 'The Dungeon Profit Calculator now switches between a single map and batch mode with tabs at the top, opening on the first tab, Batch Simulation; parameters of both modes are still saved automatically.'
+        }
+      ]
+    }, {
       version: '2.18.0',
       date: '2026-10-01',
       notes: [
@@ -6929,7 +7235,8 @@
           en: 'Dungeon Profit adds an "Exclude cowbell value" option (off by default): when checked, cowbells and bags of cowbells are excluded from profit and their value in the results and drop table shows as 0.'
         }
       ]
-    }, {
+    },
+    {
       version: '2.16.0',
       date: '2026-09-08',
       notes: [
@@ -6947,8 +7254,7 @@
           en: 'Every Toolkit dialog now shows the same icon as its menu entry, making dialogs and menu entries easy to match.'
         }
       ]
-    },
-    {
+    }, {
       version: '2.15.0',
       date: '2026-08-28',
       notes: [
@@ -6999,7 +7305,8 @@
           en: 'Dungeon Profit improvements: the dungeon dropdown now shows D1-D4 numbers to match the in-game dungeon map, and the results area has a new "Drops" tab listing items, drop rates, expected quantities, and best-ask/best-bid prices per standard and refined chest, with details on hover; prices are calculated from market quotes before tax.'
         }
       ]
-    }, {
+    },
+    {
       version: '2.11.1',
       date: '2026-08-18',
       notes: [
@@ -7011,8 +7318,7 @@
           en: 'When several copies of this script are installed (e.g. the release and a local dev build), the Add to Cart button now appears consistently without the copies interfering with each other.'
         }
       ]
-    },
-    {
+    }, {
       version: '2.11.0',
       date: '2026-08-18',
       notes: [
@@ -7029,8 +7335,8 @@
       date: '2026-08-17',
       notes: [
         {
-          zh: '修復市場行情來源：市場資料改為始終按當前所在伺服器讀取（正式服、測試服、中文站各自讀取本站行情），在帶 www、不帶 www 或測試服域名的頁面開啟時都能正確讀取，不再依賴固定的域名跳轉。',
-          en: 'Fixed the market data source: prices are always read from the current server (release, test, and Chinese sites each use their own market), so pages with or without www or on the test domain all work without a fixed domain redirect.'
+          zh: '修復市場行情來源：市場資料改為始終按當前入口域名讀取本站行情（正式服與測試服是兩個環境，cn 域名是正式服的中國官方映象入口），在帶 www、不帶 www 或測試服域名的頁面開啟時都能正確讀取，不再依賴固定的域名跳轉。',
+          en: 'Fixed the market data source: prices are now always read from the current entry domain (release and test are separate environments, and the cn domain is a mirror entry of the release server), so pages with or without www or on the test domain all work without a fixed domain redirect.'
         }
       ]
     }, {
@@ -7073,7 +7379,8 @@
           en: 'Fixed cowbell value sometimes being calculated as 0: when a bag of cowbells has no market price it falls back to the official guide price and then to the market snapshot trade price (about 1.075M coins per bag), with cowbells at one tenth, so it no longer shows 0.'
         }
       ]
-    }, {
+    },
+    {
       version: '2.9.1',
       date: '2026-08-11',
       notes: [
@@ -7082,8 +7389,7 @@
           en: 'Character profile caching optimized: only the fields needed by the card are cached, greatly reducing cache size, and the oldest profiles are cleaned up when the limit is exceeded or browser storage is low.'
         }
       ]
-    },
-    {
+    }, {
       version: '2.9.0',
       date: '2026-08-05',
       notes: [
@@ -7122,7 +7428,8 @@
           en: 'Improved dialog positioning on small screens and mobile browsers so the ability picker and Toolkit menu stay within the visible area.'
         }
       ]
-    }, {
+    },
+    {
       version: '2.7.20',
       date: '2026-08-02',
       notes: [
@@ -7150,8 +7457,7 @@
           en: 'Overall experience: the interface language follows the game in real time, and dialogs, mobile display, official Chinese terms, and market price directions are unified; best sell/buy prices display as 左一/右一 in Chinese, following game conventions.'
         }
       ]
-    },
-    {
+    }, {
       version: '1.2.7',
       date: '2026-05-07',
       legacy: true,
@@ -7198,7 +7504,8 @@
           en: 'Fixed Milkonomy sync failing when no loadout had ever been configured.'
         }
       ]
-    }, {
+    },
+    {
       version: '1.0.1',
       date: '2026-04-15',
       legacy: true,
@@ -7208,8 +7515,7 @@
           en: 'Fixed the Chinese mirror site being unusable.'
         }
       ]
-    },
-    {
+    }, {
       version: '1.0.0',
       date: '2026-04-15',
       legacy: true,
@@ -7667,6 +7973,27 @@
       .map((detail) => `/item_locations/${String(detail.skillHrid).split('/').pop()}_tool`);
   }
 
+  // 評分行隨名片內容模式取值：戰鬥佈局只顯示戰鬥分、生活佈局只顯示生活分，「全部」
+  // 佈局兩個都顯示。戰力打造分只有一個分數，任何佈局都顯示（不受此規則限制）。
+  function getCardScoreRowVisibility(state, contentMode) {
+    const mode = [
+      'combat', 'life', 'all'
+    ].includes(contentMode) ? contentMode : state.cardContentMode;
+    return {battle: mode !== 'life', skilling: mode !== 'combat'};
+  }
+
+  // 裝備圖示右上角等級取自官方資料：有需求等級時顯示需求等級（多項需求取最高，
+  // 如精煉裝備 110、護符按對應技能、袋子按總等級），沒有需求等級的裝備（項鍊、
+  // 戒指、耳環、任務徽章）沿用官方物品等級 itemLevel。口徑與 MWITools v26.4.18 起一致。
+  function getCardItemLevel(clientData, itemHrid) {
+    const detail = clientData?.raw?.itemDetailMap?.[itemHrid];
+    const requirements = detail?.equipmentDetail?.levelRequirements;
+    if (Array.isArray(requirements) && requirements.length) {
+      return requirements.reduce((max, requirement) => Math.max(max, Number(requirement?.level) || 0), 0);
+    }
+    return Number(detail?.itemLevel || 0);
+  }
+
   class CharacterCardIconRenderer {
     constructor(deps) {
       this.ctx = deps.ctx;
@@ -7814,8 +8141,9 @@
       return key;
     }
 
-    // 著裝評分分戰鬥/生活兩行展示（✦ 在文案前，標籤後跟分數）；戰力打造分保持
-    // 單塊佈局（標籤在上、數值在下）。
+    // 著裝評分分戰鬥/生活兩行展示（✦ 在文案前，標籤後跟分數），顯示哪幾行由名片內容
+    // 模式決定（戰鬥佈局只看戰鬥分、生活佈局只看生活分、全部佈局兩行都看）；戰力打造分
+    // 保持單塊佈局（標籤在上、數值在下），只有一個分數，不受內容模式限制。
     renderBuildScore(scoreElement, score) {
       const battleRow = scoreElement.querySelector('[data-score-row="battle"]');
       const skillingRow = scoreElement.querySelector('[data-score-row="skilling"]');
@@ -7823,6 +8151,11 @@
       const battleValue = battleRow?.querySelector('.mst-card-build-score-value');
       const skillingLabel = skillingRow?.querySelector('.mst-card-build-score-label');
       const skillingValue = skillingRow?.querySelector('.mst-card-build-score-value');
+      const rowVisibility = getCardScoreRowVisibility(this.state);
+      const setRowVisibility = () => {
+        if (battleRow) battleRow.hidden = !rowVisibility.battle;
+        if (skillingRow) skillingRow.hidden = !rowVisibility.skilling;
+      };
       const setMarker = (hidden) => {
         scoreElement.querySelectorAll('.mst-card-build-score-new').forEach((marker) => {
           marker.hidden = hidden;
@@ -7832,12 +8165,12 @@
         if (battleRow) battleRow.classList.toggle('mst-card-build-score-legacy', legacy);
       };
       if (typeof score === 'string') {
-        // 計算中或錯誤提示：兩個分數塊同顯，不顯示新版本標識。
+        // 計算中或錯誤提示：按內容模式顯示的分數塊同顯該提示，不顯示新版本標識。
         if (battleLabel) battleLabel.textContent = this.i18n.t('battleScore');
         if (battleValue) battleValue.textContent = score;
         if (skillingLabel) skillingLabel.textContent = this.i18n.t('skillingScore');
         if (skillingValue) skillingValue.textContent = score;
-        if (skillingRow) skillingRow.hidden = false;
+        setRowVisibility();
         setLegacyLayout(false);
         setMarker(true);
         return;
@@ -7851,13 +8184,14 @@
         if (skillingValue) {
           skillingValue.textContent = score.skilling.available ? `${score.skilling.total.toFixed(1)}${hiddenText}` : '-';
         }
-        if (skillingRow) skillingRow.hidden = false;
+        setRowVisibility();
         setLegacyLayout(false);
         setMarker(false);
       } else {
         // 戰力打造分：標籤在上、數值在下，生活行隱藏。
         if (battleLabel) battleLabel.textContent = this.i18n.t('buildScore');
         if (battleValue) battleValue.textContent = `${score.total.toFixed(1)}${hiddenText}`;
+        if (battleRow) battleRow.hidden = false;
         if (skillingRow) skillingRow.hidden = true;
         setLegacyLayout(true);
         setMarker(true);
@@ -8381,7 +8715,7 @@
 
           if (item) {
             const enhancementLevel = item.enhancementLevel || 0;
-            const itemLevel = Number(this.DataHub.clientData.raw?.itemDetailMap?.[item.itemHrid]?.itemLevel || 0);
+            const itemLevel = getCardItemLevel(this.DataHub.clientData, item.itemHrid);
             const itemName = this.DataHub.getLocalizedGameName('itemNames', item.itemHrid, this.i18n.languageKey);
 
             html += `<div class="Item_item__2De2O Item_clickable__3viV6" style="position:relative;" title="${this.utils.escapeHtml(itemName)}" data-card-item-name="${this.utils.escapeHtml(itemName)}" data-card-item-hrid="${this.utils.escapeHtml(item.itemHrid)}" data-card-item-level="${enhancementLevel}" data-card-item-location="${this.utils.escapeHtml(item.itemLocationHrid)}">`;
@@ -8467,7 +8801,7 @@
               : emptyName;
           const itemName = item ? this.DataHub.getLocalizedGameName('itemNames', item.itemHrid, language) : emptyName;
           const enhancementLevel = Number(item?.enhancementLevel || 0);
-          const itemLevel = Number(this.DataHub.clientData.raw?.itemDetailMap?.[item?.itemHrid]?.itemLevel || 0);
+          const itemLevel = item ? getCardItemLevel(this.DataHub.clientData, item.itemHrid) : 0;
           return `
   <div class="mst-life-tool-slot" title="${this.utils.escapeHtml(itemName)}"${
     item
@@ -8872,6 +9206,8 @@
       ].includes(options.contentMode) ? options.contentMode : state.cardContentMode;
       const showCombat = contentMode !== 'life';
       const showLife = contentMode !== 'combat';
+      // 評分行與內容區塊同構：戰鬥佈局只留戰鬥分，生活佈局只留生活分。
+      const scoreRowVisibility = getCardScoreRowVisibility(state, contentMode);
       const equipmentPanel =
         availability.equipment === false ? '' : equipmentRenderer.generateEquipmentPanel(characterObj);
       const lifeToolsPanel =
@@ -8909,14 +9245,14 @@
     <div class="mst-card-header">
       <div class="mst-card-header-identity">${TemplateRenderer.raw(headerContent)}</div>
       <span class="mst-card-build-score" data-build-score-key=${buildScoreKey} data-score-state="pending">
-        <span class="mst-card-build-score-row" data-score-row="battle">
+        <span class="mst-card-build-score-row" data-score-row="battle" hidden=${!scoreRowVisibility.battle}>
           <span class="mst-card-build-score-heading">
             <span class="mst-card-build-score-new" title=${i18n.t('newBuildScoreBadge')} hidden>✦</span>
             <span class="mst-card-build-score-label">${i18n.t('battleScore')}</span>
           </span>
           <span class="mst-card-build-score-value">${i18n.t('calculating')}</span>
         </span>
-        <span class="mst-card-build-score-row" data-score-row="skilling">
+        <span class="mst-card-build-score-row" data-score-row="skilling" hidden=${!scoreRowVisibility.skilling}>
           <span class="mst-card-build-score-heading">
             <span class="mst-card-build-score-new" title=${i18n.t('newBuildScoreBadge')} hidden>✦</span>
             <span class="mst-card-build-score-label">${i18n.t('skillingScore')}</span>
@@ -9513,6 +9849,7 @@
 .mst-card-header .mst-card-name span{display:inline-flex;align-items:center;height:auto;min-height:20px;line-height:20px;font-size:inherit;font-weight:inherit;vertical-align:middle}
 .mst-card-game-mode{font-size:9px;opacity:.8}
 .mst-card-build-score{flex:0 0 auto;min-width:88px;min-height:25px;display:flex;flex-direction:column;align-items:flex-end;color:orange;font-weight:700;line-height:1.15;white-space:nowrap;cursor:help;gap:.1rem}
+.mst-card-build-score:has(.mst-card-build-score-row[hidden]){justify-content:flex-end}
 .mst-card-build-score-clickable{cursor:pointer}
 .mst-card-build-score-clickable:hover{filter:brightness(1.25)}
 .mst-score-detail-panel{position:fixed;z-index:var(--mst-z-popup);box-sizing:border-box;display:flex;flex-direction:column;min-width:18rem;max-width:min(22rem,calc(100vw - 1rem));max-height:min(26rem,calc(100svh - 2rem));padding:var(--spacing-sm, .5rem);border:var(--border-width-thin, 1px) solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-900, #131419);color:var(--color-text-dark-mode, #e7e7e7);box-shadow:0 .375rem .875rem #00000073;font:var(--font-weight-medium, 500) var(--font-size-sm, .8125rem)/1.4 Roboto,Helvetica,Arial,sans-serif}
@@ -14382,6 +14719,16 @@
   const marketTaxPercent = Math.round(MARKET_TAX_RATE * 100);
   const cowbellTaxPercent = Math.round(COWBELL_TAX_RATE * 100);
 
+  // 單圖/批次頁籤：陣列順序即頁籤順序，第一項是開啟計算器時預設選中的頁籤（頁籤不記憶）。
+  const SIM_TABS = Object.freeze([
+    [
+      true, 'simTabBatch'
+    ], [
+      false, 'simTabSingle'
+    ]
+  ]);
+  const DEFAULT_SIM_BATCH = SIM_TABS[0][0];
+
   // dungeon-profit-form-view
   const dungeonProfitFormView = {
     renderCalculator(feature) {
@@ -14431,26 +14778,29 @@
       );
       // 自定義控制元件始終保留在模板中，僅用 hidden 切換，避免 uhtml 因節點數量變化丟擲 InvalidNodeTypeError。
       // 單圖/批次兩個檢視容器常駐模板並用 hidden 切換；批次檢視內容由字串模板單獨渲染，
-      // 避免把逐行輸入的表格交給 uhtml 增量更新。批次開關是與選項一致的核取方塊，預設不勾選（單圖模擬）。
+      // 避免把逐行輸入的表格交給 uhtml 增量更新。模式切換是頂部頁籤（樣式同市場交易記錄），
+      // 頁籤順序與預設頁籤都由 SIM_TABS 給出：開啟時停在第一個頁籤。
+      const simTabs = SIM_TABS.map(
+        ([
+          batch, labelKey
+        ]) =>
+          TemplateRenderer.html`<button
+      type="button"
+      class=${'mst-dungeon-sim-tab' + (Boolean(feature.batchEnabled) === batch ? ' mst-dungeon-sim-tab-active' : '')}
+      @click=${() => {
+        if (Boolean(feature.batchEnabled) === batch) return;
+        feature.batchEnabled = batch;
+        feature.applyDialogWidth();
+        feature.render();
+      }}
+    >${i18n.t(labelKey)}</button>`
+      );
       TemplateRenderer.render(
         () => TemplateRenderer.html`
   <div class="mst-upgrade-calculator mst-dungeon-calculator">
+    <div class="mst-dungeon-sim-tabs">${simTabs}</div>
     <div class="mst-dungeon-single-view" .hidden=${Boolean(feature.batchEnabled)}>
     <div class="mst-dungeon-toolbar">
-      <div class="mst-dungeon-field mst-dungeon-toggle-field">
-        <label class="mst-dungeon-auto-buff">
-          <input
-            type="checkbox"
-            .checked=${Boolean(feature.batchEnabled)}
-            @change=${(event) => {
-              feature.batchEnabled = event.target.checked;
-              feature.applyDialogWidth();
-              feature.render();
-            }}
-          >
-          <span>${i18n.t('simTabBatch')}</span>
-        </label>
-      </div>
       <label class="mst-dungeon-field">
         <span>${i18n.t('dungeon')}</span>
         <select
@@ -14660,7 +15010,7 @@
       // 結果表單獨渲染，避免表單重繪時複用已經脫離 DOM 的表格節點，造成自定義列停止更新。
       const resultRoot = feature.root.querySelector('.mst-dungeon-results');
       if (resultRoot) TemplateRenderer.render(() => feature.renderResult(result), resultRoot);
-      // 批次檢視只在勾選時渲染；行內輸入走區域性重新整理，不觸發整棵模板重繪。
+      // 批次檢視只在批次頁籤時渲染；行內輸入走區域性重新整理，不觸發整棵模板重繪。
       if (feature.batchEnabled) {
         const batchRoot = feature.root.querySelector('.mst-dungeon-batch-view');
         if (batchRoot) feature.renderBatchView(batchRoot);
@@ -14712,17 +15062,6 @@
     </div>`;
     },
 
-    getBatchToggleHtml(feature) {
-      const {i18n} = DungeonProfitCalculatorFeature.ctx;
-      return `
-    <div class="mst-dungeon-field mst-dungeon-toggle-field">
-      <label class="mst-dungeon-auto-buff">
-        <input type="checkbox" data-batch-toggle${feature.batchEnabled ? ' checked' : ''}>
-        <span>${escapeHtmlText(i18n.t('simTabBatch'))}</span>
-      </label>
-    </div>`;
-    },
-
     getOptionsHtml(feature) {
       const {i18n} = DungeonProfitCalculatorFeature.ctx;
       const state = feature.state;
@@ -14741,7 +15080,6 @@
           `<option value="${level}"${String(level) === String(state.guzzlingLevel) ? ' selected' : ''}>+${level}</option>`
       ).join('');
       return `
-    ${this.getBatchToggleHtml(feature)}
     ${checkboxField('useArtisanTea', 'artisanTea')}
     <label class="mst-dungeon-field">
       <span>${escapeHtmlText(i18n.t('guzzlingLevel'))}</span>
@@ -15063,17 +15401,10 @@
         },
         listenerOptions
       );
-      // 批次/單圖共用一個批次核取方塊：出現在批次選項行第一項，單圖操作區第一項由 uhtml 模板直接處理。
+      // 單圖/批次切換由頂部頁籤負責，這裡只處理批次選項行與行內欄位。
       popup.addEventListener(
         'change',
         (event) => {
-          const batchToggle = event.target.closest('[data-batch-toggle]');
-          if (batchToggle) {
-            feature.batchEnabled = batchToggle.checked;
-            feature.applyDialogWidth();
-            feature.render();
-            return;
-          }
           const control = event.target.closest('[data-batch-option]');
           if (control) {
             this.syncOptionControl(feature, control);
@@ -15221,7 +15552,7 @@
     },
 
     // 配置自動儲存：同一 localStorage key 下分 single/batch 兩個小節，只存輸入引數，結果每次重新計算。
-    // 批次模擬勾選狀態作為共享開關存在同一儲存的頂層欄位，重開計算器（含重新載入遊戲網站）後恢復。
+    // 當前頁籤不儲存：開啟計算器一律停在第一個頁籤，這裡順帶清掉舊版本留下的 batchEnabled 欄位。
     // 使用者每次調整（選項、行引數、列表增刪與排序）後隨渲染自動寫回；恢復預設會暫停一次自動儲存，
     // 保證“清除儲存 + 回到預設引數”的語義不被隨後的預設態渲染寫回覆蓋。
     autosave(feature) {
@@ -15230,7 +15561,7 @@
         return;
       }
       const store = this.readConfigStore();
-      store.batchEnabled = Boolean(feature.batchEnabled);
+      delete store.batchEnabled;
       if (feature.batchEnabled) {
         store.batch = {
           options: Object.fromEntries(
@@ -15274,11 +15605,10 @@
       Notifier.toast(i18n.t('configRestored'), 'success');
     },
 
-    // 開啟彈窗時應用已儲存配置：先恢復批次勾選狀態，再單圖欄位，再批次快照（選項 + 行），
-    // 兩者都缺失時批次預設四地圖。
+    // 開啟彈窗時應用已儲存配置：先單圖欄位，再批次快照（選項 + 行），兩者都缺失時批次預設四地圖。
+    // 頁籤不參與恢復，開啟時一律停在第一個頁籤。
     loadSavedConfigs(feature) {
       const store = this.readConfigStore();
-      if (typeof store.batchEnabled === 'boolean') feature.batchEnabled = store.batchEnabled;
       const single = store.single;
       if (single && typeof single === 'object') {
         this.SINGLE_CONFIG_FIELDS.forEach((key) => {
@@ -15846,8 +16176,8 @@
       this.root = null;
       this.helpController = null;
       this.state = null;
-      // 批次開關是核取方塊，預設不勾選進入單圖模擬；批次列表在彈窗關閉後保留，重新開啟時按儲存配置或預設四地圖恢復。
-      this.batchEnabled = false;
+      // 頁籤預設停在第一個頁籤（批次模擬）；批次列表在彈窗關閉後保留，重新開啟時按儲存配置或預設四地圖恢復。
+      this.batchEnabled = DEFAULT_SIM_BATCH;
       this.batchRows = [];
       this.batchNextRowId = 0;
       this.batchInitialized = false;
@@ -24245,7 +24575,7 @@
       const {CONFIG, utils} = HouseCalculatorUI.ctx;
       const batchToLevel = utils.clampLevel(
         container.querySelector('#mst-hccp-batch-to-level').value,
-        2,
+        CONFIG.MIN_FROM_LEVEL + 1,
         CONFIG.MAX_TO_LEVEL
       );
       container.querySelectorAll('.mst-hccp-level-input[data-type="to"]').forEach((toSelect) => {
@@ -24340,7 +24670,7 @@
         '    <select id="mst-hccp-batch-to-level" class="mst-hccp-level-input mst-hccp-batch-level-input" title="' +
           utils.escapeHtml(i18n.t('batchTarget')) +
           '">' +
-          utils.createLevelOptions(2, CONFIG.MAX_TO_LEVEL, CONFIG.MAX_TO_LEVEL) +
+          utils.createLevelOptions(CONFIG.MIN_FROM_LEVEL + 1, CONFIG.MAX_TO_LEVEL, CONFIG.MAX_TO_LEVEL) +
           '</select>', '</div>', '  <button id="mst-hccp-refresh-levels">' + utils.escapeHtml(i18n.t('refreshLevels')) + '</button>', '</div>', '</div>',
         '<div id="mst-hccp-rooms-container">' +
           this.renderRooms(ui) +
@@ -25132,6 +25462,4075 @@
       this.popover?.querySelectorAll('[data-entry-count]').forEach((button) => {
         button.title = i18n.t('labyrinthSupplyRunTitle', String(button.dataset.entryCount));
       });
+    }
+  }
+
+  var MST_MARKET_HISTORY_CSS = String.raw`.mst-market-history-dialog .swal2-html-container{max-height:calc(100dvh - 7rem);overflow:hidden}
+.mst-market-history-root{display:flex;flex-direction:column;gap:.5rem;height:calc(100dvh - 11rem);min-height:18rem;text-align:left}
+.mst-market-history{display:flex;flex-direction:column;gap:.5rem;flex:0 0 auto}
+.mst-market-history-content{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;gap:.5rem}
+.mst-market-history-tabs{display:flex;gap:.35rem;border-bottom:2px solid var(--color-divider, #454771);padding-bottom:.15rem}
+.mst-market-history-tab{border:0;border-bottom:2px solid transparent;margin-bottom:-.15rem;padding:.3rem .75rem;background:transparent;color:var(--color-text-dark-mode, #e7e7e7);font:inherit;font-weight:600;cursor:pointer;opacity:.7}
+.mst-market-history-tab-active{border-bottom-color:var(--color-space-400, #7184d8);opacity:1}
+.mst-market-history-toolbar{display:flex;flex-direction:column;gap:.4rem;border-bottom:1px solid var(--color-midnight-100, #454771);padding-bottom:.5rem}
+.mst-market-history-row{display:flex;align-items:center;flex-wrap:wrap;gap:.4rem .6rem}
+.mst-market-history-input,.mst-market-history-select,.mst-market-history-textarea{box-sizing:border-box;height:var(--button-height-normal, 1.875rem);border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);padding:.2rem .45rem;outline:0;background:var(--color-midnight-700, #20212f);color:var(--color-text-dark-mode, #e7e7e7);font:inherit;color-scheme:dark}
+.mst-market-history-select option{background:var(--color-midnight-700, #20212f);color:var(--color-text-dark-mode, #e7e7e7)}
+.mst-market-history-keyword{flex:1 1 10rem;min-width:7rem;max-width:16rem}
+.mst-market-history-date{width:9rem}
+.mst-market-history-number{width:5.5rem}
+.mst-market-history-textarea{height:6rem;resize:vertical;font-family:inherit}
+.mst-market-history-button{height:var(--button-height-normal, 1.875rem);border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);padding:.2rem .7rem;background:var(--color-midnight-400, #323450);color:var(--color-text-dark-mode, #e7e7e7);font:inherit;cursor:pointer}
+.mst-market-history-button:hover:not(:disabled){border-color:var(--color-space-200, #bbc5f1);background:var(--color-midnight-300, #393b5c)}
+.mst-market-history-button:disabled{cursor:not-allowed;opacity:.45}
+.mst-market-history-button-ghost{background:transparent;color:#e7e7e7c7}
+.mst-market-history-button-ghost:hover:not(:disabled){color:var(--color-text-dark-mode, #e7e7e7)}
+.mst-market-history-button-danger{border-color:#d9534fbf;background:#d9534f29;color:#ffb3b0}
+.mst-market-history-button-danger:hover:not(:disabled){border-color:var(--color-red-400, #d9534f);background:#d9534f4d;color:#ffd7d5}
+.mst-market-history-more-toggle{display:inline-flex;align-items:center;gap:.3rem}
+.mst-market-history-more-active{border-color:var(--color-space-400, #7184d8);color:var(--color-space-200, #bbc5f1)}
+.mst-market-history-caret{font-size:.7rem;opacity:.8}
+.mst-market-history-multiselect{position:relative;display:inline-flex}
+.mst-market-history-select-button{box-sizing:border-box;display:inline-flex;align-items:center;gap:.35rem;height:var(--button-height-normal, 1.875rem);border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);padding:.2rem .45rem;background:var(--color-midnight-700, #20212f);color:var(--color-text-dark-mode, #e7e7e7);font:inherit;cursor:pointer}
+.mst-market-history-select-button:hover{border-color:var(--color-space-200, #bbc5f1)}
+.mst-market-history-select-label{opacity:.65}
+.mst-market-history-select-value{max-width:7rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mst-market-history-popover{display:none;position:absolute;top:calc(100% + .25rem);left:0;z-index:6;min-width:12rem;max-height:17rem;overflow:auto;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);padding:.3rem;background:var(--color-midnight-700, #20212f);box-shadow:0 6px 18px #00000073}
+.mst-market-history-multiselect-open .mst-market-history-popover{display:block}
+.mst-market-history-popover-item{display:flex;align-items:center;gap:.4rem;padding:.28rem .35rem;border-radius:var(--radius-sm, .25rem);font-size:.85rem;white-space:nowrap;cursor:pointer}
+.mst-market-history-popover-item:hover{background:var(--color-midnight-500, #2c2e45)}
+.mst-market-history-popover-hint{padding:.3rem .35rem .15rem;font-size:.75rem;opacity:.6}
+.mst-market-history-inline{display:inline-flex;align-items:center;gap:.3rem;font-size:.85rem;opacity:.9}
+.mst-market-history-checkbox{display:inline-flex;align-items:center;gap:.35rem;font-size:.9rem;cursor:pointer}
+.mst-market-history-stats-filters{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem .9rem}
+.mst-market-history-chart-grid{display:grid;gap:.6rem;grid-template-columns:repeat(auto-fit,minmax(26rem,1fr))}
+.mst-market-history-chart-card{display:flex;flex-direction:column;gap:.4rem;min-width:0;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);padding:.5rem .6rem;background:var(--color-midnight-600, #27283b)}
+.mst-market-history-chart-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.3rem .6rem}
+.mst-market-history-chart-title{margin:0;font-size:.9rem;font-weight:600}
+.mst-market-history-chart-controls{display:flex;gap:.15rem}
+.mst-market-history-chart-toggle{border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);padding:.1rem .45rem;background:transparent;color:inherit;font-size:.75rem;opacity:.7;cursor:pointer}
+.mst-market-history-chart-toggle:hover{opacity:1}
+.mst-market-history-chart-toggle-active{background:var(--color-midnight-700, #20212f);border-color:var(--color-midnight-50, #5c5e8a);font-weight:600;opacity:1}
+.mst-market-history-chart-note{font-size:.75rem;opacity:.7}
+.mst-market-history-chart-svg{display:block;width:100%;height:auto}
+.mst-market-history-chart-grid-line{stroke:currentColor;stroke-width:1;opacity:.15}
+.mst-market-history-chart-zero{stroke:currentColor;stroke-width:1;stroke-dasharray:3 3;opacity:.45}
+.mst-market-history-chart-label{fill:currentColor;font-size:10px;opacity:.65}
+.mst-market-history-chart-bar-income{fill:var(--color-jade-300, #86d7b1)}
+.mst-market-history-chart-bar-expense{fill:var(--color-scarlet-300, #ef8f98)}
+.mst-market-history-chart-net{fill:none;stroke:var(--color-sky-300, #88b3f7);stroke-width:1.5}
+.mst-market-history-chart-dot{fill:var(--color-sky-300, #88b3f7)}
+.mst-market-history-chart-empty{padding:1.4rem 0;text-align:center;font-size:.85rem;opacity:.7}
+.mst-market-history-chart-body{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem}
+.mst-market-history-chart-doughnut{flex:none;width:9.5rem;height:9.5rem}
+.mst-market-history-chart-center-value{fill:currentColor;font-size:15px;font-weight:600}
+.mst-market-history-chart-center-caption{fill:currentColor;font-size:10px;opacity:.7}
+.mst-market-history-chart-legend{display:flex;flex-wrap:wrap;gap:.2rem .9rem;margin:0;padding:0;list-style:none;font-size:.78rem}
+.mst-market-history-chart-body .mst-market-history-chart-legend{flex:1 1 9rem;flex-direction:column;flex-wrap:nowrap;min-width:0}
+.mst-market-history-chart-legend-item{display:flex;align-items:center;gap:.3rem;min-width:0}
+.mst-market-history-chart-swatch{flex:none;width:.6rem;height:.6rem;border-radius:2px;background:currentColor}
+.mst-market-history-chart-swatch-income{background:var(--color-jade-300, #86d7b1)}
+.mst-market-history-chart-swatch-expense{background:var(--color-scarlet-300, #ef8f98)}
+.mst-market-history-chart-swatch-net{background:var(--color-sky-300, #88b3f7)}
+.mst-market-history-chart-legend-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mst-market-history-chart-legend-value{margin-left:auto;font-variant-numeric:tabular-nums;opacity:.9}
+.mst-market-history-rank{display:flex;flex-direction:column;gap:.25rem}
+.mst-market-history-rank-row{display:flex;align-items:center;gap:.4rem;font-size:.8rem}
+.mst-market-history-rank-item{display:flex;flex:0 0 9rem;align-items:center;gap:.25rem;min-width:0}
+.mst-market-history-rank-item span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mst-market-history-rank-item svg{flex:none;width:1.1rem;height:1.1rem}
+.mst-market-history-rank-track{display:flex;flex:1 1 auto;height:.7rem;min-width:3rem;border-radius:999px;background:#ffffff12;overflow:hidden}
+.mst-market-history-rank-sell{height:100%;background:var(--color-jade-300, #86d7b1)}
+.mst-market-history-rank-buy{height:100%;background:var(--color-scarlet-300, #ef8f98)}
+.mst-market-history-rank-value{flex:0 0 3.8rem;text-align:right;font-variant-numeric:tabular-nums}
+.mst-market-history-stats-table-wrap{max-height:22rem;overflow:auto}
+.mst-market-history-stats-table thead th{position:sticky;top:0;z-index:1;background:var(--color-midnight-600, #27283b)}
+.mst-market-history-warning,.mst-market-history-error{border-radius:var(--radius-sm, .25rem);padding:.3rem .5rem;font-size:.85rem}
+.mst-market-history-warning{border:1px solid var(--color-orange-400, #d08a2c);background:#d08a2c1f}
+.mst-market-history-error{border:1px solid var(--color-red-400, #d9534f);background:#d9534f1f}
+.mst-market-history-table-wrap{flex:1 1 auto;min-height:0;overflow:auto;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem)}
+.mst-market-history-table{width:100%;border-collapse:collapse;font-size:.85rem}
+.mst-market-history-table{display:table;table-layout:auto}
+.mst-market-history-table-records{table-layout:fixed}
+.mst-market-history-table-records tbody td{overflow:hidden;text-overflow:ellipsis}
+.mst-market-history-table thead{display:table-header-group}
+.mst-market-history-table tbody{display:table-row-group}
+.mst-market-history-table tr{display:table-row}
+.mst-market-history-table th,.mst-market-history-table td{display:table-cell}
+.mst-market-history-table th,.mst-market-history-table td{border-bottom:1px solid var(--color-midnight-100, #454771);padding:.25rem .45rem;text-align:left;white-space:nowrap;vertical-align:middle}
+.mst-market-history-table thead th{position:sticky;top:0;z-index:1;background:var(--color-midnight-500, #2c2e45);font-weight:600}
+.mst-market-history-table td.mst-market-history-number-cell.mst-market-history-income-cell{color:var(--color-jade-300, #86d7b1)}
+.mst-market-history-table td.mst-market-history-number-cell.mst-market-history-expense-cell{color:var(--color-scarlet-300, #ef8f98)}
+.mst-market-history-table th.mst-market-history-number-head,.mst-market-history-table td.mst-market-history-number-cell{text-align:right}
+.mst-market-history-table td.mst-market-history-number-cell{font-variant-numeric:tabular-nums}
+.mst-market-history-select-head,.mst-market-history-select-cell{padding:.25rem .2rem;text-align:center}
+.mst-market-history-row-check,.mst-market-history-select-all{width:.95rem;height:.95rem;margin:0;cursor:pointer;accent-color:var(--color-space-400, #7184d8)}
+.mst-market-history-record-row:hover td{background:#ffffff0a}
+.mst-market-history-record-row-selected td{background:#7184d829}
+.mst-market-history-table .mst-market-history-row-remove{box-sizing:border-box;width:1.45rem;min-height:1.55rem!important;padding:0!important;border:1px solid #9a5d66;border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-400, #323450);color:#f4c4ca!important;font-size:1.1rem!important;line-height:1!important}
+.mst-market-history-table .mst-market-history-row-remove:hover{background:var(--color-midnight-300, #393b5c)}
+.mst-market-history-table .mst-market-history-row-remove-armed{border-color:var(--color-red-400, #d9534f)!important;background:#d9534f73!important;color:#fff!important}
+.mst-market-history-item{display:flex;align-items:center;gap:.35rem;max-width:100%;min-width:0}
+.mst-market-history-item svg{width:1.5rem;height:1.5rem;flex:0 0 auto}
+.mst-market-history-item span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.mst-market-history-muted{opacity:.4}
+.mst-market-history-pending{margin-left:.3rem;font-size:.75rem;opacity:.75}
+.mst-market-history-status{display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;border-radius:999px;padding:.1rem .5rem;font-size:.78rem;white-space:nowrap}
+.mst-market-history-status-active{background:#7184d861}
+.mst-market-history-status-partial{background:#7184d880}
+.mst-market-history-status-filled{background:#4caf506b}
+.mst-market-history-status-cancelled,.mst-market-history-status-partialCancelled{background:#d9534f66}
+.mst-market-history-status-expired,.mst-market-history-status-partialExpired{background:#d08a2c66}
+.mst-market-history-status-unobserved{background:#96969659}
+.mst-market-history-record-row-noted td:first-child{border-left:2px solid var(--color-orange-400, #d08a2c)}
+.mst-market-history-empty{padding:2rem 1rem;text-align:center;opacity:.75}
+.mst-market-history-footer{display:flex;flex:0 0 auto;flex-direction:column;gap:.25rem}
+.mst-market-history-footer-bar{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem 1rem}
+.mst-market-history-pager-count{font-size:.82rem;opacity:.85;white-space:nowrap}
+.mst-market-history-pagination{display:flex;align-items:center;flex-wrap:wrap;gap:.25rem;margin-left:auto}
+.mst-market-history-page-group{display:flex;align-items:center;flex-wrap:wrap;gap:.25rem}
+.mst-market-history-page-jump-input{width:3.75rem;text-align:center}
+.mst-market-history-page{min-width:1.875rem;height:var(--button-height-normal, 1.875rem);border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-700, #20212f);color:var(--color-text-dark-mode, #e7e7e7);font:inherit;font-size:.8rem;cursor:pointer}
+.mst-market-history-page:disabled{cursor:not-allowed;opacity:.45}
+.mst-market-history-page-active{border-color:var(--color-space-400, #7184d8);background:var(--color-space-600, #3f4d9e)}
+.mst-market-history-page-ellipsis{padding:0 .15rem;opacity:.6}
+.mst-market-history-summary{display:flex;flex-wrap:wrap;align-items:baseline;gap:.15rem 1.25rem;font-size:.82rem}
+.mst-market-history-summary-group{display:inline-flex;flex-wrap:wrap;align-items:baseline;gap:.1rem .75rem}
+.mst-market-history-summary-title{font-weight:600;opacity:.85}
+.mst-market-history-summary-item{white-space:nowrap}
+.mst-market-history-summary-label{margin-right:.25rem;opacity:.6}
+.mst-market-history-summary-value{font-weight:600;font-variant-numeric:tabular-nums}
+.mst-market-history-stats{display:flex;flex-direction:column;gap:.5rem;flex:1 1 auto;min-height:0;overflow:auto}
+.mst-market-history-stats-grid{display:grid;gap:.4rem;grid-template-columns:repeat(auto-fit,minmax(9rem,1fr))}
+.mst-market-history-stat{display:flex;flex-direction:column;gap:.15rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);padding:.4rem .5rem;background:var(--color-midnight-600, #27283b)}
+.mst-market-history-stat-label{font-size:.78rem;opacity:.8}
+.mst-market-history-stat-value{font-size:1rem;font-weight:600}
+.mst-market-history-stat-positive{color:var(--color-jade-300, #86d7b1)}
+.mst-market-history-stat-negative{color:var(--color-scarlet-300, #ef8f98)}
+.mst-market-history-aux-body{display:flex;flex-direction:column;gap:.6rem;text-align:left}
+.mst-market-history-manage{flex:1 1 auto;min-height:0;overflow:auto;gap:.8rem}
+.mst-market-history-manage-section{display:flex;flex-direction:column;gap:.6rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);padding:.6rem .7rem;background:var(--color-midnight-600, #27283b)}
+.mst-market-history-aux-head{display:flex;align-items:center;justify-content:space-between;gap:.6rem}
+.mst-market-history-aux-title{font-weight:600}
+.mst-market-history-aux-group{display:flex;flex-wrap:wrap;gap:.4rem .9rem}
+.mst-market-history-aux-hint{font-size:.85rem;opacity:.85}
+.mst-market-history-aux-actions{display:flex;align-items:center;flex-wrap:wrap;gap:.4rem .75rem}
+.mst-market-history-aux-note{font-size:.78rem;opacity:.7}
+.mst-market-history-file{font-size:.85rem}
+.mst-market-history-help{gap:.8rem}
+.mst-market-history-help-steps,.mst-market-history-help-notes{margin:0;padding-left:1.1rem;display:flex;flex-direction:column;gap:.35rem}
+.mst-market-history-help-step,.mst-market-history-help-note{font-size:.85rem;line-height:1.5;opacity:.92}
+.mst-market-history-help-code-row{display:flex;align-items:flex-start;flex-wrap:wrap;gap:.4rem .6rem;margin:.35rem 0 .25rem}
+.mst-market-history-help-code{flex:1 1 20rem;min-width:0;padding:.35rem .5rem;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);background:var(--color-midnight-700, #1e1f2e);color:var(--color-text-dark-mode, #e7e7e7);font-family:var(--font-family-monospace, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);font-size:.78rem;line-height:1.45;overflow-wrap:anywhere;user-select:all}
+.mst-market-history-entry{display:inline-flex;flex:0 0 auto;align-items:stretch}
+.mst-market-history-entry .mst-market-history-entry-button{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;min-width:5rem;min-height:2rem;border:0;border-radius:4px 4px 0 0;padding:var(--spacing-xs-plus, .375rem);background:var(--color-midnight-500, #2c2e45);color:var(--color-text-dark-mode, #e7e7e7);font:inherit;font-size:var(--font-size-base, .875rem);font-weight:var(--font-weight-medium, 500);line-height:var(--line-height-normal, 1.375);text-transform:none;white-space:nowrap;cursor:pointer}
+.mst-market-history-entry .mst-market-history-entry-button:hover{background:var(--color-midnight-300, #454771)}
+.mst-market-history-entry .mst-market-history-entry-button:focus-visible{outline:2px solid var(--color-space-400, #7184d8);outline-offset:-2px}
+.mst-market-history-entry-label,.mst-market-history-entry .mst-market-history-entry-button svg,.mst-market-history-entry .mst-market-history-entry-button svg path{color:inherit;fill:currentColor}`;
+
+  // market-history-charts
+  // 統計頁圖表的純幾何計算：數值軸刻度、分組柱、堆疊橫條與環形弧段。
+  // 不依賴 DOM、DataHub 與 i18n：輸入數值與座標空間尺寸，輸出可直接套進 SVG / HTML 的幾何資料。
+  // 圖表本身用 SVG 手繪（不引入圖表庫，保持單檔案指令碼體積），模板在 index.js 裡組裝。
+
+  const TWO_PI = Math.PI * 2;
+
+  function round(value, digits = 3) {
+    const factor = 10 ** digits;
+    return Math.round(value * factor) / factor;
+  }
+
+  // 數值軸：把最大值向上取整到 1/2/5 × 10^n 的「好看」刻度；有負值時一併覆蓋（淨收支可能為負）。
+  function buildValueAxis({min = 0, max = 0, tickCount = 4} = {}) {
+    const rawMax = Number.isFinite(Number(max)) ? Math.max(0, Number(max)) : 0;
+    const rawMin = Number.isFinite(Number(min)) ? Math.min(0, Number(min)) : 0;
+    if (rawMax <= rawMin) return {min: 0, max: 1, step: 1, ticks: [
+          0, 1
+        ]};
+    const rough = (rawMax - rawMin) / Math.max(1, tickCount);
+    const magnitude = 10 ** Math.floor(Math.log10(rough));
+    const normalized = rough / magnitude;
+    const step = magnitude * (normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10);
+    const axisMin = Math.floor(rawMin / step) * step;
+    const axisMax = Math.ceil(rawMax / step) * step;
+    const ticks = [];
+    for (let value = axisMin; value <= axisMax + step / 2; value += step) ticks.push(round(value, 6));
+    return {min: axisMin, max: axisMax, step, ticks};
+  }
+
+  // 豎向柱的橫向佈局：count 個分組、每組 seriesCount 根柱子；返回每組的起點、柱寬、組中心與各柱 x。
+  function layoutBarGroups({count, seriesCount = 1, plot}) {
+    const groups = [];
+    if (!(count > 0) || false) return groups;
+    const seriesTotal = Math.max(1, Math.floor(seriesCount));
+    const groupWidth = plot.width / count;
+    const groupGap = Math.min(6, groupWidth * 0.28);
+    const innerWidth = Math.max(1, groupWidth - groupGap);
+    const seriesGap = seriesTotal > 1 ? Math.min(2, innerWidth * 0.12) : 0;
+    const barWidth = Math.max(0.8, (innerWidth - seriesGap * (seriesTotal - 1)) / seriesTotal);
+    for (let index = 0; index < count; index += 1) {
+      const start = plot.x + groupWidth * index + groupGap / 2;
+      const seriesX = [];
+      for (let series = 0; series < seriesTotal; series += 1) seriesX.push(start + series * (barWidth + seriesGap));
+      groups.push({x: start, width: barWidth, center: start + innerWidth / 2, seriesX});
+    }
+    return groups;
+  }
+
+  // 堆疊橫條：把一組數值按比例分配到給定長度上（用於「物品排行」的出售 / 購買兩段）。
+  function layoutStackedSegments({values, length}) {
+    const safeValues = values.map((value) => Math.max(0, Number(value) || 0));
+    const total = safeValues.reduce((sum, value) => sum + value, 0);
+    if (!(total > 0) || !(length > 0)) return safeValues.map(() => ({offset: 0, width: 0, ratio: 0}));
+    const segments = [];
+    let offset = 0;
+    safeValues.forEach((value) => {
+      const width = length * (value / total);
+      segments.push({offset, width, ratio: value / total});
+      offset += width;
+    });
+    return segments;
+  }
+
+  function polarPoint(cx, cy, radius, angle) {
+    return {x: round(cx + radius * Math.cos(angle)), y: round(cy + radius * Math.sin(angle))};
+  }
+
+  function arcPath({cx, cy, outerRadius, innerRadius, startAngle, endAngle}) {
+    const largeArc = endAngle - startAngle > Math.PI ? 1 : 0;
+    const outerStart = polarPoint(cx, cy, outerRadius, startAngle);
+    const outerEnd = polarPoint(cx, cy, outerRadius, endAngle);
+    const innerEnd = polarPoint(cx, cy, innerRadius, endAngle);
+    const innerStart = polarPoint(cx, cy, innerRadius, startAngle);
+    return [
+      `M ${outerStart.x} ${outerStart.y}`, `A ${outerRadius} ${outerRadius} 0 ${largeArc} 1 ${outerEnd.x} ${outerEnd.y}`, `L ${innerEnd.x} ${innerEnd.y}`, `A ${innerRadius} ${innerRadius} 0 ${largeArc} 0 ${innerStart.x} ${innerStart.y}`, 'Z'
+    ].join(' ');
+  }
+
+  // 整圈（只有一個扇區佔滿時，起止點重合的弧畫不出來，改用兩段半圓拼接）。
+  function ringPath({cx, cy, outerRadius, innerRadius}) {
+    const outerTop = polarPoint(cx, cy, outerRadius, -Math.PI / 2);
+    const outerBottom = polarPoint(cx, cy, outerRadius, Math.PI / 2);
+    const innerTop = polarPoint(cx, cy, innerRadius, -Math.PI / 2);
+    const innerBottom = polarPoint(cx, cy, innerRadius, Math.PI / 2);
+    return [
+      `M ${outerTop.x} ${outerTop.y}`, `A ${outerRadius} ${outerRadius} 0 1 1 ${outerBottom.x} ${outerBottom.y}`, `A ${outerRadius} ${outerRadius} 0 1 1 ${outerTop.x} ${outerTop.y}`, 'Z', `M ${innerTop.x} ${innerTop.y}`,
+      `A ${innerRadius} ${innerRadius} 0 1 0 ${innerBottom.x} ${innerBottom.y}`, `A ${innerRadius} ${innerRadius} 0 1 0 ${innerTop.x} ${innerTop.y}`, 'Z'
+    ].join(' ');
+  }
+
+  // 環形圖弧段：從 12 點方向順時針鋪開，返回每段路徑、起止角與佔比（0 值段不畫但保留佔位）。
+  function layoutDoughnutArcs({values, cx, cy, outerRadius, innerRadius = outerRadius * 0.62}) {
+    const safeValues = values.map((value) => Math.max(0, Number(value) || 0));
+    const total = safeValues.reduce((sum, value) => sum + value, 0);
+    if (!(total > 0)) return [];
+    const arcs = [];
+    let angle = -Math.PI / 2;
+    safeValues.forEach((value, index) => {
+      const sweep = (value / total) * TWO_PI;
+      const endAngle = angle + sweep;
+      arcs.push({
+        index,
+        ratio: value / total,
+        startAngle: angle,
+        endAngle,
+        path:
+          value <= 0
+            ? ''
+            : sweep >= TWO_PI - 1e-6
+              ? ringPath({cx, cy, outerRadius, innerRadius})
+              : arcPath({cx, cy, outerRadius, innerRadius, startAngle: angle, endAngle})
+      });
+      angle = endAngle;
+    });
+    return arcs;
+  }
+
+  // 橫軸標籤抽樣：桶太多時隔幾個畫一個，最多畫 maxLabels 個。
+  function pickLabelStep(count, maxLabels = 8) {
+    if (!(count > 0) || !(maxLabels > 0)) return 1;
+    return Math.max(1, Math.ceil(count / maxLabels));
+  }
+
+  function percentageText(ratio, digits = 1) {
+    if (!Number.isFinite(Number(ratio))) return '0%';
+    const percent = Number(ratio) * 100;
+    const fixed = percent.toFixed(digits);
+    return (fixed.endsWith('.0') ? fixed.slice(0, -2) : fixed) + '%';
+  }
+
+  // market-history-store
+  // 純邏輯邊界：記錄模型、觀測事件合併、實際到賬累計、跨裝置/匯入合併、篩選排序分頁與統計。
+  // 不依賴 DOM、DataHub 與 i18n；物品名稱、分類等展示資訊由裝配層通過回撥提供。
+  //
+  // 口徑來源（`docs/analysis/市場交易記錄需求說明書.md`）：
+  // - 官方掛牌物件沒有時間戳，所有時間都是本機觀測時間；快照補齊的時間標記為推斷。
+  // - 實際到賬金額取官方 `unclaimedCoinCount` / `unclaimedItemCount`：這兩個欄位是扣稅後的真實值，
+  //   每次觀測到它們減少（領取動作）就把減少量累計進 collected*，不按稅率估算。
+  // - 掛牌以官方 id 為主鍵；直購/直售優先按官方 id 記錄（與掛牌同構），
+  //   服務端沒有條目時用出站請求兜底並生成本機 id，匯入時按內容去重。
+
+  const SCHEMA_VERSION = 1;
+  // 直購請求發出後等待官方條目的時間窗：窗內出現內容匹配的新條目即關聯為同一單。
+  const INSTANT_MATCH_WINDOW_MS = 60 * 1000;
+  // 直購兜底記錄跨裝置內容去重的時間窗。
+  const INSTANT_DEDUPE_WINDOW_MS = 10 * 60 * 1000;
+  // 記錄量超過閾值時只提示使用者匯出清理，不自動刪除。
+  const RECORDS_SOFT_LIMIT = 20000;
+  const STORE_BYTES_SOFT_LIMIT = 4 * 1024 * 1024;
+
+  const LISTING_STATUSES = {
+    ACTIVE: 'active',
+    FILLED: 'filled',
+    CANCELLED: 'cancelled',
+    EXPIRED: 'expired'
+  };
+
+  const TERMINAL_STATUSES = new Set([
+    LISTING_STATUSES.FILLED, LISTING_STATUSES.CANCELLED, LISTING_STATUSES.EXPIRED
+  ]);
+  const TERMINAL_EVENT_FIELDS = {
+    [LISTING_STATUSES.FILLED]: 'filledAt',
+    [LISTING_STATUSES.CANCELLED]: 'cancelledAt',
+    [LISTING_STATUSES.EXPIRED]: 'expiredAt'
+  };
+
+  const HISTORY_STATUS_KEYS = [
+    'active', 'partial', 'filled', 'cancelled', 'expired',
+    'partialCancelled', 'partialExpired', 'unobserved'
+  ];
+
+  const HISTORY_TYPE_KEYS = [
+    'sellListing', 'buyListing', 'sellInstant', 'buyInstant'
+  ];
+
+  const RECORD_FIELDS = {
+    key: '',
+    environment: 'live',
+    characterId: '',
+    characterName: '',
+    originHost: '',
+    kind: 'listing',
+    side: 'sell',
+    listingId: null,
+    itemHrid: '',
+    enhancementLevel: 0,
+    price: 0,
+    orderQuantity: 0,
+    filledQuantity: 0,
+    status: LISTING_STATUSES.ACTIVE,
+    createdAt: 0,
+    updatedAt: 0,
+    firstFillAt: null,
+    filledAt: null,
+    cancelledAt: null,
+    expiredAt: null,
+    cancelRequestedAt: null,
+    claimRequestedAt: null,
+    claimedAt: null,
+    expiresAt: null,
+    taxTaken: 0,
+    unclaimedItemCount: 0,
+    unclaimedCoinCount: 0,
+    collectedCoinCount: 0,
+    collectedItemCount: 0,
+    // 到賬推算：官方到賬/領取資料缺失時按歷史稅率推算金額，並記錄所用稅率。
+    collectedEstimated: false,
+    collectedTaxRate: 0,
+    claims: [],
+    origin: 'update',
+    inferredTime: false,
+    endedUnobserved: false,
+    importNote: ''
+  };
+
+  function toCount(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number) || number <= 0) return 0;
+    return Math.floor(number);
+  }
+
+  function toTimestamp(value) {
+    const number = Number(value);
+    return Number.isFinite(number) && number > 0 ? Math.floor(number) : null;
+  }
+
+  function toMoney(value) {
+    const number = Number(value);
+    return Number.isFinite(number) && number > 0 ? Math.floor(number) : 0;
+  }
+
+  // 官方時間戳是 ISO 字串（納秒精度，Date.parse 會截斷到毫秒），無效值按空處理。
+  function parseIsoTimestamp(value) {
+    if (value == null || value === '') return null;
+    if (typeof value === 'number') return toTimestamp(value);
+    const stamp = Date.parse(String(value));
+    return Number.isFinite(stamp) ? stamp : null;
+  }
+
+  function pickEarlier(left, right) {
+    const a = toTimestamp(left);
+    const b = toTimestamp(right);
+    if (a == null) return b;
+    if (b == null) return a;
+    return Math.min(a, b);
+  }
+
+  function pickLater(left, right) {
+    const a = toTimestamp(left);
+    const b = toTimestamp(right);
+    if (a == null) return b;
+    if (b == null) return a;
+    return Math.max(a, b);
+  }
+
+  // record-key
+  function buildListingKey(listingId) {
+    return 'listing:' + String(listingId);
+  }
+
+  function buildInstantKey(now, sequence = 0) {
+    return 'instant:' + String(now) + '-' + String(Math.floor(Math.random() * 1e6)) + '-' + String(sequence);
+  }
+
+  function bucketKey(environment, characterId) {
+    return String(environment || 'live') + ':' + String(characterId || 'default');
+  }
+
+  // 到賬推算（只用於官方到賬/領取資料缺失的記錄，例如匯入的歷史資料）：
+  // 官方 unclaimedCoinCount / collectedCoinCount 有值時一律以官方為準，不推算；
+  // 出售按成交當時的歷史稅率扣稅：普通物品 2026-08-14 前 2%、08-14 起 5%、09-28 起 4%，
+  // 牛鈴袋始終 18%；推算結果標 collectedEstimated 並在懸浮提示裡說明。
+  // 當前普通稅率的單一來源見 src/common/constants.js 的 MARKET_TAX_RATE，這裡按歷史檔位列出。
+  const TAX_HISTORY = [
+    {
+      before: Date.parse('2026-08-14T00:00:00+08:00'),
+      rate: 0.02
+    }, {before: Date.parse('2026-09-28T00:00:00+08:00'), rate: 0.05}, {before: Infinity, rate: 0.04}
+  ];
+  const COWBELL_BAG_HRID = '/items/bag_of_10_cowbells';
+  const COWBELL_BAG_TAX_RATE = 0.18;
+
+  function collectedTaxRateOf(record, at = 0) {
+    if (record?.itemHrid === COWBELL_BAG_HRID) return COWBELL_BAG_TAX_RATE;
+    const tier = TAX_HISTORY.find((entry) => at < entry.before);
+    return tier ? tier.rate : TAX_HISTORY[TAX_HISTORY.length - 1].rate;
+  }
+
+  // 缺少官方到賬資料時推算這筆交易的金額（一律記在 collectedCoinCount，不寫物品件數）：
+  // 出售按成交當時的市場稅率扣稅（數量 × 單價 ×（1 − 稅率）），購買不扣稅（數量 × 單價）。
+  // 每次歸一化都重新推算：公式調整後已存資料會自動糾正；
+  // 重新推算前先清掉舊推算值，保證它不會被當成官方資料（`collectedEstimated` 只由這裡寫）。
+  function estimateCollected(record) {
+    if (!record) return record;
+    const base = record.collectedEstimated
+      ? {...record, collectedCoinCount: 0, collectedItemCount: 0, collectedEstimated: false, collectedTaxRate: 0}
+      : record;
+    const filled = toCount(base.filledQuantity);
+    const official =
+      toCount(base.collectedCoinCount) > 0 ||
+      toCount(base.collectedItemCount) > 0 ||
+      toCount(base.unclaimedCoinCount) > 0 ||
+      toCount(base.unclaimedItemCount) > 0 ||
+      (Array.isArray(base.claims) && base.claims.length > 0);
+    if (official) return base;
+    if (!filled) return base;
+    const nominal = toMoney(base.price) * filled;
+    if (!nominal) return base;
+    const at = base.filledAt || base.firstFillAt || base.createdAt || 0;
+    // 只有出售側扣市場稅；購買側付多少就是多少。
+    const rate = base.side === 'sell' ? collectedTaxRateOf(base, at) : 0;
+    return {
+      ...base,
+      collectedCoinCount: Math.max(0, Math.floor(nominal * (1 - rate))),
+      collectedEstimated: true,
+      collectedTaxRate: rate
+    };
+  }
+
+  // record-normalize
+  function normalizeClaim(claim) {
+    if (!claim || typeof claim !== 'object') return null;
+    const at = toTimestamp(claim.at);
+    if (!at) return null;
+    const coinCount = toCount(claim.coinCount);
+    const itemCount = toCount(claim.itemCount);
+    if (!coinCount && !itemCount) return null;
+    return {at, coinCount, itemCount};
+  }
+
+  function normalizeRecord(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const record = {...RECORD_FIELDS};
+    const source = raw;
+    record.key = String(source.key || '');
+    record.environment = source.environment === 'test' ? 'test' : 'live';
+    record.characterId = String(source.characterId ?? '');
+    record.characterName = String(source.characterName || '');
+    record.originHost = String(source.originHost || '');
+    record.kind = source.kind === 'instant' ? 'instant' : 'listing';
+    record.side = source.side === 'buy' ? 'buy' : 'sell';
+    record.listingId = source.listingId == null || source.listingId === '' ? null : String(source.listingId);
+    record.itemHrid = String(source.itemHrid || '');
+    record.enhancementLevel = Math.max(0, Math.floor(Number(source.enhancementLevel) || 0));
+    record.price = toMoney(source.price);
+    record.orderQuantity = toCount(source.orderQuantity);
+    record.filledQuantity = Math.min(
+      toCount(source.filledQuantity),
+      record.orderQuantity || toCount(source.filledQuantity)
+    );
+    record.status = TERMINAL_STATUSES.has(source.status) ? source.status : LISTING_STATUSES.ACTIVE;
+    record.createdAt = toTimestamp(source.createdAt) || 0;
+    record.updatedAt = toTimestamp(source.updatedAt) || record.createdAt;
+    record.firstFillAt = toTimestamp(source.firstFillAt);
+    record.filledAt = toTimestamp(source.filledAt);
+    record.cancelledAt = toTimestamp(source.cancelledAt);
+    record.expiredAt = toTimestamp(source.expiredAt);
+    record.cancelRequestedAt = toTimestamp(source.cancelRequestedAt);
+    record.claimRequestedAt = toTimestamp(source.claimRequestedAt);
+    record.claimedAt = toTimestamp(source.claimedAt);
+    record.expiresAt = toTimestamp(source.expiresAt);
+    record.taxTaken = toCount(source.taxTaken);
+    record.unclaimedItemCount = toCount(source.unclaimedItemCount);
+    record.unclaimedCoinCount = toCount(source.unclaimedCoinCount);
+    record.collectedCoinCount = toCount(source.collectedCoinCount);
+    record.collectedItemCount = toCount(source.collectedItemCount);
+    record.collectedEstimated = Boolean(source.collectedEstimated);
+    record.collectedTaxRate = Number(source.collectedTaxRate) > 0 ? Number(source.collectedTaxRate) : 0;
+    record.claims = (Array.isArray(source.claims) ? source.claims : [])
+      .map(normalizeClaim)
+      .filter(Boolean)
+      .sort((left, right) => left.at - right.at)
+      .slice(-20);
+    record.origin = [
+      'snapshot', 'update', 'request', 'import'
+    ].includes(source.origin) ? source.origin : 'update';
+    record.inferredTime = Boolean(source.inferredTime);
+    record.endedUnobserved = Boolean(source.endedUnobserved);
+    record.importNote = dedupeImportNote(source.importNote);
+    if (record.status !== LISTING_STATUSES.ACTIVE) record.endedUnobserved = false;
+    if (!record.key) return null;
+    if (!record.itemHrid) return null;
+    if (record.key.startsWith('listing:') && record.listingId == null)
+      record.listingId = record.key.slice('listing:'.length);
+    if (record.key.startsWith('instant:') && record.filledQuantity === 0) record.filledQuantity = record.orderQuantity;
+    return estimateCollected(record);
+  }
+
+  // store-persistence
+  function createStore() {
+    return {schemaVersion: SCHEMA_VERSION, updatedAt: 0, buckets: {}};
+  }
+
+  function parseStore(raw) {
+    if (!raw) return createStore();
+    let parsed = raw;
+    if (typeof raw === 'string') {
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        return createStore();
+      }
+    }
+    if (!parsed || typeof parsed !== 'object') return createStore();
+    const store = createStore();
+    store.schemaVersion = Math.max(1, Math.floor(Number(parsed.schemaVersion) || 1));
+    store.updatedAt = toTimestamp(parsed.updatedAt) || 0;
+    const buckets = parsed.buckets && typeof parsed.buckets === 'object' ? parsed.buckets : {};
+    Object.entries(buckets).forEach(
+      ([
+        key, records
+      ]) => {
+        if (!Array.isArray(records)) return;
+        const normalized = records.map(normalizeRecord).filter(Boolean);
+        if (normalized.length) store.buckets[key] = normalized;
+      }
+    );
+    return store;
+  }
+
+  function serializeStore(store) {
+    return JSON.stringify({
+      schemaVersion: SCHEMA_VERSION,
+      updatedAt: store.updatedAt || 0,
+      buckets: store.buckets || {}
+    });
+  }
+
+  function getBucketRecords(store, key) {
+    if (!store.buckets[key]) store.buckets[key] = [];
+    return store.buckets[key];
+  }
+
+  // record-merge（匯入 / 多標籤頁 / 跨裝置）
+  function recordChangeTime(record) {
+    return record[TERMINAL_EVENT_FIELDS[record.status]] || record.updatedAt || record.createdAt || 0;
+  }
+
+  function mergeClaims(left, right) {
+    const merged = [
+      ...(left || []), ...(right || [])
+    ]
+      .map(normalizeClaim)
+      .filter(Boolean);
+    const seen = new Set();
+    const unique = [];
+    merged
+      .sort((a, b) => a.at - b.at)
+      .forEach((claim) => {
+        const signature = claim.at + '|' + claim.coinCount + '|' + claim.itemCount;
+        if (seen.has(signature)) return;
+        seen.add(signature);
+        unique.push(claim);
+      });
+    return unique.slice(-20);
+  }
+
+  // 歸一化匯入備註：按「；」分段並去重。舊版本曾無上限追加同一段備註
+  // （實測出現過單條記錄 501KB、同一句重複 3 萬多段的髒資料），這裡在讀取時收斂。
+  function dedupeImportNote(value) {
+    const parts = String(value || '')
+      .split('；')
+      .map((part) => part.trim())
+      .filter(Boolean);
+    const seen = new Set();
+    const unique = [];
+    parts.forEach((part) => {
+      if (seen.has(part)) return;
+      seen.add(part);
+      unique.push(part);
+    });
+    return unique.join('；');
+  }
+
+  function appendImportNote(note, extra) {
+    if (!extra) return note || '';
+    const parts = String(note || '')
+      .split('；')
+      .filter(Boolean);
+    if (!parts.includes(extra)) parts.push(extra);
+    return parts.join('；');
+  }
+
+  // 同一主鍵的欄位級合併：終態優先、進度取大、時間取早、累計到賬取大。
+  function mergeRecords(left, right) {
+    const a = normalizeRecord(left);
+    const b = normalizeRecord(right);
+    if (!a) return b;
+    if (!b) return a;
+    const leftTerminal = TERMINAL_STATUSES.has(a.status);
+    const rightTerminal = TERMINAL_STATUSES.has(b.status);
+    let primary = a;
+    let secondary = b;
+    let conflict = '';
+    if (leftTerminal !== rightTerminal) {
+      primary = rightTerminal ? b : a;
+      secondary = rightTerminal ? a : b;
+    } else if (leftTerminal && rightTerminal && a.status !== b.status) {
+      if (recordChangeTime(b) > recordChangeTime(a)) {
+        primary = b;
+        secondary = a;
+      }
+      conflict = '狀態衝突';
+    } else if (b.updatedAt > a.updatedAt) {
+      primary = b;
+      secondary = a;
+    }
+    const merged = {...primary};
+    merged.key = primary.key || secondary.key;
+    merged.listingId = primary.listingId != null ? primary.listingId : secondary.listingId;
+    merged.characterName = primary.characterName || secondary.characterName;
+    merged.originHost = primary.originHost || secondary.originHost;
+    merged.origin = primary.origin === 'import' ? secondary.origin : primary.origin;
+    merged.price = toMoney(primary.price) || toMoney(secondary.price);
+    merged.orderQuantity = Math.max(primary.orderQuantity, secondary.orderQuantity);
+    merged.filledQuantity = Math.max(primary.filledQuantity, secondary.filledQuantity);
+    merged.createdAt = pickEarlier(primary.createdAt, secondary.createdAt) || 0;
+    merged.updatedAt = pickLater(primary.updatedAt, secondary.updatedAt) || 0;
+    merged.expiresAt = pickEarlier(primary.expiresAt, secondary.expiresAt);
+    merged.taxTaken = Math.max(toCount(a.taxTaken), toCount(b.taxTaken));
+    merged.firstFillAt = pickEarlier(primary.firstFillAt, secondary.firstFillAt);
+    merged.filledAt = pickEarlier(primary.filledAt, secondary.filledAt);
+    merged.cancelledAt = pickEarlier(primary.cancelledAt, secondary.cancelledAt);
+    merged.expiredAt = pickEarlier(primary.expiredAt, secondary.expiredAt);
+    merged.cancelRequestedAt = pickEarlier(primary.cancelRequestedAt, secondary.cancelRequestedAt);
+    merged.claimRequestedAt = pickEarlier(primary.claimRequestedAt, secondary.claimRequestedAt);
+    merged.claimedAt = pickEarlier(primary.claimedAt, secondary.claimedAt);
+    merged.unclaimedItemCount = toCount(primary.unclaimedItemCount);
+    merged.unclaimedCoinCount = toCount(primary.unclaimedCoinCount);
+    merged.collectedCoinCount = Math.max(toCount(a.collectedCoinCount), toCount(b.collectedCoinCount));
+    merged.collectedItemCount = Math.max(toCount(a.collectedItemCount), toCount(b.collectedItemCount));
+    // 推算標記跟隨「取到更大到賬值」的那一側，避免把官方值與推算值混在一起時標錯。
+    const estimateSource =
+      merged.collectedCoinCount > 0 && toCount(a.collectedCoinCount) === merged.collectedCoinCount ? a : b;
+    merged.collectedEstimated = Boolean(estimateSource?.collectedEstimated);
+    merged.collectedTaxRate = merged.collectedEstimated ? Number(estimateSource.collectedTaxRate) || 0 : 0;
+    merged.claims = mergeClaims(a.claims, b.claims);
+    merged.status = primary.status;
+    merged.endedUnobserved = TERMINAL_STATUSES.has(merged.status) ? false : Boolean(primary.endedUnobserved);
+    merged.inferredTime = Boolean(a.inferredTime) && Boolean(b.inferredTime);
+    merged.importNote = appendImportNote(appendImportNote(a.importNote, b.importNote), conflict);
+    return normalizeRecord(merged) || merged;
+  }
+
+  function upsertRecord(records, record) {
+    const index = records.findIndex((item) => item.key === record.key);
+    if (index === -1) {
+      records.push(record);
+      return record;
+    }
+    const merged = mergeRecords(records[index], record);
+    records[index] = merged;
+    return merged;
+  }
+
+  // 官方狀態值是 hrid（`/market_listing_status/*`），內部統一用短值；同時相容直接傳短值的場景。
+  const OFFICIAL_STATUS_MAP = {
+    '/market_listing_status/active': 'active',
+    '/market_listing_status/filled': 'filled',
+    '/market_listing_status/cancelled': 'cancelled',
+    '/market_listing_status/expired': 'expired'
+  };
+
+  function normalizeListingStatus(value) {
+    if (OFFICIAL_STATUS_MAP[value]) return OFFICIAL_STATUS_MAP[value];
+    return TERMINAL_STATUSES.has(value) ? value : LISTING_STATUSES.ACTIVE;
+  }
+
+  // listing-input
+  function listingToFields(listing) {
+    if (!listing || typeof listing !== 'object') return null;
+    const id = listing.id == null ? null : String(listing.id);
+    const itemHrid = String(listing.itemHrid || '');
+    if (id == null || !itemHrid) return null;
+    return {
+      listingId: id,
+      characterId: listing.characterID == null ? '' : String(listing.characterID),
+      itemHrid,
+      enhancementLevel: Math.max(0, Math.floor(Number(listing.enhancementLevel) || 0)),
+      side: listing.isSell ? 'sell' : 'buy',
+      price: toMoney(listing.workingPrice) || toMoney(listing.price),
+      orderQuantity: toCount(listing.orderQuantity),
+      filledQuantity: toCount(listing.filledQuantity),
+      status: normalizeListingStatus(listing.status),
+      // 官方欄位：createdTimestamp / expirationTimestamp 是 ISO 時間戳（客戶端介面沒用到，
+      // 但服務端會下發，實測 2026-10-02 確認）；taxTaken 為本單累計稅費。
+      createdAt: parseIsoTimestamp(listing.createdTimestamp),
+      expiresAt: parseIsoTimestamp(listing.expirationTimestamp),
+      taxTaken: toCount(listing.taxTaken),
+      unclaimedItemCount: toCount(listing.unclaimedItemCount),
+      unclaimedCoinCount: toCount(listing.unclaimedCoinCount)
+    };
+  }
+
+  // 狀態推進：在既有記錄上應用一次官方條目觀測，返回新記錄（不改原物件）。
+  function applyListingObservation(record, fields, now, {origin = 'update', inferredTime = false} = {}) {
+    const previous = record ? normalizeRecord(record) : null;
+    const base =
+      previous ||
+      normalizeRecord({
+        key: buildListingKey(fields.listingId),
+        listingId: fields.listingId,
+        itemHrid: fields.itemHrid,
+        environment: 'live',
+        characterId: '',
+        origin,
+        inferredTime,
+        createdAt: now,
+        status: LISTING_STATUSES.ACTIVE
+      });
+    if (!base) return null;
+    const next = {...base};
+    const officialCreatedAt = toTimestamp(fields.createdAt);
+    if (!previous) {
+      // 有官方建立時間戳時直接採用官方時間，不再標記為推斷；只有觀測時間可用時才保持推斷標記。
+      next.createdAt = officialCreatedAt || now;
+      next.inferredTime = officialCreatedAt ? false : inferredTime;
+      next.origin = origin;
+    } else if (officialCreatedAt && base.inferredTime) {
+      // 舊記錄（或舊版本匯入的資料）原來只有觀測時間，見到官方時間戳後補正並清除推斷標記。
+      next.createdAt = officialCreatedAt;
+      next.inferredTime = false;
+    }
+    if (fields.characterId && !next.characterId) next.characterId = fields.characterId;
+    // 過期時間由建立時間決定（官方恆為 30 天），保留首次拿到的值即可。
+    next.expiresAt = toTimestamp(base.expiresAt) || toTimestamp(fields.expiresAt);
+    // 稅費隨成交累加，取觀測到的最大值。
+    next.taxTaken = Math.max(toCount(base.taxTaken), toCount(fields.taxTaken));
+    next.listingId = fields.listingId;
+    next.itemHrid = fields.itemHrid;
+    next.enhancementLevel = fields.enhancementLevel;
+    next.side = fields.side;
+    next.price = fields.price || base.price;
+    next.orderQuantity = fields.orderQuantity || base.orderQuantity;
+    next.updatedAt = now;
+    const previousFilled = toCount(base.filledQuantity);
+    const nextFilled = Math.max(previousFilled, toCount(fields.filledQuantity));
+    next.filledQuantity = nextFilled;
+    if (nextFilled > 0 && !next.firstFillAt) next.firstFillAt = now;
+    next.status = fields.status;
+    if (fields.status === LISTING_STATUSES.FILLED) next.filledAt = pickEarlier(base.filledAt, now);
+    if (fields.status === LISTING_STATUSES.CANCELLED) next.cancelledAt = pickEarlier(base.cancelledAt, now);
+    if (fields.status === LISTING_STATUSES.EXPIRED) next.expiredAt = pickEarlier(base.expiredAt, now);
+    if (TERMINAL_STATUSES.has(fields.status)) next.endedUnobserved = false;
+    // 實際到賬：觀測到待領取數量減少（領取動作）時按減少量累計；即時鏈路不按稅率估算。
+    // 官方待領取資料首次出現時作廢此前的推算值（推算值只服務於匯入的歷史資料）。
+    const officialPending = toCount(fields.unclaimedCoinCount) > 0 || toCount(fields.unclaimedItemCount) > 0;
+    const discardingEstimate = Boolean(base.collectedEstimated) && officialPending;
+    if (discardingEstimate) {
+      next.collectedCoinCount = 0;
+      next.collectedItemCount = 0;
+      next.collectedEstimated = false;
+      next.collectedTaxRate = 0;
+    }
+    const baseCollectedCoin = discardingEstimate ? 0 : toCount(base.collectedCoinCount);
+    const baseCollectedItem = discardingEstimate ? 0 : toCount(base.collectedItemCount);
+    const coinDrop = toCount(base.unclaimedCoinCount) - fields.unclaimedCoinCount;
+    const itemDrop = toCount(base.unclaimedItemCount) - fields.unclaimedItemCount;
+    if (coinDrop > 0 || itemDrop > 0) {
+      next.collectedCoinCount = baseCollectedCoin + Math.max(0, coinDrop);
+      next.collectedItemCount = baseCollectedItem + Math.max(0, itemDrop);
+      next.claims = mergeClaims(base.claims, [
+        {at: now, coinCount: Math.max(0, coinDrop), itemCount: Math.max(0, itemDrop)}
+      ]);
+      next.claimedAt = now;
+    }
+    next.unclaimedCoinCount = fields.unclaimedCoinCount;
+    next.unclaimedItemCount = fields.unclaimedItemCount;
+    if (previous) next.origin = previous.origin;
+    return normalizeRecord(next);
+  }
+
+  // 觀測一批官方條目（增量訊息或全量快照內容），按主鍵 upsert。
+  function applyListingBatch(records, listings, now, options = {}) {
+    const created = [];
+    const updated = [];
+    listings.forEach((listing) => {
+      const fields = listingToFields(listing);
+      if (!fields) return;
+      const key = buildListingKey(fields.listingId);
+      const existing = records.find((item) => item.key === key) || null;
+      const next = applyListingObservation(existing, fields, now, options);
+      if (!next) return;
+      upsertRecord(records, next);
+      if (existing) updated.push(next.key);
+      else created.push(next.key);
+    });
+    return {created, updated};
+  }
+
+  // 快照對賬：快照裡沒有的本機記錄按規則收尾。
+  // - 有效/部分成交記錄消失且期間沒有觀測到終態 → 結束（原因未觀測）；
+  // - 已成交/已取消/已過期但仍帶未領取數量 → 視為已被領取，補記實際到賬。
+  function reconcileWithSnapshot(records, listings, now) {
+    const snapshotIds = new Set(
+      listings.map((listing) => (listing && listing.id != null ? String(listing.id) : '')).filter(Boolean)
+    );
+    const unobserved = [];
+    const settled = [];
+    records.forEach((record) => {
+      if (record.listingId == null || snapshotIds.has(String(record.listingId))) return;
+      const pendingCoin = toCount(record.unclaimedCoinCount);
+      const pendingItem = toCount(record.unclaimedItemCount);
+      if (pendingCoin || pendingItem) {
+        record.collectedCoinCount = toCount(record.collectedCoinCount) + pendingCoin;
+        record.collectedItemCount = toCount(record.collectedItemCount) + pendingItem;
+        record.claims = mergeClaims(record.claims, [
+          {at: now, coinCount: pendingCoin, itemCount: pendingItem}
+        ]);
+        record.unclaimedCoinCount = 0;
+        record.unclaimedItemCount = 0;
+        record.claimedAt = record.claimedAt || now;
+        record.updatedAt = now;
+        settled.push(record.key);
+        return;
+      }
+      if (record.status === LISTING_STATUSES.ACTIVE) {
+        record.endedUnobserved = true;
+        record.inferredTime = true;
+        record.updatedAt = now;
+        unobserved.push(record.key);
+      }
+    });
+    return {unobserved, settled};
+  }
+
+  // instant-order（直購/直售）
+  // 出站請求：isInstantOrder=true 時先落一條請求記錄（無官方 id）；隨後官方條目出現時按內容關聯。
+  function createInstantRecord({environment, characterId, characterName, originHost, message, now, sequence = 0}) {
+    const side = message.isSell ? 'sell' : 'buy';
+    const record = normalizeRecord({
+      key: buildInstantKey(now, sequence),
+      environment,
+      characterId,
+      characterName,
+      originHost,
+      kind: 'instant',
+      side,
+      listingId: null,
+      itemHrid: message.itemHrid,
+      enhancementLevel: message.enhancementLevel,
+      price: message.price,
+      orderQuantity: message.quantity,
+      filledQuantity: message.quantity,
+      status: LISTING_STATUSES.FILLED,
+      createdAt: now,
+      updatedAt: now,
+      firstFillAt: now,
+      filledAt: now,
+      origin: 'request',
+      inferredTime: false
+    });
+    return record;
+  }
+
+  function matchesInstant(record, fields) {
+    if (!record || record.kind !== 'instant' || record.listingId != null) return false;
+    return (
+      record.itemHrid === fields.itemHrid &&
+      record.enhancementLevel === fields.enhancementLevel &&
+      record.side === fields.side &&
+      toMoney(record.price) === toMoney(fields.price) &&
+      toCount(record.orderQuantity) === toCount(fields.orderQuantity)
+    );
+  }
+
+  // 官方條目到達時把等待中的直購請求記錄關聯成同一條（按官方 id 繼續跟蹤）。
+  function linkInstantRecords(records, listing, now, {windowMs = INSTANT_MATCH_WINDOW_MS} = {}) {
+    const fields = listingToFields(listing);
+    if (!fields) return null;
+    const key = buildListingKey(fields.listingId);
+    if (records.some((item) => item.key === key)) return null;
+    const pending = records.find(
+      (record) => matchesInstant(record, fields) && now - toTimestamp(record.createdAt) <= windowMs
+    );
+    if (!pending) return null;
+    const merged = applyListingObservation({...pending, key, status: LISTING_STATUSES.ACTIVE}, fields, now, {
+      origin: 'request'
+    });
+    if (!merged) return null;
+    merged.kind = 'instant';
+    merged.createdAt = pending.createdAt;
+    merged.firstFillAt = pickEarlier(pending.firstFillAt, merged.firstFillAt);
+    merged.filledAt = pickEarlier(pending.filledAt, merged.filledAt);
+    merged.inferredTime = false;
+    records.splice(records.indexOf(pending), 1);
+    upsertRecord(records, merged);
+    return merged.key;
+  }
+
+  // 出站請求處理：取消 / 領取 / 直購。
+  // context：當前環境與角色（記錄陣列本身不攜帶這些資訊）。
+  function applyOutgoingMessage(records, message, now, context = {}) {
+    if (!message || typeof message !== 'object') return {changed: false};
+    if (message.type === 'post_market_order') {
+      const data = message.postMarketOrderData || {};
+      if (!data.isInstantOrder) return {changed: false};
+      const record = createInstantRecord({
+        environment: context.environment || 'live',
+        characterId: context.characterId || '',
+        characterName: context.characterName || '',
+        originHost: context.originHost || '',
+        message: data,
+        now,
+        sequence: records.length
+      });
+      if (!record) return {changed: false};
+      records.push(record);
+      return {changed: true, createdKeys: [
+          record.key
+        ]};
+    }
+    if (message.type === 'cancel_market_listing') {
+      const id = message.cancelMarketListingData?.marketListingId;
+      const record = records.find((item) => item.listingId != null && String(item.listingId) === String(id));
+      if (!record) return {changed: false};
+      record.cancelRequestedAt = now;
+      record.updatedAt = now;
+      return {changed: true};
+    }
+    if (message.type === 'claim_market_listing') {
+      const id = message.claimMarketListingData?.marketListingId;
+      const record = records.find((item) => item.listingId != null && String(item.listingId) === String(id));
+      if (!record) return {changed: false};
+      record.claimRequestedAt = now;
+      record.updatedAt = now;
+      return {changed: true};
+    }
+    if (message.type === 'claim_all_market_listings') {
+      let changed = false;
+      records.forEach((record) => {
+        if (toCount(record.unclaimedCoinCount) || toCount(record.unclaimedItemCount)) {
+          record.claimRequestedAt = now;
+          record.updatedAt = now;
+          changed = true;
+        }
+      });
+      return {changed};
+    }
+    return {changed: false};
+  }
+
+  function getDisplayStatus(record) {
+    if (record.endedUnobserved) return 'unobserved';
+    if (record.status === LISTING_STATUSES.ACTIVE) {
+      return toCount(record.filledQuantity) > 0 ? 'partial' : 'active';
+    }
+    if (record.status === LISTING_STATUSES.FILLED) return 'filled';
+    if (record.status === LISTING_STATUSES.CANCELLED) {
+      return toCount(record.filledQuantity) > 0 ? 'partialCancelled' : 'cancelled';
+    }
+    return toCount(record.filledQuantity) > 0 ? 'partialExpired' : 'expired';
+  }
+
+  function getRecordType(record) {
+    const instant = record.kind === 'instant';
+    if (record.side === 'sell') return instant ? 'sellInstant' : 'sellListing';
+    return instant ? 'buyInstant' : 'buyListing';
+  }
+
+  function getRecordAmount(record) {
+    return toMoney(record.price) * toCount(record.filledQuantity);
+  }
+
+  function getPendingCount(record) {
+    return record.side === 'sell' ? toCount(record.unclaimedCoinCount) : toCount(record.unclaimedItemCount);
+  }
+
+  // 「收入/支出」列取值：出售是收入（稅後金幣，官方資料優先、缺失時按歷史稅率推算），
+  // 購買是支出（付了多少：數量 × 單價，不扣稅）。
+  function getCollectedCount(record) {
+    if (record.side === 'sell') return toCount(record.collectedCoinCount);
+    return getRecordAmount(record);
+  }
+
+  function getSortTimestamp(record, field) {
+    if (field === 'filledAt')
+      return record.filledAt || record.cancelledAt || record.expiredAt || record.updatedAt || record.createdAt;
+    if (field === 'updatedAt') return record.updatedAt || record.createdAt;
+    return record.createdAt;
+  }
+
+  // query（篩選 / 排序 / 分頁）
+  function normalizeIdList(list) {
+    if (!list) return null;
+    if (list instanceof Set) return list.size ? list : null;
+    if (Array.isArray(list)) return list.length ? new Set(list) : null;
+    return null;
+  }
+
+  function filterRecords(records, filters = {}, {getSearchText, getCategoryKey, getItemKey} = {}) {
+    const keyword = String(filters.keyword || '')
+      .trim()
+      .toLowerCase();
+    const statuses = normalizeIdList(filters.statuses);
+    const types = normalizeIdList(filters.types);
+    const sides = normalizeIdList(filters.sides);
+    const category = filters.categoryKey && filters.categoryKey !== 'all' ? filters.categoryKey : null;
+    const itemKey = filters.itemKey && filters.itemKey !== 'all' ? filters.itemKey : null;
+    const timeField = filters.timeField === 'filledAt' ? 'filledAt' : 'createdAt';
+    const timeFrom = toTimestamp(filters.timeFrom);
+    const timeTo = toTimestamp(filters.timeTo);
+    const priceMin =
+      Number.isFinite(Number(filters.priceMin)) && filters.priceMin !== '' ? Number(filters.priceMin) : null;
+    const priceMax =
+      Number.isFinite(Number(filters.priceMax)) && filters.priceMax !== '' ? Number(filters.priceMax) : null;
+    const quantityMin =
+      Number.isFinite(Number(filters.quantityMin)) && filters.quantityMin !== '' ? Number(filters.quantityMin) : null;
+    const quantityMax =
+      Number.isFinite(Number(filters.quantityMax)) && filters.quantityMax !== '' ? Number(filters.quantityMax) : null;
+    return records.filter((record) => {
+      if (statuses && !statuses.has(getDisplayStatus(record))) return false;
+      if (types && !types.has(getRecordType(record))) return false;
+      if (sides && !sides.has(record.side)) return false;
+      if (category && getCategoryKey && getCategoryKey(record) !== category) return false;
+      if (itemKey && getItemKey && getItemKey(record) !== itemKey) return false;
+      const timestamp = timeField === 'filledAt' ? getSortTimestamp(record, 'filledAt') : record.createdAt;
+      if (timeFrom && (!timestamp || timestamp < timeFrom)) return false;
+      if (timeTo && (!timestamp || timestamp > timeTo)) return false;
+      const price = toMoney(record.price);
+      if (priceMin != null && price < priceMin) return false;
+      if (priceMax != null && price > priceMax) return false;
+      const quantity = toCount(record.orderQuantity);
+      if (quantityMin != null && quantity < quantityMin) return false;
+      if (quantityMax != null && quantity > quantityMax) return false;
+      if (keyword) {
+        const text = typeof getSearchText === 'function' ? String(getSearchText(record) || '').toLowerCase() : '';
+        if (!text.includes(keyword)) return false;
+      }
+      return true;
+    });
+  }
+
+  function sortRecords(records, sort = {}, {getName} = {}) {
+    const key = sort.key || 'createdAt';
+    const direction = sort.dir === 'asc' ? 1 : -1;
+    const readValue = (record) => {
+      if (key === 'item') {
+        const name = typeof getName === 'function' ? String(getName(record) || '') : record.itemHrid;
+        return name + '::' + record.enhancementLevel;
+      }
+      if (key === 'amount') return getRecordAmount(record);
+      if (key === 'filledQuantity') return toCount(record.filledQuantity);
+      if (key === 'price') return toMoney(record.price);
+      if (key === 'orderQuantity') return toCount(record.orderQuantity);
+      if (key === 'status') return getDisplayStatus(record);
+      if (key === 'collected') return getCollectedCount(record);
+      return getSortTimestamp(record, key);
+    };
+    return [
+      ...records
+    ].sort((left, right) => {
+      const a = readValue(left);
+      const b = readValue(right);
+      if (a === b) return (right.createdAt || 0) - (left.createdAt || 0);
+      return a > b ? direction : -direction;
+    });
+  }
+
+  function paginate(records, page, pageSize) {
+    const size = Math.max(1, Math.floor(Number(pageSize) || 50));
+    const pageCount = Math.max(1, Math.ceil(records.length / size));
+    const current = Math.min(Math.max(1, Math.floor(Number(page) || 1)), pageCount);
+    const start = (current - 1) * size;
+    return {
+      page: current,
+      pageCount,
+      pageSize: size,
+      total: records.length,
+      items: records.slice(start, start + size)
+    };
+  }
+
+  // stats
+  function summarize(records) {
+    const summary = {
+      count: records.length,
+      orderQuantity: 0,
+      filledQuantity: 0,
+      nominalSell: 0,
+      nominalBuy: 0,
+      collectedCoin: 0,
+      pendingCoin: 0,
+      collectedItem: 0,
+      pendingItem: 0,
+      net: 0,
+      countsByStatus: {},
+      countsByType: {}
+    };
+    records.forEach((record) => {
+      summary.orderQuantity += toCount(record.orderQuantity);
+      summary.filledQuantity += toCount(record.filledQuantity);
+      const amount = getRecordAmount(record);
+      if (record.side === 'sell') {
+        summary.nominalSell += amount;
+        summary.collectedCoin += toCount(record.collectedCoinCount);
+        summary.pendingCoin += toCount(record.unclaimedCoinCount);
+      } else {
+        // 購買不扣稅，支出金額就是名義金額（單價 × 已成交數量）。
+        summary.nominalBuy += amount;
+        summary.collectedItem += toCount(record.collectedItemCount);
+        summary.pendingItem += toCount(record.unclaimedItemCount);
+      }
+      const status = getDisplayStatus(record);
+      summary.countsByStatus[status] = (summary.countsByStatus[status] || 0) + 1;
+      const type = getRecordType(record);
+      summary.countsByType[type] = (summary.countsByType[type] || 0) + 1;
+    });
+    // 淨收支 = 出售收入（稅後到賬/推算）− 購買支出（不扣稅）。
+    summary.net = summary.collectedCoin - summary.nominalBuy;
+    return summary;
+  }
+
+  // 分組合計的公共累加器：按 keyOf 分組，逐條累計條數、成交數量、金額與出售/購買兩側口徑。
+  // 出售側金額記 sellAmount、收入記 income（collectedCoin 為同值舊名），購買側金額記 expense/buyAmount。
+  function accumulateGroups(records, keyOf, createGroup) {
+    const groups = new Map();
+    records.forEach((record) => {
+      const key = keyOf(record);
+      if (!key) return;
+      if (!groups.has(key)) groups.set(key, createGroup(record, key));
+      const group = groups.get(key);
+      const amount = getRecordAmount(record);
+      const filled = toCount(record.filledQuantity);
+      group.count += 1;
+      group.filledQuantity += filled;
+      group.amount += amount;
+      group.nominal += amount;
+      group.pendingCoin += toCount(record.unclaimedCoinCount);
+      group.pendingItem += toCount(record.unclaimedItemCount);
+      group.collectedItem += toCount(record.collectedItemCount);
+      if (record.side === 'sell') {
+        group.sellCount += 1;
+        group.sellAmount += amount;
+        group.sellFilledQuantity += filled;
+        group.collectedCoin += toCount(record.collectedCoinCount);
+        group.income += toCount(record.collectedCoinCount);
+      } else {
+        group.buyCount += 1;
+        group.buyAmount += amount;
+        group.buyFilledQuantity += filled;
+        group.expense += amount;
+      }
+    });
+    return groups;
+  }
+
+  function createGroupAccumulator() {
+    return {
+      count: 0,
+      filledQuantity: 0,
+      amount: 0,
+      nominal: 0,
+      collectedCoin: 0,
+      pendingCoin: 0,
+      collectedItem: 0,
+      income: 0,
+      expense: 0,
+      sellAmount: 0,
+      buyAmount: 0,
+      sellCount: 0,
+      buyCount: 0,
+      sellFilledQuantity: 0,
+      buyFilledQuantity: 0
+    };
+  }
+
+  function summarizeByItem(records, {getName} = {}) {
+    const groups = accumulateGroups(
+      records,
+      (record) => record.itemHrid + '::' + record.enhancementLevel,
+      (record, key) => ({
+        ...createGroupAccumulator(),
+        key,
+        itemHrid: record.itemHrid,
+        enhancementLevel: record.enhancementLevel
+      })
+    );
+    return [
+      ...groups.values()
+    ].map((group) => ({
+      ...group,
+      name: typeof getName === 'function' ? getName(group.itemHrid) : group.itemHrid,
+      weightedPrice: group.filledQuantity > 0 ? Math.round(group.amount / group.filledQuantity) : 0
+    }));
+  }
+
+  // 統計頁分組：按呼叫方給出的維度（分類 / 狀態 / 型別）累計同一套口徑，供環形圖取用。
+  function buildStatsBreakdown(records, {keyOf} = {}) {
+    const keyResolver = typeof keyOf === 'function' ? keyOf : () => '';
+    const groups = accumulateGroups(
+      records,
+      (record) => String(keyResolver(record) || ''),
+      (_record, key) => ({
+        ...createGroupAccumulator(),
+        key
+      })
+    );
+    return [
+      ...groups.values()
+    ];
+  }
+
+  // stats（時間序列）
+  const STATS_BUCKET_KEYS$1 = [
+    'auto', 'day', 'week', 'month'
+  ];
+  // 柱子太多會擠成一片：按日/周分桶超過這個數量就自動升一檔（日 → 周 → 月）。
+  const MAX_STATS_BUCKETS = 120;
+  const DAY_MS$1 = 24 * 60 * 60 * 1000;
+
+  function startOfLocalDay(timestamp) {
+    const date = new Date(timestamp);
+    date.setHours(0, 0, 0, 0);
+    return date.getTime();
+  }
+
+  // 周從週一零點起算（與遊戲內的自然周習慣一致）。
+  function startOfLocalWeek(timestamp) {
+    const date = new Date(startOfLocalDay(timestamp));
+    date.setDate(date.getDate() - ((date.getDay() + 6) % 7));
+    return date.getTime();
+  }
+
+  function startOfLocalMonth(timestamp) {
+    const date = new Date(timestamp);
+    return new Date(date.getFullYear(), date.getMonth(), 1).getTime();
+  }
+
+  function alignToBucket(timestamp, bucket) {
+    if (bucket === 'month') return startOfLocalMonth(timestamp);
+    if (bucket === 'week') return startOfLocalWeek(timestamp);
+    return startOfLocalDay(timestamp);
+  }
+
+  function nextBucketStart(start, bucket) {
+    if (bucket === 'month') {
+      const date = new Date(start);
+      return new Date(date.getFullYear(), date.getMonth() + 1, 1).getTime();
+    }
+    // 加滿一整格再多半天再取本地零點：跨夏令時調整時也不會落回同一個桶。
+    const step = bucket === 'week' ? 7 * DAY_MS$1 : DAY_MS$1;
+    return startOfLocalDay(start + step + 12 * 60 * 60 * 1000);
+  }
+
+  function pickAutoBucket(from, to) {
+    const span = Math.max(0, to - from);
+    if (span <= 45 * DAY_MS$1) return 'day';
+    if (span <= 400 * DAY_MS$1) return 'week';
+    return 'month';
+  }
+
+  function nextBucketKey(bucket) {
+    return bucket === 'day' ? 'week' : 'month';
+  }
+
+  // 統計頁時間序列：按日 / 周 / 月把記錄分桶，桶內累計出售收入（稅後到賬/推算）、購買支出、
+  // 淨收支、成交數量與條數；空桶保留（趨勢圖能看到斷檔）。
+  // 口徑是**建立時間**（與統計頁的時間範圍篩選同源，介面標註為「建立時間」）。
+  // bucket 傳 'auto' 時按資料跨度選粒度；顯式粒度跨度太大時自動升檔。
+  // 返回值裡 bucket 是實際粒度、expectedBucket 是「按請求本應有的粒度」，兩者不同才需要提示使用者已升檔。
+  function buildStatsTimeSeries(records, {bucket = 'auto'} = {}) {
+    const entries = (records || []).filter(Boolean);
+    const stamps = entries.map((record) => toTimestamp(record?.createdAt) || 0).filter((stamp) => stamp > 0);
+    if (!stamps.length)
+      return {bucket: 'day', requestedBucket: bucket, expectedBucket: 'day', from: 0, to: 0, buckets: []};
+    const from = Math.min(...stamps);
+    const to = Math.max(...stamps);
+    let effective = STATS_BUCKET_KEYS$1.includes(bucket) && bucket !== 'auto' ? bucket : pickAutoBucket(from, to);
+    const expectedBucket = effective;
+    const bucketCount = (start, bucketKey) => {
+      let count = 0;
+      for (let cursor = start; cursor <= to; cursor = nextBucketStart(cursor, bucketKey)) count += 1;
+      return count;
+    };
+    while (effective !== 'month' && bucketCount(alignToBucket(from, effective), effective) > MAX_STATS_BUCKETS) {
+      effective = nextBucketKey(effective);
+    }
+    const buckets = [];
+    const indexByStart = new Map();
+    for (let start = alignToBucket(from, effective); start <= to; start = nextBucketStart(start, effective)) {
+      indexByStart.set(start, buckets.length);
+      buckets.push({
+        start,
+        end: nextBucketStart(start, effective) - 1,
+        income: 0,
+        expense: 0,
+        net: 0,
+        count: 0,
+        filledQuantity: 0
+      });
+    }
+    entries.forEach((record) => {
+      const stamp = toTimestamp(record?.createdAt) || 0;
+      if (!stamp) return;
+      const index = indexByStart.get(alignToBucket(stamp, effective));
+      if (index == null) return;
+      const entry = buckets[index];
+      const filled = toCount(record.filledQuantity);
+      entry.count += 1;
+      entry.filledQuantity += filled;
+      if (record.side === 'sell') entry.income += toCount(record.collectedCoinCount);
+      else entry.expense += getRecordAmount(record);
+      entry.net = entry.income - entry.expense;
+    });
+    return {bucket: effective, requestedBucket: bucket, expectedBucket, from, to, buckets};
+  }
+
+  // import / export
+  function buildExportPayload(store, {bucketKeys, now, environment, characterId} = {}) {
+    const buckets = {};
+    const wanted = bucketKeys && bucketKeys.length ? new Set(bucketKeys) : null;
+    Object.entries(store.buckets || {}).forEach(
+      ([
+        key, records
+      ]) => {
+        if (wanted && !wanted.has(key)) return;
+        buckets[key] = records.map(normalizeRecord).filter(Boolean);
+      }
+    );
+    return {
+      app: 'MST',
+      type: 'market-history',
+      schemaVersion: SCHEMA_VERSION,
+      exportedAt: now || Date.now(),
+      environment: environment || 'live',
+      characterId: characterId || '',
+      buckets
+    };
+  }
+
+  function parseImportPayload(raw) {
+    let parsed = raw;
+    if (typeof raw === 'string') {
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        return {ok: false, reason: 'invalid-json'};
+      }
+    }
+    if (!parsed || typeof parsed !== 'object' || parsed.app !== 'MST' || parsed.type !== 'market-history') {
+      return {ok: false, reason: 'invalid-format'};
+    }
+    const schemaVersion = Math.max(1, Math.floor(Number(parsed.schemaVersion) || 0));
+    if (schemaVersion > SCHEMA_VERSION) return {ok: false, reason: 'unsupported-version'};
+    const buckets = parsed.buckets && typeof parsed.buckets === 'object' ? parsed.buckets : {};
+    const normalizedBuckets = {};
+    let total = 0;
+    let skipped = 0;
+    Object.entries(buckets).forEach(
+      ([
+        key, records
+      ]) => {
+        if (!Array.isArray(records)) {
+          skipped += 1;
+          return;
+        }
+        const normalized = records
+          .map((record) => {
+            const item = normalizeRecord(record);
+            if (!item) skipped += 1;
+            return item;
+          })
+          .filter(Boolean);
+        if (normalized.length) {
+          normalizedBuckets[key] = normalized;
+          total += normalized.length;
+        }
+      }
+    );
+    if (!total) return {ok: false, reason: 'no-records'};
+    return {ok: true, buckets: normalizedBuckets, total, skipped, schemaVersion};
+  }
+
+  function findInstantDuplicate(records, record, windowMs) {
+    return (
+      records.find((item) => {
+        if (item.listingId != null || record.listingId != null) return false;
+        if (item.kind !== 'instant' || record.kind !== 'instant') return false;
+        if (item.side !== record.side || item.itemHrid !== record.itemHrid) return false;
+        if (item.enhancementLevel !== record.enhancementLevel) return false;
+        if (toCount(item.orderQuantity) !== toCount(record.orderQuantity)) return false;
+        if (toMoney(item.price) !== toMoney(record.price)) return false;
+        return Math.abs((item.createdAt || 0) - (record.createdAt || 0)) <= windowMs;
+      }) || null
+    );
+  }
+
+  // 衝突只計真正的狀態衝突（同一主鍵上是兩個不同的終態，與 mergeRecords 的判定一致）；
+  // 匯入來源備註這類普通差異不算衝突，否則每次從別的工具匯入都會報一堆「衝突」。
+  function hasStatusConflict(left, right) {
+    const a = normalizeRecord(left);
+    const b = normalizeRecord(right);
+    if (!a || !b || a.status === b.status) return false;
+    return TERMINAL_STATUSES.has(a.status) && TERMINAL_STATUSES.has(b.status);
+  }
+
+  // 匯入合併：合併模式下按主鍵欄位級合併、直購兜底記錄按內容去重；覆蓋模式下只替換檔案涉及的分桶。
+  function mergeImport({store, buckets, mode = 'merge', now, windowMs = INSTANT_DEDUPE_WINDOW_MS}) {
+    const report = {added: 0, updated: 0, deduped: 0, conflicts: 0, buckets: []};
+    const target = mode === 'overwrite' ? {...store, buckets: {...store.buckets}} : store;
+    Object.entries(buckets).forEach(
+      ([
+        key, records
+      ]) => {
+        const existing = mode === 'overwrite' ? [] : getBucketRecords(target, key);
+        if (mode === 'overwrite') target.buckets[key] = existing;
+        const bucketAdded = {key, added: 0, updated: 0, deduped: 0};
+        records.forEach((record) => {
+          const index = existing.findIndex((item) => item.key === record.key);
+          if (index >= 0) {
+            if (hasStatusConflict(existing[index], record)) report.conflicts += 1;
+            existing[index] = mergeRecords(existing[index], record);
+            report.updated += 1;
+            bucketAdded.updated += 1;
+            return;
+          }
+          const duplicate = record.listingId == null ? findInstantDuplicate(existing, record, windowMs) : null;
+          if (duplicate) {
+            const merged = mergeRecords(duplicate, record);
+            existing[existing.indexOf(duplicate)] = merged;
+            report.deduped += 1;
+            bucketAdded.deduped += 1;
+            return;
+          }
+          existing.push({...record, origin: record.origin === 'import' ? record.origin : 'import'});
+          report.added += 1;
+          bucketAdded.added += 1;
+        });
+        report.buckets.push(bucketAdded);
+      }
+    );
+    target.updatedAt = now || Date.now();
+    return {store: target, report};
+  }
+
+  function estimateStoreBytes(store) {
+    try {
+      return serializeStore(store).length;
+    } catch {
+      return 0;
+    }
+  }
+
+  // market-history（市場交易記錄）
+  // 記錄本賬號自己的市場交易：掛牌建立、部分成交、成交完成、取消、過期、領取，
+  // 以及「立即購買 / 立即出售」訂單；支援搜尋、排序、分頁、統計（獨立篩選 + 圖表）、批次刪除、匯入匯出與幫助頁籤。
+  // 需求與口徑見 `docs/analysis/市場交易記錄需求說明書.md`。
+  //
+  // 資料來源（全部為本機觀測，官方不提供歷史介面）：
+  // - 入站 `init_character_data.myMarketListings`：登入/重連全量快照；
+  // - 入站 `market_listings_updated.endMarketListings`：新增、成交、狀態變化、領取後清除；
+  // - 出站 `post_market_order`（isInstantOrder）/ `cancel_market_listing` / `claim_market_listing`。
+  // 實際到賬金額以官方未領取數量（`unclaimedCoinCount` 為扣稅後金幣）為權威值；
+  // 只有完全沒有官方資料的記錄（典型是匯入的歷史資料）才按成交當時的稅率推算，見 store.js 的到賬推算。
+
+  const SAVE_DEBOUNCE_MS = 500;
+  // 幫助頁籤裡給出的食用工具橋接指令碼地址：固定在提交 4851b02（橋接指令碼 v1.2.0），
+  // 內容不隨倉庫後續更新而變，避免使用者拿到改到一半的版本。
+  const EDIBLE_BRIDGE_PINNED_COMMIT = '4851b0229332a561424e4713fe11851c944f94b2';
+  const EDIBLE_BRIDGE_URL =
+    'https://cdn.jsdelivr.net/gh/sunrishe/mwi-sunrishe-toolkit@' +
+    EDIBLE_BRIDGE_PINNED_COMMIT +
+    '/integrations/edible-tools/edible-tools-market-bridge.js';
+  const EDIBLE_BRIDGE_REQUIRE_LINE = '// @require ' + EDIBLE_BRIDGE_URL;
+  const PAGE_SIZE_OPTIONS = [
+    20, 50, 100, 200, 500,
+    1000
+  ];
+  const TIME_PRESETS = [
+    'all', 'today', '7d', '30d', 'custom'
+  ];
+  // 統計頁的時間範圍：不給「今天」（當天資料通常只有幾筆，趨勢圖看不出東西），多了近 90 天。
+  // 口徑是建立時間，標籤與記錄頁籤的時間下拉一致（記錄頁籤的預設項也叫「建立時間」）。
+  const STATS_TIME_PRESETS = [
+    'all', '7d', '30d', '90d', 'custom'
+  ];
+  const STATS_TIME_LABEL_KEYS = {
+    all: 'marketHistoryFilterAny',
+    '7d': 'marketHistoryTime7d',
+    '30d': 'marketHistoryTime30d',
+    '90d': 'marketHistoryStatsTime90d',
+    custom: 'marketHistoryTimeCustom'
+  };
+  const STATS_SIDE_LABEL_KEYS = {
+    all: 'marketHistoryFilterAny',
+    sell: 'marketHistoryStatsSideSell',
+    buy: 'marketHistoryStatsSideBuy'
+  };
+  const STATS_BUCKET_KEYS = [
+    'auto', 'day', 'week', 'month'
+  ];
+  const STATS_BUCKET_LABEL_KEYS = {
+    auto: 'marketHistoryStatsBucketAuto',
+    day: 'marketHistoryStatsBucketDay',
+    week: 'marketHistoryStatsBucketWeek',
+    month: 'marketHistoryStatsBucketMonth'
+  };
+  const STATS_RANK_METRICS = [
+    'amount', 'quantity', 'count'
+  ];
+  const STATS_RANK_LABEL_KEYS = {
+    amount: 'marketHistoryStatsRankAmount',
+    quantity: 'marketHistoryStatsRankQuantity',
+    count: 'marketHistoryStatsRankCount'
+  };
+  const STATS_CATEGORY_METRICS = [
+    'expense', 'income'
+  ];
+  const STATS_COMPOSE_DIMS = [
+    'status', 'type'
+  ];
+  const STATS_COMPOSE_LABEL_KEYS = {
+    status: 'marketHistoryColumnStatus',
+    type: 'marketHistoryColumnType'
+  };
+  const STATS_RANK_LIMIT = 10;
+  // 環形圖的分類配色：固定順序取色，深淺在遊戲深色底上都能分辨。
+  const CHART_PALETTE = [
+    '#86d7b1', '#ef8f98', '#88b3f7', '#f5d76e', '#c89ef0',
+    '#79d1e0', '#f0a764', '#cbd5e1'
+  ];
+  const DAY_MS = 24 * 60 * 60 * 1000;
+
+  // 與官方市場物品分類一致（`getMarketItemsByTab`）：裝備按 equipmentDetail.type 細分。
+  const MARKET_CATEGORY_KEYS = [
+    'resources', 'consumables', 'books', 'labyrinth', 'dungeonKeys',
+    'equipment', 'accessories', 'tools'
+  ];
+  const CATEGORY_BY_ITEM_CATEGORY = {
+    '/item_categories/loot': 'resources',
+    '/item_categories/resource': 'resources',
+    '/item_categories/food': 'consumables',
+    '/item_categories/drink': 'consumables',
+    '/item_categories/ability_book': 'books',
+    '/item_categories/labyrinth': 'labyrinth',
+    '/item_categories/dungeon_key': 'dungeonKeys',
+    '/item_categories/equipment': 'equipment'
+  };
+  const ACCESSORY_EQUIPMENT_TYPES = [
+    '/equipment_types/neck', '/equipment_types/earrings', '/equipment_types/ring', '/equipment_types/charm'
+  ];
+
+  // 文案 key 的靜態對映：不使用字串拼接生成 key（迴歸測試會掃描 i18n.t 的字面量並校驗存在性）。
+  const CATEGORY_LABEL_KEYS = {
+    resources: 'marketHistoryCategoryResources',
+    consumables: 'marketHistoryCategoryConsumables',
+    books: 'marketHistoryCategoryBooks',
+    labyrinth: 'marketHistoryCategoryLabyrinth',
+    dungeonKeys: 'marketHistoryCategoryDungeonKeys',
+    equipment: 'marketHistoryCategoryEquipment',
+    accessories: 'marketHistoryCategoryAccessories',
+    tools: 'marketHistoryCategoryTools'
+  };
+  const TIME_PRESET_LABEL_KEYS = {
+    all: 'marketHistoryTimeAll',
+    today: 'marketHistoryTimeToday',
+    '7d': 'marketHistoryTime7d',
+    '30d': 'marketHistoryTime30d',
+    custom: 'marketHistoryTimeCustom'
+  };
+  // 記錄表格的列定義：寬度寫在表頭（table-layout: fixed 以第一行為準），numeric 列右對齊，
+  // sortable 列的 key 與 store.sortRecords 支援的排序鍵一致（列頭點選即排序，不再另設工具欄排序）。
+  // 首列（核取方塊）與序號列由模板單獨渲染，這裡只貢獻列寬。
+  const RECORD_COLUMNS = [
+    {key: 'select', width: '2.25rem'}, {
+      key: 'index',
+      labelKey: 'marketHistoryColumnIndex',
+      width: '3rem',
+      numeric: true
+    }, {key: 'status', labelKey: 'marketHistoryColumnStatus', width: '7.5rem', sortable: true}, {
+      key: 'type',
+      labelKey: 'marketHistoryColumnType',
+      width: '5.5rem'
+    }, {key: 'item', labelKey: 'marketHistoryColumnItem', sortable: true},
+    {
+      key: 'filledQuantity',
+      labelKey: 'marketHistoryColumnProgress',
+      width: '6.25rem',
+      sortable: true,
+      numeric: true
+    }, {key: 'price', labelKey: 'marketHistoryColumnPrice', width: '5.25rem', sortable: true, numeric: true}, {
+      key: 'amount',
+      labelKey: 'marketHistoryColumnNominal',
+      width: '6.25rem',
+      sortable: true,
+      numeric: true
+    }, {
+      key: 'collected',
+      labelKey: 'marketHistoryColumnCollected',
+      width: '6.5rem',
+      sortable: true,
+      numeric: true
+    }, {key: 'createdAt', labelKey: 'marketHistoryColumnCreatedAt', width: '6.25rem', sortable: true},
+    {key: 'filledAt', labelKey: 'marketHistoryColumnFilledAt', width: '6.25rem', sortable: true}, {
+      key: 'actions',
+      labelKey: 'marketHistoryColumnActions',
+      width: '3rem'
+    }
+  ];
+  const STATUS_LABEL_KEYS = {
+    active: 'marketHistoryStatusActive',
+    partial: 'marketHistoryStatusPartial',
+    filled: 'marketHistoryStatusFilled',
+    cancelled: 'marketHistoryStatusCancelled',
+    expired: 'marketHistoryStatusExpired',
+    partialCancelled: 'marketHistoryStatusPartialCancelled',
+    partialExpired: 'marketHistoryStatusPartialExpired',
+    unobserved: 'marketHistoryStatusUnobserved'
+  };
+  const TYPE_LABEL_KEYS = {
+    sellListing: 'marketHistoryTypeSellListing',
+    buyListing: 'marketHistoryTypeBuyListing',
+    sellInstant: 'marketHistoryTypeSellInstant',
+    buyInstant: 'marketHistoryTypeBuyInstant'
+  };
+  const EXPORT_SCOPE_LABEL_KEYS = {
+    current: 'marketHistoryExportScopeCurrent',
+    all: 'marketHistoryExportScopeAll'
+  };
+  const EXPORT_FORMAT_LABEL_KEYS = {
+    json: 'marketHistoryExportFormatJson',
+    csv: 'marketHistoryExportFormatCsv'
+  };
+  const IMPORT_MODE_LABEL_KEYS = {
+    merge: 'marketHistoryImportModeMerge',
+    overwrite: 'marketHistoryImportModeOverwrite'
+  };
+
+  function formatItemKey(itemHrid, enhancementLevel) {
+    return String(itemHrid || '') + '::' + String(Number(enhancementLevel) || 0);
+  }
+
+  function startOfToday(now) {
+    const date = new Date(now);
+    date.setHours(0, 0, 0, 0);
+    return date.getTime();
+  }
+
+  function parseDateInput(value, endOfDay = false) {
+    const text = String(value || '').trim();
+    if (!text) return null;
+    const stamp = Date.parse(text + (endOfDay ? 'T23:59:59.999' : 'T00:00:00'));
+    return Number.isFinite(stamp) ? stamp : null;
+  }
+
+  // SVG 座標只保留兩位小數，省體積也避免一長串浮點尾巴。
+  function svgNumber(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return '0';
+    return String(Math.round(number * 100) / 100);
+  }
+
+  // uhtml 的陣列插值不接受 null / undefined 元素（第一個 null 就會拋 "Cannot read properties of null"），
+  // 條件渲染一律用這個helper 收集命中的模板，跳過不要的項。
+  function templateList(values, build) {
+    const items = [];
+    values.forEach((value, index) => {
+      const rendered = build(value, index);
+      if (rendered) items.push(rendered);
+    });
+    return items;
+  }
+
+  // 頁碼按鈕最多 5 個：兩端固定 + 當前頁附近視窗，其餘用省略號。
+  function paginationItems(pageCount, current) {
+    if (pageCount <= 5) return Array.from({length: pageCount}, (_, index) => index + 1);
+    if (current <= 3) return [
+        1, 2, 3, 4, 'ellipsis',
+        pageCount
+      ];
+    if (current >= pageCount - 2) {
+      return [
+        1, 'ellipsis', pageCount - 3, pageCount - 2, pageCount - 1,
+        pageCount
+      ];
+    }
+    return [
+      1, 'ellipsis', current - 1, current, current + 1,
+      'ellipsis', pageCount
+    ];
+  }
+
+  // market-history-feature
+  class MarketHistoryFeature {
+    static ctx = null;
+
+    static configure(ctx) {
+      this.ctx = ctx;
+    }
+
+    constructor() {
+      this.ctx = MarketHistoryFeature.ctx;
+      this.inited = false;
+      this.store = createStore();
+      this.environment = 'live';
+      this.characterId = '';
+      this.characterName = '';
+      this.saveTimer = null;
+      this.buttonAnchor = null;
+      this.buttonWrapper = null;
+      this.root = null;
+      this.toolbarRoot = null;
+      this.contentRoot = null;
+      this.pendingDeleteKey = null;
+      this.popoverDismiss = null;
+      this.dialogState = this.createDialogState();
+      this.searchTextCache = new Map();
+      this.queryCache = {signature: '', records: []};
+      this.statsCache = {signature: '', records: []};
+    }
+
+    createDialogState() {
+      return {
+        view: 'records',
+        // 面板內狀態（匯入 / 匯出共用一份，切換檢視時可選擇重置）。
+        panel: {
+          exportScope: 'current',
+          exportFormat: 'json',
+          importText: '',
+          importFileName: '',
+          importMode: 'merge',
+          importOverwriteConfirmed: false,
+          importReport: null,
+          importError: ''
+        },
+        filters: {
+          keyword: '',
+          categoryKey: 'all',
+          statuses: [],
+          types: [],
+          timePreset: 'all',
+          timeFrom: '',
+          timeTo: '',
+          priceMin: '',
+          priceMax: '',
+          quantityMin: '',
+          quantityMax: ''
+        },
+        sort: {key: 'createdAt', dir: 'desc'},
+        page: 1,
+        pageSize: 20,
+        // 統計頁籤自己的狀態：篩選條件與記錄列表完全獨立（不復用列表篩選），
+        // 其餘幾個鍵是圖表維度 / 粒度的選擇。
+        stats: this.createStatsState(),
+        // 勾選的行（記錄 key 集合），批次刪除只處理這裡的行；開啟彈窗時清空。
+        selected: new Set(),
+        // 「更多篩選」展開態與狀態下拉麵板的展開態（面板不參與重繪，只切換容器類）。
+        moreOpen: false,
+        openFilterPanel: null
+      };
+    }
+
+    createStatsState() {
+      return {
+        filters: {
+          timePreset: 'all',
+          timeFrom: '',
+          timeTo: '',
+          side: 'all',
+          categoryKey: 'all',
+          keyword: ''
+        },
+        bucket: 'auto',
+        rankMetric: 'amount',
+        categoryMetric: 'expense',
+        composeDim: 'status'
+      };
+    }
+
+    // ---- 生命週期 ----
+
+    init() {
+      const {CONFIG, LanguageEvents, utils} = this.ctx;
+      if (!CONFIG.isGameSite || this.inited) return;
+      // 同頁多例項防重：標記寫在頁面 window，規則與市場加購一致。
+      if (this.ctx.pageWindow.__MST_MARKET_HISTORY_OWNER__) return;
+      this.ctx.pageWindow.__MST_MARKET_HISTORY_OWNER__ = true;
+      this.inited = true;
+      StyleService.ensure('mst-market-history-style', MST_MARKET_HISTORY_CSS);
+      this.environment = CONFIG.isTestServer ? 'test' : 'live';
+      this.characterId = String(CONFIG.characterId || '');
+      // GM 讀取是非同步介面：先載入歷史，再掛監聽，避免把「讀取中的空儲存」寫回覆蓋已有資料。
+      this.loadStore().then(() => {
+        window.addEventListener('mst:ws:init-character-data', (event) => this.onInitCharacterData(event.detail));
+        window.addEventListener('mst:ws:message', (event) => this.onWsMessage(event.detail));
+        window.addEventListener('mst:ws:send', (event) => this.onWsSend(event.detail));
+        window.addEventListener('pagehide', () => this.flushSave());
+        this.watchStorage();
+        utils.observeBody(() => this.syncButton());
+        LanguageEvents?.subscribe(() => this.handleLanguageChange());
+        // 兜底：指令碼初始化晚於登入快照時，用 DataHub 已儲存的角色資料補一次快照對賬。
+        const rawCharacterData = this.ctx.DataHub?.characterData?.raw;
+        if (rawCharacterData) this.onInitCharacterData(rawCharacterData);
+      });
+    }
+
+    async loadStore() {
+      try {
+        const raw = await this.ctx.GmApi.getValue(this.storageKey(), '');
+        this.store = parseStore(raw);
+      } catch (error) {
+        console.warn('[MST] 市場交易記錄讀取失敗:', error);
+        this.store = createStore();
+      }
+    }
+
+    storageKey() {
+      return this.ctx.STORAGE_KEYS?.MARKET_HISTORY || 'MST_MARKET_history';
+    }
+
+    watchStorage() {
+      const listener = this.ctx.GmApi?.addValueChangeListener?.(
+        this.storageKey(),
+        (_name, _oldValue, newValue, remote) => {
+          if (!remote) return;
+          this.mergeExternalStore(newValue);
+        }
+      );
+      this.unwatchStorage = typeof listener === 'function' ? listener : null;
+    }
+
+    // 其他標籤頁寫入的變更按主鍵欄位級合併進記憶體（不回寫，避免兩側互相觸發）。
+    mergeExternalStore(raw) {
+      try {
+        const external = parseStore(typeof raw === 'string' ? raw : '');
+        Object.entries(external.buckets || {}).forEach(
+          ([
+            key, records
+          ]) => {
+            const target = this.getRecords(key);
+            records.forEach((record) => {
+              const index = target.findIndex((item) => item.key === record.key);
+              if (index === -1) target.push(record);
+              else if (record.updatedAt > target[index].updatedAt) {
+                target[index] = this.mergeRecordPair(target[index], record);
+              }
+            });
+          }
+        );
+        this.refreshOpenDialog();
+      } catch (error) {
+        console.warn('[MST] 市場交易記錄合併外部儲存失敗:', error);
+      }
+    }
+
+    mergeRecordPair(left, right) {
+      // 複用匯入合併的欄位級規則（單條）。
+      const holder = createStore();
+      const key = bucketKey(left.environment, left.characterId);
+      holder.buckets[key] = [
+        left
+      ];
+      mergeImport({store: holder, buckets: {[key]: [
+            right
+          ]}, mode: 'merge', now: Date.now()});
+      return holder.buckets[key][0];
+    }
+
+    getRecords(key = this.currentBucketKey()) {
+      if (!this.store.buckets[key]) this.store.buckets[key] = [];
+      return this.store.buckets[key];
+    }
+
+    currentBucketKey() {
+      return bucketKey(this.environment, this.characterId || 'default');
+    }
+
+    scheduleSave() {
+      if (this.saveTimer) return;
+      this.saveTimer = setTimeout(() => {
+        this.saveTimer = null;
+        this.flushSave();
+      }, SAVE_DEBOUNCE_MS);
+    }
+
+    flushSave() {
+      if (this.saveTimer) {
+        clearTimeout(this.saveTimer);
+        this.saveTimer = null;
+      }
+      try {
+        this.store.updatedAt = Date.now();
+        this.ctx.GmApi.setValue(this.storageKey(), serializeStore(this.store));
+      } catch (error) {
+        console.warn('[MST] 市場交易記錄儲存失敗:', error);
+        this.ctx.Notifier?.toast(this.ctx.i18n.t('marketHistorySaveFailed'), 'error');
+      }
+    }
+
+    // ---- 官方訊息接入 ----
+
+    onInitCharacterData(data) {
+      const {CONFIG} = this.ctx;
+      const nextCharacterId = String(data?.character?.id ?? CONFIG.characterId ?? this.characterId ?? '');
+      const changed = nextCharacterId !== this.characterId;
+      if (nextCharacterId) this.characterId = nextCharacterId;
+      const nextName = String(data?.character?.name || '');
+      if (nextName) this.characterName = nextName;
+      if (changed) this.dialogState = this.createDialogState();
+      const records = this.getRecords();
+      const now = Date.now();
+      const listings = Array.isArray(data?.myMarketListings) ? data.myMarketListings : [];
+      // 快照只用於補齊與對賬：新出現的時間按登入時間推斷，已有記錄不被覆蓋成推斷時間。
+      applyListingBatch(records, listings, now, {origin: 'snapshot', inferredTime: true});
+      const result = reconcileWithSnapshot(records, listings, now);
+      if (result.unobserved.length || result.settled.length || changed) {
+        console.info('[MST] 市場交易記錄快照對賬:', {
+          records: records.length,
+          listings: listings.length,
+          unobserved: result.unobserved.length,
+          settled: result.settled.length
+        });
+      }
+      this.scheduleSave();
+      this.refreshOpenDialog();
+    }
+
+    onWsMessage(message) {
+      if (!message || typeof message !== 'object') return;
+      if (message.type !== 'market_listings_updated') return;
+      const listings = Array.isArray(message.endMarketListings) ? message.endMarketListings : [];
+      if (!listings.length) return;
+      const records = this.getRecords();
+      const now = Date.now();
+      listings.forEach((listing) => {
+        // 直購/直售請求先落記錄的，官方條目到達時按內容關聯為同一條，再按官方 id 跟蹤。
+        if (linkInstantRecords(records, listing, now)) return;
+        applyListingBatch(
+          records,
+          [
+            listing
+          ],
+          now,
+          {origin: 'update'}
+        );
+      });
+      this.scheduleSave();
+      this.refreshOpenDialog();
+    }
+
+    onWsSend(message) {
+      if (!message || typeof message !== 'object') return;
+      const records = this.getRecords();
+      const result = applyOutgoingMessage(records, message, Date.now(), {
+        environment: this.environment,
+        characterId: this.characterId,
+        characterName: this.characterName,
+        originHost: this.ctx.hostname || ''
+      });
+      if (!result.changed) return;
+      this.scheduleSave();
+      this.refreshOpenDialog();
+    }
+
+    // ---- 入口按鈕（MUI 主標籤容器內，與「商品列表 / 我的掛牌」並排） ----
+
+    syncButton() {
+      const {GameUiAdapter} = this.ctx;
+      const tabBar =
+        GameUiAdapter.query('marketplaceTabBar') ||
+        GameUiAdapter.query('marketplaceTabBarNested') ||
+        GameUiAdapter.query('marketplaceTabBarLegacy');
+      if (!tabBar) {
+        this.teardownButton();
+        return;
+      }
+      if (this.buttonWrapper?.isConnected) {
+        this.updateButtonLabel();
+        return;
+      }
+      this.teardownButton();
+      this.buildButton(tabBar);
+    }
+
+    buildButton(tabBar) {
+      const {i18n} = this.ctx;
+      const wrapper = document.createElement('div');
+      wrapper.className = 'mst-market-history-entry';
+      const label = i18n.t('marketHistoryEntry');
+      // 複用遊戲 MUI 主標籤的公開類名；遊戲原始碼通過這兩個字首統一設定標籤尺寸、
+      // 圓角、底色、懸停色和前景色，按鈕因此與「商品列表 / 我的掛牌」保持同一視覺層級。
+      wrapper.innerHTML = `<button type="button" class="mst-market-history-entry-button MuiButtonBase-root MuiTab-root" title="${label}"><span class="mst-market-history-entry-label">${label}</span></button>`;
+      tabBar.appendChild(wrapper);
+      wrapper.querySelector('.mst-market-history-entry-button')?.addEventListener('click', (event) => {
+        event.stopPropagation();
+        this.open();
+      });
+      this.buttonAnchor = tabBar;
+      this.buttonWrapper = wrapper;
+    }
+
+    updateButtonLabel() {
+      const {i18n} = this.ctx;
+      const button = this.buttonWrapper?.querySelector('.mst-market-history-entry-button');
+      if (!button) return;
+      const label = i18n.t('marketHistoryEntry');
+      const labelElement = button.querySelector('.mst-market-history-entry-label');
+      if (labelElement?.textContent !== label) labelElement.textContent = label;
+      if (button.getAttribute('title') !== label) button.setAttribute('title', label);
+    }
+
+    teardownButton() {
+      this.buttonWrapper?.remove();
+      this.buttonWrapper = null;
+      this.buttonAnchor = null;
+    }
+
+    handleLanguageChange() {
+      const {i18n} = this.ctx;
+      this.updateButtonLabel();
+      // Swal 標題在開啟時寫入，語言切換後需要單獨更新；只重繪工具欄與內容區，
+      // 不重繪根骨架（避免從工具欄/內容區事件裡更新祖先節點造成的 uhtml 狀態問題）。
+      const title = this.root?.closest('.mst-market-history-dialog')?.querySelector('.swal2-title');
+      if (title) title.textContent = i18n.t('marketHistoryTitle');
+      this.refreshOpenDialog({forceToolbar: true});
+    }
+
+    // ---- 資料檢視輔助 ----
+
+    itemName(record) {
+      const {DataHub, utils} = this.ctx;
+      const hrid = record.itemHrid;
+      const name = utils.getItemName(hrid) || DataHub.resolveItemName(hrid) || hrid;
+      return name;
+    }
+
+    itemSearchText(record) {
+      const {DataHub} = this.ctx;
+      const key = formatItemKey(record.itemHrid, record.enhancementLevel);
+      if (this.searchTextCache.has(key)) return this.searchTextCache.get(key);
+      const indexes = DataHub?.clientData?.indexes || {};
+      const parts = [
+        record.itemHrid, String(record.itemHrid || '').replace('/items/', ''), indexes.hridToNameZh?.get?.(record.itemHrid) || '', indexes.hridToNameEn?.get?.(record.itemHrid) || ''
+      ];
+      const text = parts.filter(Boolean).join(' ').toLowerCase();
+      this.searchTextCache.set(key, text);
+      return text;
+    }
+
+    itemCategoryKey(record) {
+      const detail = this.ctx.DataHub?.getItemDetail?.(record.itemHrid);
+      const category = String(detail?.categoryHrid || '');
+      const base = CATEGORY_BY_ITEM_CATEGORY[category] || '';
+      if (base !== 'equipment') return base;
+      const type = String(detail?.equipmentDetail?.type || '');
+      if (type.includes('tool')) return 'tools';
+      if (ACCESSORY_EQUIPMENT_TYPES.includes(type)) return 'accessories';
+      return 'equipment';
+    }
+
+    itemKeyOf(record) {
+      return formatItemKey(record.itemHrid, record.enhancementLevel);
+    }
+
+    resolveFilters() {
+      const filters = {...this.dialogState.filters};
+      const now = Date.now();
+      if (filters.timePreset === 'today') filters.timeFrom = startOfToday(now);
+      else if (filters.timePreset === '7d') filters.timeFrom = now - 7 * DAY_MS;
+      else if (filters.timePreset === '30d') filters.timeFrom = now - 30 * DAY_MS;
+      else if (filters.timePreset === 'custom') {
+        filters.timeFrom = parseDateInput(filters.timeFrom, false);
+        filters.timeTo = parseDateInput(filters.timeTo, true);
+      } else {
+        filters.timeFrom = null;
+        filters.timeTo = null;
+      }
+      return filters;
+    }
+
+    visibleRecords() {
+      const records = this.getRecords();
+      // 候選結果按資料簽名快取：渲染路徑只讀取快取，不在每次渲染裡重算篩選與排序。
+      let latestUpdate = 0;
+      records.forEach((record) => {
+        if (record.updatedAt > latestUpdate) latestUpdate = record.updatedAt;
+      });
+      const signature =
+        records.length +
+        '|' +
+        latestUpdate +
+        '|' +
+        JSON.stringify(this.resolveFilters()) +
+        '|' +
+        JSON.stringify(this.dialogState.sort);
+      if (this.queryCache.signature === signature) return this.queryCache.records;
+      const filtered = filterRecords(records, this.resolveFilters(), {
+        getSearchText: (record) => this.itemSearchText(record),
+        getCategoryKey: (record) => this.itemCategoryKey(record),
+        getItemKey: (record) => this.itemKeyOf(record)
+      });
+      const sorted = sortRecords(filtered, this.dialogState.sort, {getName: (record) => this.itemName(record)});
+      this.queryCache = {signature, records: sorted};
+      return sorted;
+    }
+
+    // 統計頁的篩選條件（與列表篩選完全獨立）：時間範圍按「建立時間」算（介面標註同名），
+    // 另加方向 / 分類 / 關鍵詞。
+    resolveStatsFilters() {
+      const filters = {...this.dialogState.stats.filters};
+      const now = Date.now();
+      if (filters.timePreset === '7d') filters.timeFrom = now - 7 * DAY_MS;
+      else if (filters.timePreset === '30d') filters.timeFrom = now - 30 * DAY_MS;
+      else if (filters.timePreset === '90d') filters.timeFrom = now - 90 * DAY_MS;
+      else if (filters.timePreset === 'custom') {
+        filters.timeFrom = parseDateInput(filters.timeFrom, false);
+        filters.timeTo = parseDateInput(filters.timeTo, true);
+      } else {
+        filters.timeFrom = null;
+        filters.timeTo = null;
+      }
+      filters.sides = filters.side && filters.side !== 'all' ? [
+              filters.side
+            ] : [];
+      return filters;
+    }
+
+    statsRecords() {
+      const records = this.getRecords();
+      let latestUpdate = 0;
+      records.forEach((record) => {
+        if (record.updatedAt > latestUpdate) latestUpdate = record.updatedAt;
+      });
+      const signature = records.length + '|' + latestUpdate + '|' + JSON.stringify(this.resolveStatsFilters());
+      if (this.statsCache.signature === signature) return this.statsCache.records;
+      // 時間欄位按建立時間（filterRecords 的預設口徑），與趨勢圖分桶一致。
+      const filtered = filterRecords(records, this.resolveStatsFilters(), {
+        getSearchText: (record) => this.itemSearchText(record),
+        getCategoryKey: (record) => this.itemCategoryKey(record)
+      });
+      this.statsCache = {signature, records: filtered};
+      return filtered;
+    }
+
+    itemLabel(item) {
+      const name = this.itemName(item);
+      return item.enhancementLevel > 0 ? `${name} +${item.enhancementLevel}` : name;
+    }
+
+    getItemIconHref(itemHrid) {
+      const {utils} = this.ctx;
+      const sprite = utils.getSpriteUrl('items') || '/static/media/items_sprite.f58c9476.svg';
+      return `${sprite}#${utils.substrLastSlash(itemHrid)}`;
+    }
+
+    formatMoney(value) {
+      return this.ctx.utils.formatCompactNumber(Number(value) || 0, 2);
+    }
+
+    formatTime(value) {
+      return value ? this.ctx.utils.formatDateTime(value) : '—';
+    }
+
+    statusLabelKey(statusKey) {
+      return STATUS_LABEL_KEYS[statusKey] || STATUS_LABEL_KEYS.active;
+    }
+
+    typeLabelKey(typeKey) {
+      return TYPE_LABEL_KEYS[typeKey] || TYPE_LABEL_KEYS.sellListing;
+    }
+
+    statusHint(record) {
+      const {i18n} = this.ctx;
+      const lines = [
+        i18n.t('marketHistoryCreatedAt') +
+          '：' +
+          this.formatTime(record.createdAt) +
+          (record.inferredTime ? `（${i18n.t('marketHistoryInferredTime')}）` : '')
+      ];
+      if (record.firstFillAt) lines.push(i18n.t('marketHistoryFirstFillAt') + '：' + this.formatTime(record.firstFillAt));
+      if (record.filledAt) lines.push(i18n.t('marketHistoryFilledAt') + '：' + this.formatTime(record.filledAt));
+      if (record.cancelRequestedAt)
+        lines.push(i18n.t('marketHistoryCancelRequestedAt') + '：' + this.formatTime(record.cancelRequestedAt));
+      if (record.cancelledAt) lines.push(i18n.t('marketHistoryCancelledAt') + '：' + this.formatTime(record.cancelledAt));
+      if (record.expiredAt) lines.push(i18n.t('marketHistoryExpiredAt') + '：' + this.formatTime(record.expiredAt));
+      if (record.expiresAt) lines.push(i18n.t('marketHistoryExpiresAt') + '：' + this.formatTime(record.expiresAt));
+      if (record.claimRequestedAt)
+        lines.push(i18n.t('marketHistoryClaimRequestedAt') + '：' + this.formatTime(record.claimRequestedAt));
+      if (record.claimedAt) lines.push(i18n.t('marketHistoryClaimedAt') + '：' + this.formatTime(record.claimedAt));
+      if (record.importNote) lines.push(i18n.t('marketHistoryImportNote') + '：' + record.importNote);
+      return lines.join('\n');
+    }
+
+    // 表格裡是 23.7K / 4.96M 這類緊湊寫法，title 裡給出精確數字。
+    rawValueText(value) {
+      const num = Number(value);
+      if (!Number.isFinite(num)) return '0';
+      return Math.round(num).toLocaleString(this.ctx.i18n.locale);
+    }
+
+    // uhtml 的洞不能是 null：陣列位收到 null 會拋「Cannot read properties of null」，
+    // 條件渲染統一退回空模板，既保持洞的值型別穩定，也避免整塊內容渲染中斷。
+    emptyTemplate() {
+      return this.ctx.TemplateRenderer.html``;
+    }
+
+    collectedHint(record) {
+      const {i18n} = this.ctx;
+      const lines = [];
+      // 有官方資料時按側區分（出售=金幣、購買=物品件數）；推算金額或已有金幣到賬時顯示金額。
+      const collected = getCollectedCount(record);
+      const coinLike = record.side === 'sell' || record.collectedEstimated;
+      lines.push(
+        i18n.t('marketHistoryColumnCollected') +
+          '：' +
+          (coinLike
+            ? this.formatMoney(record.collectedCoinCount) + ' ' + i18n.t('marketHistoryCoin')
+            : `${Number(record.collectedItemCount) || 0}`)
+      );
+      lines.push(i18n.t('marketHistoryRawValue') + '：' + this.rawValueText(collected));
+      if (record.collectedEstimated) {
+        // 購買不扣稅，不寫「（1 − 0% 稅率）」。
+        const rate = Number(record.collectedTaxRate) || 0;
+        lines.push(
+          rate > 0
+            ? i18n.t('marketHistoryCollectedEstimated', Math.round(rate * 100))
+            : i18n.t('marketHistoryCollectedEstimatedBuy')
+        );
+      }
+      if (record.taxTaken) {
+        lines.push(
+          i18n.t('marketHistoryTaxTaken') + '：' + this.formatMoney(record.taxTaken) + ' ' + i18n.t('marketHistoryCoin')
+        );
+      }
+      lines.push(
+        i18n.t('marketHistoryPending') +
+          '：' +
+          (record.side === 'sell'
+            ? this.formatMoney(record.unclaimedCoinCount) + ' ' + i18n.t('marketHistoryCoin')
+            : `${Number(record.unclaimedItemCount) || 0}`)
+      );
+      (record.claims || []).forEach((claim) => {
+        lines.push(
+          this.formatTime(claim.at) +
+            ' ' +
+            (record.side === 'sell' ? this.formatMoney(claim.coinCount) : `${claim.itemCount}`)
+        );
+      });
+      return lines.join('\n');
+    }
+
+    recordNote(record) {
+      const {i18n} = this.ctx;
+      if (record.kind === 'instant' && record.listingId == null) return i18n.t('marketHistoryInstantFallback');
+      if (record.endedUnobserved) return i18n.t('marketHistoryUnobservedNote');
+      if (record.inferredTime) return i18n.t('marketHistoryInferredTime');
+      return '';
+    }
+
+    // ---- 彈窗 ----
+
+    open() {
+      const {Notifier, TemplateRenderer, i18n} = this.ctx;
+      this.dialogState.page = 1;
+      this.dialogState.openFilterPanel = null;
+      this.dialogState.selected = new Set();
+      return Notifier.html({
+        title: i18n.t('marketHistoryTitle'),
+        width: 'min(76rem, calc(100vw - 1rem))',
+        popupClass: 'mst-market-history-dialog',
+        icon: 'marketplace',
+        html: () => TemplateRenderer.html`<div class="mst-market-history-root" id="mst-market-history-root"></div>`,
+        didOpen: (popup) => {
+          this.root =
+            popup?.querySelector('#mst-market-history-root') || document.getElementById('mst-market-history-root');
+          this.renderDialog();
+        },
+        willClose: () => {
+          this.root = null;
+          this.toolbarRoot = null;
+          this.contentRoot = null;
+          this.pendingDeleteKey = null;
+          this.unbindPopoverDismiss();
+        }
+      });
+    }
+
+    // 彈窗內所有區域都「每次新建容器再渲染」：本模組模板結構會隨狀態變化（工具欄按頁籤顯隱、
+    // 表格/空態/統計切換），uhtml 在同一容器上做增量更新時會複用舊節點引用，結構變化後更新會報錯。
+    // 新建容器讓 uhtml 每次都是首次渲染，穩定優先；容器很小，代價可接受。
+    renderDialog() {
+      if (!this.root) return;
+      this.root.replaceChildren();
+      this.toolbarRoot = null;
+      this.contentRoot = null;
+      this.renderToolbar();
+      this.renderContent();
+    }
+
+    // 資料變化時重新整理已開啟的彈窗：內容區總是重建，工具欄只在 forceToolbar 時重建，
+    // 避免鍵盤輸入（關鍵詞 / 區間數字）在即時訊息到達時被整塊重建打斷。
+    refreshOpenDialog({forceToolbar = false} = {}) {
+      if (!this.root?.isConnected) return;
+      if (forceToolbar) this.renderToolbar();
+      this.renderContent();
+    }
+
+    renderToolbar() {
+      const {TemplateRenderer} = this.ctx;
+      if (!this.root) return;
+      const next = document.createElement('div');
+      next.className = 'mst-market-history';
+      if (this.toolbarRoot?.isConnected) this.toolbarRoot.replaceWith(next);
+      else this.root.prepend(next);
+      this.toolbarRoot = next;
+      TemplateRenderer.render(() => this.toolbarTemplate(), next);
+    }
+
+    renderContent() {
+      const {TemplateRenderer} = this.ctx;
+      if (!this.root) return;
+      const next = document.createElement('div');
+      next.className = 'mst-market-history-content';
+      if (this.contentRoot?.isConnected) this.contentRoot.replaceWith(next);
+      else this.root.append(next);
+      this.contentRoot = next;
+      TemplateRenderer.render(() => this.contentTemplate(), next);
+      this.syncSelectAllState();
+    }
+
+    // 表頭「全選本頁」核取方塊的三種狀態（全選 / 半選 / 未選）用 DOM 屬性同步，
+    // uhtml 只能設定 checked，半選態需要渲染後手動補。
+    syncSelectAllState() {
+      const box = this.contentRoot?.querySelector('.mst-market-history-select-all');
+      if (!box) return;
+      const pageKeys = this.currentPageKeys();
+      const selectedCount = pageKeys.filter((key) => this.dialogState.selected.has(key)).length;
+      box.checked = pageKeys.length > 0 && selectedCount === pageKeys.length;
+      box.indeterminate = selectedCount > 0 && selectedCount < pageKeys.length;
+    }
+
+    // 工具欄：主篩選行（搜尋 / 分類 / 狀態 / 型別 / 建立時間 / 更多篩選 / 清除篩選 / 批次刪除），
+    // 單價與數量收進「更多篩選」按需展開；匯入與匯出移入「管理」頁籤，排序只用列頭。
+    toolbarTemplate() {
+      const {TemplateRenderer, i18n} = this.ctx;
+      const state = this.dialogState;
+      const filters = state.filters;
+      const categoryOptions = [
+        TemplateRenderer.html`<option value="all">${i18n.t('marketHistoryFilterCategoryAll')}</option>`, ...MARKET_CATEGORY_KEYS.map((key) => TemplateRenderer.html`<option value=${key}>${i18n.t(CATEGORY_LABEL_KEYS[key])}</option>`)
+      ];
+      const timePresetOptions = TIME_PRESETS.map(
+        (key) => TemplateRenderer.html`<option value=${key}>${i18n.t(TIME_PRESET_LABEL_KEYS[key])}</option>`
+      );
+      const typeOptions = [
+        TemplateRenderer.html`<option value="">${i18n.t('marketHistoryFilterTypeAll')}</option>`, ...HISTORY_TYPE_KEYS.map((key) => TemplateRenderer.html`<option value=${key}>${i18n.t(this.typeLabelKey(key))}</option>`)
+      ];
+      const statusOptions = HISTORY_STATUS_KEYS.map(
+        (key) =>
+          TemplateRenderer.html`
+    <label class="mst-market-history-popover-item">
+      <input
+        type="checkbox"
+        .checked=${filters.statuses.includes(key)}
+        @change=${() => this.toggleFilterList('statuses', key)}
+      />
+      <span>${i18n.t(this.statusLabelKey(key))}</span>
+    </label>`
+      );
+      const statusText = this.filterSummaryText(filters.statuses, (key) => this.statusLabelKey(key));
+      const statusTitle = filters.statuses.length
+        ? filters.statuses.map((key) => i18n.t(this.statusLabelKey(key))).join('、')
+        : i18n.t('marketHistoryFilterAnyHint');
+      const moreCount = this.moreFilterCount();
+      const selectedCount = this.selectedRecords().length;
+      const numberInput = (value, setValue, placeholder) => TemplateRenderer.html`
+      <input
+        type="number"
+        class="mst-market-history-input mst-market-history-number"
+        placeholder=${placeholder}
+        .value=${value}
+        @change=${(event) => {
+          setValue(event.target.value);
+          state.page = 1;
+          this.renderToolbar();
+          this.renderContent();
+        }}
+      />`;
+      const tooMany =
+        this.getRecords().length >= RECORDS_SOFT_LIMIT || estimateStoreBytes(this.store) >= STORE_BYTES_SOFT_LIMIT;
+      const tabs = [
+        [
+          'records', 'marketHistoryTabRecords'
+        ], [
+          'stats', 'marketHistoryTabStats'
+        ], [
+          'manage', 'marketHistoryTabManage'
+        ], [
+          'help', 'marketHistoryTabHelp'
+        ]
+      ].map(
+        ([
+          key, labelKey
+        ]) =>
+          TemplateRenderer.html`
+    <button
+      type="button"
+      class=${'mst-market-history-tab' + (state.view === key ? ' mst-market-history-tab-active' : '')}
+      @click=${() => {
+        state.view = key;
+        this.pendingDeleteKey = null;
+        this.setStatusPanelOpen(false);
+        this.refreshOpenDialog({forceToolbar: true});
+      }}
+    >${i18n.t(labelKey)}</button>`
+      );
+      return TemplateRenderer.html`
+  <div class="mst-market-history-tabs">${tabs}</div>
+  ${
+    state.view === 'records'
+      ? TemplateRenderer.html`
+  <div class="mst-market-history-toolbar">
+    <div class="mst-market-history-row">
+      <input
+        type="search"
+        class="mst-market-history-input mst-market-history-keyword"
+        placeholder=${i18n.t('marketHistoryFilterKeyword')}
+        .value=${filters.keyword}
+        @input=${(event) => {
+          filters.keyword = event.target.value;
+          state.page = 1;
+          this.renderContent();
+        }}
+      />
+      <select class="mst-market-history-select" .value=${filters.categoryKey} @change=${(event) => {
+        filters.categoryKey = event.target.value;
+        state.page = 1;
+        this.renderToolbar();
+        this.renderContent();
+      }}>
+        ${categoryOptions}
+      </select>
+      <div
+        class=${
+          'mst-market-history-multiselect' +
+          (state.openFilterPanel === 'status' ? ' mst-market-history-multiselect-open' : '')
+        }
+      >
+        <button
+          type="button"
+          class="mst-market-history-select-button"
+          title=${statusTitle}
+          @click=${() => this.setStatusPanelOpen(state.openFilterPanel !== 'status')}
+        >
+          <span class="mst-market-history-select-label">${i18n.t('marketHistoryFilterStatus')}</span>
+          <span class="mst-market-history-select-value">${statusText}</span>
+          <span class="mst-market-history-select-caret" aria-hidden="true">▾</span>
+        </button>
+        <div class="mst-market-history-popover">
+          ${statusOptions}
+          <div class="mst-market-history-popover-hint">${i18n.t('marketHistoryFilterAnyHint')}</div>
+        </div>
+      </div>
+      <select class="mst-market-history-select" .value=${filters.types[0] || ''} @change=${(event) => {
+        filters.types = event.target.value ? [
+              event.target.value
+            ] : [];
+        state.page = 1;
+        this.renderToolbar();
+        this.renderContent();
+      }}>
+        ${typeOptions}
+      </select>
+      <select class="mst-market-history-select" .value=${filters.timePreset} @change=${(event) => {
+        filters.timePreset = event.target.value;
+        state.page = 1;
+        this.renderToolbar();
+        this.renderContent();
+      }}>
+        ${timePresetOptions}
+      </select>
+      ${
+        filters.timePreset === 'custom'
+          ? TemplateRenderer.html`
+      <input
+        type="date"
+        class="mst-market-history-input mst-market-history-date"
+        .value=${filters.timeFrom}
+        @change=${(event) => {
+          filters.timeFrom = event.target.value;
+          state.page = 1;
+          this.renderToolbar();
+          this.renderContent();
+        }}
+      />
+      <input
+        type="date"
+        class="mst-market-history-input mst-market-history-date"
+        .value=${filters.timeTo}
+        @change=${(event) => {
+          filters.timeTo = event.target.value;
+          state.page = 1;
+          this.renderToolbar();
+          this.renderContent();
+        }}
+      />`
+          : null
+      }
+      <button
+        type="button"
+        class=${'mst-market-history-button mst-market-history-more-toggle' + (moreCount ? ' mst-market-history-more-active' : '')}
+        @click=${() => {
+          state.moreOpen = !state.moreOpen;
+          this.renderToolbar();
+          this.renderContent();
+        }}
+      >
+        ${i18n.t('marketHistoryMoreFilters')}${moreCount ? ` · ${moreCount}` : ''}<span class="mst-market-history-caret" aria-hidden="true">${state.moreOpen ? '▴' : '▾'}</span>
+      </button>
+      <button
+        type="button"
+        class="mst-market-history-button mst-market-history-button-ghost"
+        @click=${() => this.clearFilters()}
+      >
+        ${i18n.t('marketHistoryFilterClear')}
+      </button>
+      <button
+        type="button"
+        class="mst-market-history-button mst-market-history-button-danger"
+        ?disabled=${!selectedCount}
+        @click=${() => this.requestBatchDelete()}
+      >
+        ${this.pendingDeleteKey === '__batch__' ? i18n.t('marketHistoryDeleteConfirmClick', selectedCount) : `${i18n.t('marketHistoryActionDelete')}${selectedCount ? ` (${selectedCount})` : ''}`}
+      </button>
+    </div>
+    ${
+      state.moreOpen
+        ? TemplateRenderer.html`
+    <div class="mst-market-history-row">
+      <label class="mst-market-history-inline">
+        <span>${i18n.t('marketHistoryFilterPrice')}</span>
+        ${numberInput(
+          filters.priceMin,
+          (value) => {
+            filters.priceMin = value;
+          },
+          i18n.t('marketHistoryFilterMin')
+        )}
+        <span>—</span>
+        ${numberInput(
+          filters.priceMax,
+          (value) => {
+            filters.priceMax = value;
+          },
+          i18n.t('marketHistoryFilterMax')
+        )}
+      </label>
+      <label class="mst-market-history-inline">
+        <span>${i18n.t('marketHistoryFilterQuantity')}</span>
+        ${numberInput(
+          filters.quantityMin,
+          (value) => {
+            filters.quantityMin = value;
+          },
+          i18n.t('marketHistoryFilterMin')
+        )}
+        <span>—</span>
+        ${numberInput(
+          filters.quantityMax,
+          (value) => {
+            filters.quantityMax = value;
+          },
+          i18n.t('marketHistoryFilterMax')
+        )}
+      </label>
+    </div>`
+        : null
+    }
+    ${
+      tooMany
+        ? TemplateRenderer.html`
+    <div class="mst-market-history-warning">${i18n.t('marketHistoryTooMany', this.getRecords().length)}</div>`
+        : null
+    }
+  </div>`
+      : null
+  }
+`;
+    }
+
+    // 篩選項摘要文案：未選=全部，選中一項顯示名稱，多項顯示「首項 +N」。
+    filterSummaryText(keys, labelKeyOf) {
+      const {i18n} = this.ctx;
+      if (!keys.length) return i18n.t('marketHistoryFilterAny');
+      if (keys.length === 1) return i18n.t(labelKeyOf(keys[0]));
+      return `${i18n.t(labelKeyOf(keys[0]))} +${keys.length - 1}`;
+    }
+
+    // 「更多篩選」裡生效的條件數，用於摺疊態提示。
+    moreFilterCount() {
+      const filters = this.dialogState.filters;
+      let count = 0;
+      if (filters.priceMin !== '' || filters.priceMax !== '') count += 1;
+      if (filters.quantityMin !== '' || filters.quantityMax !== '') count += 1;
+      return count;
+    }
+
+    // ---- 勾選與批次刪除（只處理勾選的行）----
+
+    currentPageItems() {
+      const state = this.dialogState;
+      return paginate(this.visibleRecords(), state.page, state.pageSize).items;
+    }
+
+    currentPageKeys() {
+      return this.currentPageItems().map((record) => record.key);
+    }
+
+    selectedRecords() {
+      const selected = this.dialogState.selected;
+      if (!selected.size) return [];
+      return this.getRecords().filter((record) => selected.has(record.key));
+    }
+
+    toggleRowSelected(key) {
+      const state = this.dialogState;
+      if (state.selected.has(key)) state.selected.delete(key);
+      else state.selected.add(key);
+      this.pendingDeleteKey = null;
+      this.renderToolbar();
+      this.renderContent();
+    }
+
+    togglePageSelected() {
+      const state = this.dialogState;
+      const keys = this.currentPageKeys();
+      const allSelected = keys.length > 0 && keys.every((key) => state.selected.has(key));
+      keys.forEach((key) => {
+        if (allSelected) state.selected.delete(key);
+        else state.selected.add(key);
+      });
+      this.pendingDeleteKey = null;
+      this.renderToolbar();
+      this.renderContent();
+    }
+
+    // 批次刪除走兩次點選確認：第一次按鈕切成確認文案，第二次才真正刪除勾選的行。
+    requestBatchDelete() {
+      const selected = this.selectedRecords();
+      if (!selected.length) return;
+      if (this.pendingDeleteKey === '__batch__') {
+        this.deleteSelectedRecords(selected);
+        return;
+      }
+      this.pendingDeleteKey = '__batch__';
+      this.renderToolbar();
+    }
+
+    deleteSelectedRecords(records = this.selectedRecords()) {
+      if (!records.length) return;
+      const {i18n} = this.ctx;
+      const keys = new Set(records.map((record) => record.key));
+      const all = this.getRecords();
+      for (let index = all.length - 1; index >= 0; index--) {
+        if (keys.has(all[index].key)) all.splice(index, 1);
+      }
+      keys.forEach((key) => this.dialogState.selected.delete(key));
+      this.pendingDeleteKey = null;
+      this.scheduleSave();
+      this.refreshOpenDialog({forceToolbar: true});
+      this.ctx.Notifier?.toast(i18n.t('marketHistoryDeleteDone', keys.size), 'success');
+    }
+
+    // 跳頁輸入：越界收斂到 [1, 頁數]。
+    goToPage(value) {
+      const state = this.dialogState;
+      const pageCount = Math.max(1, Math.ceil(this.visibleRecords().length / state.pageSize));
+      const next = Math.min(Math.max(1, Math.floor(Number(value) || 1)), pageCount);
+      if (next === state.page) {
+        this.renderContent();
+        return;
+      }
+      state.page = next;
+      this.renderContent();
+    }
+
+    // 狀態下拉麵板：展開態只切換容器類，不重繪工具欄，避免第一次點選外部時把點選目標重建掉。
+    setStatusPanelOpen(open) {
+      const state = this.dialogState;
+      if (!state) return;
+      state.openFilterPanel = open ? 'status' : null;
+      const holder = this.toolbarRoot?.querySelector('.mst-market-history-multiselect');
+      holder?.classList.toggle('mst-market-history-multiselect-open', Boolean(open));
+      if (open) this.bindPopoverDismiss();
+      else this.unbindPopoverDismiss();
+    }
+
+    bindPopoverDismiss() {
+      if (this.popoverDismiss) return;
+      this.popoverDismiss = (event) => {
+        if (event.target?.closest?.('.mst-market-history-multiselect')) return;
+        this.setStatusPanelOpen(false);
+      };
+      document.addEventListener('pointerdown', this.popoverDismiss, true);
+    }
+
+    unbindPopoverDismiss() {
+      if (!this.popoverDismiss) return;
+      document.removeEventListener('pointerdown', this.popoverDismiss, true);
+      this.popoverDismiss = null;
+    }
+
+    // 內容區：記錄表格 / 統計 / 管理（匯入匯出）/ 幫助（橋接指令碼用法；檢視在彈窗內切換，不使用巢狀彈窗）。
+    contentTemplate() {
+      const {TemplateRenderer, i18n} = this.ctx;
+      const state = this.dialogState;
+      if (state.view === 'stats') return this.statsTemplate();
+      if (state.view === 'manage') return this.manageTemplate();
+      if (state.view === 'help') return this.helpTemplate();
+      const records = this.visibleRecords();
+      const page = paginate(records, state.page, state.pageSize);
+      state.page = page.page;
+      const summary = summarize(page.items);
+      const totalSummary = summarize(records);
+      if (!this.getRecords().length) {
+        return TemplateRenderer.html`<div class="mst-market-history-empty">${i18n.t('marketHistoryEmpty')}</div>`;
+      }
+      if (!records.length) {
+        return TemplateRenderer.html`<div class="mst-market-history-empty">${i18n.t('marketHistoryEmptyFiltered')}</div>`;
+      }
+      const pageKeys = page.items.map((record) => record.key);
+      const allPageSelected = pageKeys.length > 0 && pageKeys.every((key) => state.selected.has(key));
+      const headerCells = RECORD_COLUMNS.map((column) => {
+        const widthStyle = column.width ? `width:${column.width}` : '';
+        if (column.key === 'select') {
+          return TemplateRenderer.html`
+    <th class="mst-market-history-select-head" style=${widthStyle}>
+      <input
+        type="checkbox"
+        class="mst-market-history-select-all"
+        title=${i18n.t('marketHistorySelectAllPage')}
+        .checked=${allPageSelected}
+        @change=${() => this.togglePageSelected()}
+      />
+    </th>`;
+        }
+        const classes =
+          [
+            column.sortable &&
+              'mst-market-history-sortable', column.numeric && 'mst-market-history-number-head', state.sort.key === column.key && 'mst-market-history-sorted'
+          ]
+            .filter(Boolean)
+            .join(' ') || null;
+        if (!column.sortable)
+          return TemplateRenderer.html`<th class=${classes} style=${widthStyle}>${i18n.t(column.labelKey)}</th>`;
+        return TemplateRenderer.html`
+    <th
+      class=${classes}
+      style=${widthStyle}
+      title=${i18n.t('marketHistorySortHint')}
+      @click=${() => this.setSort(column.key)}
+    >${i18n.t(column.labelKey)}${state.sort.key === column.key ? (state.sort.dir === 'asc' ? ' ▲' : ' ▼') : ''}</th>`;
+      });
+      // 序號跨頁增長：第二頁從「每頁條數 + 1」開始。
+      const startIndex = (page.page - 1) * page.pageSize;
+      const rows = page.items.map((record, index) => this.recordRowTemplate(record, startIndex + index + 1));
+      const pageSizeOptions = PAGE_SIZE_OPTIONS.map(
+        (size) =>
+          TemplateRenderer.html`<option value=${String(size)}>${i18n.t('marketHistoryPageSizeOption', String(size))}</option>`
+      );
+      const pageButtons = paginationItems(page.pageCount, page.page);
+      const pageItems = pageButtons.map((item) =>
+        item === 'ellipsis'
+          ? TemplateRenderer.html`<span class="mst-market-history-page-ellipsis">…</span>`
+          : TemplateRenderer.html`
+    <button
+      type="button"
+      class=${'mst-market-history-page' + (item === page.page ? ' mst-market-history-page-active' : '')}
+      @click=${() => {
+        state.page = item;
+        this.renderContent();
+      }}
+    >${String(item)}</button>`
+      );
+      // 分頁區靠右：跳頁、每頁條數，留一段空白後是翻頁控制元件。
+      const pageSizeSelect = TemplateRenderer.html`
+      <select class="mst-market-history-select" .value=${String(state.pageSize)} @change=${(event) => {
+        state.pageSize = Number(event.target.value) || 20;
+        state.page = 1;
+        this.renderContent();
+      }}>
+        ${pageSizeOptions}
+      </select>`;
+      const pageJump = TemplateRenderer.html`
+      <label class="mst-market-history-inline mst-market-history-page-jump">
+        <span>${i18n.t('marketHistoryPageJump')}</span>
+        <input
+          type="number"
+          min="1"
+          max=${String(page.pageCount)}
+          class="mst-market-history-input mst-market-history-page-jump-input"
+          .value=${String(page.page)}
+          @change=${(event) => this.goToPage(event.target.value)}
+          @keydown=${(event) => {
+            if (event.key === 'Enter') this.goToPage(event.target.value);
+          }}
+        />
+        <span>${i18n.t('marketHistoryPageJumpUnit')}</span>
+      </label>`;
+      return TemplateRenderer.html`
+  <div class="mst-market-history-table-wrap">
+    <table class="mst-market-history-table mst-market-history-table-records">
+      <thead><tr>${headerCells}</tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>
+  <div class="mst-market-history-footer">
+    <div class="mst-market-history-summary">
+      ${this.summaryGroupTemplate('marketHistoryTotalsPage', summary)}
+      ${this.summaryGroupTemplate('marketHistoryTotalsFiltered', totalSummary)}
+    </div>
+    <div class="mst-market-history-footer-bar">
+    <span class="mst-market-history-pager-count">${i18n.t('marketHistoryPagerCount', records.length)}</span>
+    <div class="mst-market-history-pagination">
+      ${pageJump}
+      ${pageSizeSelect}
+      <div class="mst-market-history-page-group">
+        <button
+          type="button"
+          class="mst-market-history-page"
+          ?disabled=${page.page <= 1}
+          @click=${() => {
+            state.page = Math.max(1, page.page - 1);
+            this.renderContent();
+          }}
+        >${i18n.t('marketHistoryPagePrev')}</button>
+        ${pageItems}
+        <button
+          type="button"
+          class="mst-market-history-page"
+          ?disabled=${page.page >= page.pageCount}
+          @click=${() => {
+            state.page = Math.min(page.pageCount, page.page + 1);
+            this.renderContent();
+          }}
+        >${i18n.t('marketHistoryPageNext')}</button>
+      </div>
+    </div>
+    </div>
+  </div>
+`;
+    }
+
+    recordRowTemplate(record, index) {
+      const {TemplateRenderer, i18n} = this.ctx;
+      const status = getDisplayStatus(record);
+      const type = getRecordType(record);
+      const amount = getRecordAmount(record);
+      const collected = getCollectedCount(record);
+      const filledCount = Number(record.filledQuantity) || 0;
+      const orderCount = Number(record.orderQuantity) || 0;
+      // 直購按數量顯示；已成交與總數一致時只顯示一個數字。
+      const progress =
+        record.kind === 'instant' && record.listingId == null
+          ? String(record.orderQuantity)
+          : filledCount === orderCount
+            ? String(orderCount)
+            : `${filledCount} / ${orderCount}`;
+      const note = this.recordNote(record);
+      const side = record.side;
+      // 收入/支出按方向著色：收入（賣出）用正向色、支出（買入）用負向色；0 保持弱化不上色。
+      const collectedTone =
+        collected > 0 ? (side === 'sell' ? ' mst-market-history-income-cell' : ' mst-market-history-expense-cell') : '';
+      const selected = this.dialogState.selected.has(record.key);
+      const confirmingDelete = this.pendingDeleteKey === record.key;
+      const statusLabel = i18n.t(this.statusLabelKey(status));
+      const itemLabel = this.itemLabel(record);
+      const endTime = record.filledAt || record.cancelledAt || record.expiredAt;
+      // 零值 / 空值弱化，避免「0」「—」與真實數值搶注意力。
+      const muted = (text) => TemplateRenderer.html`<span class="mst-market-history-muted">${text}</span>`;
+      const money = (value) => (Number(value) ? this.formatMoney(value) : muted('0'));
+      const timeCell = (value) => {
+        const text = this.formatCellTime(value);
+        return text ? TemplateRenderer.html`<span title=${this.formatTime(value)}>${text}</span>` : muted('—');
+      };
+      return TemplateRenderer.html`
+  <tr
+    class=${
+      'mst-market-history-record-row' +
+      (note ? ' mst-market-history-record-row-noted' : '') +
+      (selected ? ' mst-market-history-record-row-selected' : '')
+    }
+    title=${note}
+  >
+    <td class="mst-market-history-select-cell">
+      <input
+        type="checkbox"
+        class="mst-market-history-row-check"
+        .checked=${selected}
+        @change=${() => this.toggleRowSelected(record.key)}
+      />
+    </td>
+    <td class="mst-market-history-number-cell">${String(index)}</td>
+    <td>
+      <span class=${'mst-market-history-status mst-market-history-status-' + status} title=${statusLabel + '\n' + this.statusHint(record)}>
+        ${statusLabel}
+      </span>
+    </td>
+    <td>${i18n.t(this.typeLabelKey(type))}</td>
+    <td>
+      <div class="mst-market-history-item" title=${itemLabel}>
+        <svg aria-hidden="true"><use href=${this.getItemIconHref(record.itemHrid)}></use></svg>
+        <span>${itemLabel}</span>
+      </div>
+    </td>
+    <td class="mst-market-history-number-cell">${progress}</td>
+    <td class="mst-market-history-number-cell" title=${this.rawValueText(record.price)}>${money(record.price)}</td>
+    <td class="mst-market-history-number-cell" title=${this.rawValueText(amount)}>${money(amount)}</td>
+    <td class=${'mst-market-history-number-cell' + collectedTone} title=${this.collectedHint(record)}>
+      ${money(collected)}
+      ${this.formatPendingSuffix(record)}
+    </td>
+    <td>${timeCell(record.createdAt)}</td>
+    <td>${timeCell(endTime)}</td>
+    <td>
+      <button
+        type="button"
+        class=${'mst-row-remove mst-market-history-row-remove' + (confirmingDelete ? ' mst-market-history-row-remove-armed' : '')}
+        title=${i18n.t(confirmingDelete ? 'marketHistoryDeleteConfirmClickOne' : 'marketHistoryActionDeleteOne')}
+        aria-label=${i18n.t('marketHistoryActionDeleteOne')}
+        @click=${() => this.requestDeleteRecord(record)}
+      >&times;</button>
+    </td>
+  </tr>`;
+    }
+
+    formatPendingSuffix(record) {
+      const pending = getPendingCount(record);
+      if (!pending) return null;
+      const {TemplateRenderer, i18n} = this.ctx;
+      // 列寬有限，行內只給增量數字，「待領取」的名稱放在 title 與合計口徑裡。
+      return TemplateRenderer.html`<span class="mst-market-history-pending" title=${i18n.t('marketHistoryPending')}>+${this.formatMoney(pending)}</span>`;
+    }
+
+    // 底欄合計分組：一個範圍（本頁合計 / 篩選總計）內的「標籤 + 數值」，不含條數；
+    // 兩個分組在寬度允許時同行，放不下時由外層 flex-wrap 換到第二行。
+    summaryGroupTemplate(titleKey, summary) {
+      const {TemplateRenderer, i18n, utils} = this.ctx;
+      // 收入按「金額 / 收入金額」並列（出售要扣稅，兩個數字不同）；
+      // 購買不扣稅，支出金額與金額相同，只顯示一個數字。
+      const items = [
+        [
+          i18n.t(
+            'marketHistoryTotalsFilled'
+          ), utils.formatCompactNumber(summary.filledQuantity, 0), this.rawValueText(summary.filledQuantity)
+        ], [
+          i18n.t(
+            'marketHistoryTotalsIncome'
+          ), this.formatMoney(summary.nominalSell) + ' / ' + this.formatMoney(summary.collectedCoin), this.rawValueText(summary.nominalSell) + ' / ' + this.rawValueText(summary.collectedCoin)
+        ], [
+          i18n.t(
+            'marketHistoryTotalsExpense'
+          ), this.formatMoney(summary.nominalBuy), this.rawValueText(summary.nominalBuy)
+        ]
+      ];
+      return TemplateRenderer.html`
+    <span class="mst-market-history-summary-group">
+      <span class="mst-market-history-summary-title">${i18n.t(titleKey)}</span>
+      ${items.map(
+        ([
+          label, value, raw
+        ]) =>
+          TemplateRenderer.html`<span class="mst-market-history-summary-item"><span class="mst-market-history-summary-label">${label}</span><span class="mst-market-history-summary-value" title=${raw}>${value}</span></span>`
+      )}
+    </span>`;
+    }
+
+    // 表格裡的時間用短格式（同年省略年份 / 跨年省略時間），完整時間放 title；
+    // 表格外的詳情、CSV 匯出仍用 formatTime 的完整格式。
+    formatCellTime(value) {
+      if (!value) return null;
+      const date = new Date(Number(value));
+      if (Number.isNaN(date.getTime())) return null;
+      const pad = (num) => String(num).padStart(2, '0');
+      const monthDay = `${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+      const time = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+      return date.getFullYear() === new Date().getFullYear()
+        ? `${monthDay} ${time}`
+        : `${date.getFullYear()}-${monthDay}`;
+    }
+
+    // ---- 統計頁籤（獨立篩選 + 圖表）----
+    //
+    // 統計頁有自己的一套篩選條件（時間範圍 / 方向 / 分類 / 物品關鍵詞），與記錄列表的篩選互不影響；
+    // 時間口徑統一按「建立時間」（與時間範圍篩選同源，介面在同一處標註）。圖表覆蓋四個維度：
+    // 時間（收支趨勢）、物品（排行 Top 10）、分類（構成環形）、狀態與型別（構成環形），
+    // 下方保留按物品彙總表給出精確數字。圖表全部手繪 SVG，不引入圖表庫。
+
+    statsFilterBarTemplate() {
+      const {TemplateRenderer, i18n} = this.ctx;
+      const filters = this.dialogState.stats.filters;
+      const timeOptions = STATS_TIME_PRESETS.map(
+        (key) => TemplateRenderer.html`<option value=${key}>${i18n.t(STATS_TIME_LABEL_KEYS[key])}</option>`
+      );
+      const sideOptions = [
+        'all', 'sell', 'buy'
+      ].map((key) => TemplateRenderer.html`<option value=${key}>${i18n.t(STATS_SIDE_LABEL_KEYS[key])}</option>`);
+      const categoryOptions = [
+        TemplateRenderer.html`<option value="all">${i18n.t('marketHistoryFilterCategoryAll')}</option>`, ...MARKET_CATEGORY_KEYS.map((key) => TemplateRenderer.html`<option value=${key}>${i18n.t(CATEGORY_LABEL_KEYS[key])}</option>`)
+      ];
+      const apply = (mutate) => {
+        mutate();
+        this.renderContent();
+      };
+      return TemplateRenderer.html`
+    <div class="mst-market-history-stats-filters">
+      <label class="mst-market-history-inline">
+        <span>${i18n.t('marketHistoryStatsTimeField')}</span>
+        <select
+          class="mst-market-history-select"
+          .value=${filters.timePreset}
+          @change=${(event) =>
+            apply(() => {
+              filters.timePreset = event.target.value;
+            })}
+        >${timeOptions}</select>
+      </label>
+      ${
+        filters.timePreset === 'custom'
+          ? TemplateRenderer.html`
+      <input
+        type="date"
+        class="mst-market-history-input mst-market-history-date"
+        .value=${filters.timeFrom}
+        @change=${(event) =>
+          apply(() => {
+            filters.timeFrom = event.target.value;
+          })}
+      />
+      <input
+        type="date"
+        class="mst-market-history-input mst-market-history-date"
+        .value=${filters.timeTo}
+        @change=${(event) =>
+          apply(() => {
+            filters.timeTo = event.target.value;
+          })}
+      />`
+          : this.emptyTemplate()
+      }
+      <label class="mst-market-history-inline">
+        <span>${i18n.t('marketHistoryStatsSide')}</span>
+        <select
+          class="mst-market-history-select"
+          .value=${filters.side}
+          @change=${(event) =>
+            apply(() => {
+              filters.side = event.target.value;
+            })}
+        >${sideOptions}</select>
+      </label>
+      <label class="mst-market-history-inline">
+        <span>${i18n.t('marketHistoryStatsCategory')}</span>
+        <select
+          class="mst-market-history-select"
+          .value=${filters.categoryKey}
+          @change=${(event) =>
+            apply(() => {
+              filters.categoryKey = event.target.value;
+            })}
+        >${categoryOptions}</select>
+      </label>
+      <input
+        type="search"
+        class="mst-market-history-input mst-market-history-keyword"
+        placeholder=${i18n.t('marketHistoryFilterKeyword')}
+        .value=${filters.keyword}
+        @input=${(event) =>
+          apply(() => {
+            filters.keyword = event.target.value;
+          })}
+      />
+      <button
+        type="button"
+        class="mst-market-history-button mst-market-history-button-ghost"
+        @click=${() => this.clearStatsFilters()}
+      >
+        ${i18n.t('marketHistoryFilterClear')}
+      </button>
+    </div>`;
+    }
+
+    // 圖表切換按鈕（粒度 / 指標 / 維度共用一套外觀）。
+    chartTogglesTemplate(keys, labelKeys, activeKey, onPick) {
+      const {TemplateRenderer, i18n} = this.ctx;
+      return keys.map(
+        (key) =>
+          TemplateRenderer.html`
+    <button
+      type="button"
+      class=${'mst-market-history-chart-toggle' + (activeKey === key ? ' mst-market-history-chart-toggle-active' : '')}
+      @click=${() => onPick(key)}
+    >${i18n.t(labelKeys[key])}</button>`
+      );
+    }
+
+    statsChartCardTemplate({title, controls, body, legend, note}) {
+      const {TemplateRenderer} = this.ctx;
+      return TemplateRenderer.html`
+    <section class="mst-market-history-chart-card">
+      <header class="mst-market-history-chart-head">
+        <h4 class="mst-market-history-chart-title">${title}</h4>
+        <div class="mst-market-history-chart-controls">${controls}</div>
+      </header>
+      ${note ? TemplateRenderer.html`<div class="mst-market-history-chart-note">${note}</div>` : this.emptyTemplate()}
+      ${body}
+      ${legend ? TemplateRenderer.html`<ul class="mst-market-history-chart-legend">${legend}</ul>` : this.emptyTemplate()}
+    </section>`;
+    }
+
+    // 無資料的卡片也保留維度切換按鈕：分類構成這樣的圖表「沒資料」只針對當前指標，
+    // 使用者要能直接切到另一個指標看，而不是被迫去別處找開關。
+    statsEmptyCardTemplate(title, controls = []) {
+      const {TemplateRenderer, i18n} = this.ctx;
+      return this.statsChartCardTemplate({
+        title,
+        controls,
+        body: TemplateRenderer.html`<div class="mst-market-history-chart-empty">${i18n.t('marketHistoryStatsNoData')}</div>`
+      });
+    }
+
+    statsLegendItemTemplate({tone, label, value, raw}) {
+      const {TemplateRenderer} = this.ctx;
+      return TemplateRenderer.html`
+    <li class="mst-market-history-chart-legend-item">
+      <span class=${'mst-market-history-chart-swatch mst-market-history-chart-swatch-' + tone}></span>
+      <span class="mst-market-history-chart-legend-label">${label}</span>
+      <span class="mst-market-history-chart-legend-value" title=${raw}>${value}</span>
+    </li>`;
+    }
+
+    // 收支趨勢：按日 / 周 / 月分桶的收支柱 + 淨收支折線，縱軸含負值時給出零線。
+    statsTrendChartTemplate(records) {
+      const {TemplateRenderer, i18n} = this.ctx;
+      const state = this.dialogState;
+      const series = buildStatsTimeSeries(records, {bucket: state.stats.bucket});
+      const buckets = series.buckets;
+      const title = i18n.t('marketHistoryStatsTrendTitle');
+      const controls = this.chartTogglesTemplate(
+        STATS_BUCKET_KEYS,
+        STATS_BUCKET_LABEL_KEYS,
+        state.stats.bucket,
+        (key) => {
+          state.stats.bucket = key;
+          this.renderContent();
+        }
+      );
+      if (!buckets.length) return this.statsEmptyCardTemplate(title, controls);
+      const plot = {x: 58, y: 12, width: 570, height: 150};
+      const baseY = plot.y + plot.height;
+      const showIncome = buckets.some((entry) => entry.income > 0);
+      const showExpense = buckets.some((entry) => entry.expense > 0);
+      const showNet = buckets.some((entry) => entry.net !== 0);
+      const axis = buildValueAxis({
+        min: showNet ? Math.min(0, ...buckets.map((entry) => entry.net)) : 0,
+        max: Math.max(0, ...buckets.map((entry) => Math.max(entry.income, entry.expense))),
+        tickCount: 4
+      });
+      const yOf = (value) => baseY - ((value - axis.min) / (axis.max - axis.min)) * plot.height;
+      const zeroY = yOf(0);
+      const seriesKeys = [];
+      if (showIncome) seriesKeys.push('income');
+      if (showExpense) seriesKeys.push('expense');
+      const layout = layoutBarGroups({count: buckets.length, seriesCount: Math.max(1, seriesKeys.length), plot});
+      const labelOf = (entry) => {
+        const date = new Date(entry.start);
+        const pad = (num) => String(num).padStart(2, '0');
+        return series.bucket === 'month'
+          ? `${date.getFullYear()}-${pad(date.getMonth() + 1)}`
+          : `${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+      };
+      const tooltipOf = (entry) => [
+          labelOf(
+            entry
+          ), i18n.t('marketHistoryTotalsIncome') + ' ' + this.rawValueText(entry.income), i18n.t('marketHistoryTotalsExpense') + ' ' + this.rawValueText(entry.expense), i18n.t('marketHistoryStatsNet') + ' ' + this.rawValueText(entry.net)
+        ].join(' · ');
+      const bars = [];
+      seriesKeys.forEach((key, seriesIndex) => {
+        buckets.forEach((entry, index) => {
+          const value = entry[key];
+          if (!(value > 0)) return;
+          const group = layout[index];
+          const top = yOf(value);
+          bars.push(TemplateRenderer.svg`
+      <rect
+        class=${'mst-market-history-chart-bar mst-market-history-chart-bar-' + key}
+        x=${svgNumber(group.seriesX[seriesIndex])}
+        y=${svgNumber(top)}
+        width=${svgNumber(group.width)}
+        height=${svgNumber(Math.max(1, zeroY - top))}
+      ><title>${tooltipOf(entry)}</title></rect>`);
+        });
+      });
+      const gridLines = axis.ticks.map(
+        (tick) => TemplateRenderer.svg`
+      <line
+        class="mst-market-history-chart-grid-line"
+        x1=${svgNumber(plot.x)}
+        y1=${svgNumber(yOf(tick))}
+        x2=${svgNumber(plot.x + plot.width)}
+        y2=${svgNumber(yOf(tick))}
+      ></line>
+      <text class="mst-market-history-chart-label" x=${svgNumber(plot.x - 6)} y=${svgNumber(yOf(tick) + 3)} text-anchor="end">${this.formatAxisValue(tick)}</text>`
+      );
+      const labelStep = pickLabelStep(buckets.length, 8);
+      const xLabels = templateList(buckets, (entry, index) =>
+        index % labelStep === 0
+          ? TemplateRenderer.svg`
+      <text
+        class="mst-market-history-chart-label"
+        x=${svgNumber(layout[index].center)}
+        y=${svgNumber(baseY + 14)}
+        text-anchor="middle"
+      >${labelOf(entry)}</text>`
+          : null
+      );
+      const netPoints = showNet
+        ? layout.map((group, index) => `${svgNumber(group.center)},${svgNumber(yOf(buckets[index].net))}`).join(' ')
+        : '';
+      const dots =
+        showNet && buckets.length <= 40
+          ? templateList(
+              buckets,
+              (entry, index) =>
+                TemplateRenderer.svg`<circle
+          class="mst-market-history-chart-dot"
+          cx=${svgNumber(layout[index].center)}
+          cy=${svgNumber(yOf(entry.net))}
+          r="2.4"
+        ><title>${tooltipOf(entry)}</title></circle>`
+            )
+          : [];
+      const totals = buckets.reduce(
+        (sum, entry) => ({
+          income: sum.income + entry.income,
+          expense: sum.expense + entry.expense
+        }),
+        {income: 0, expense: 0}
+      );
+      const legend = [];
+      if (showIncome)
+        legend.push(
+          this.statsLegendItemTemplate({
+            tone: 'income',
+            label: i18n.t('marketHistoryTotalsIncome'),
+            value: this.formatMoney(totals.income),
+            raw: this.rawValueText(totals.income)
+          })
+        );
+      if (showExpense)
+        legend.push(
+          this.statsLegendItemTemplate({
+            tone: 'expense',
+            label: i18n.t('marketHistoryTotalsExpense'),
+            value: this.formatMoney(totals.expense),
+            raw: this.rawValueText(totals.expense)
+          })
+        );
+      if (showNet)
+        legend.push(
+          this.statsLegendItemTemplate({
+            tone: 'net',
+            label: i18n.t('marketHistoryStatsNet'),
+            value: (totals.income - totals.expense > 0 ? '+' : '') + this.formatMoney(totals.income - totals.expense),
+            raw: this.rawValueText(totals.income - totals.expense)
+          })
+        );
+      const note =
+        series.bucket !== series.expectedBucket
+          ? i18n.t('marketHistoryStatsBucketForced', i18n.t(STATS_BUCKET_LABEL_KEYS[series.bucket]))
+          : '';
+      return this.statsChartCardTemplate({
+        title,
+        controls,
+        note,
+        body: TemplateRenderer.svg`
+      <svg class="mst-market-history-chart-svg" viewBox="0 0 640 182" role="img" aria-label=${title}>
+        ${gridLines}${showNet ? TemplateRenderer.svg`<polyline class="mst-market-history-chart-net" points=${netPoints}></polyline>` : this.emptyTemplate()}${bars}${dots}${axis.min < 0 ? TemplateRenderer.svg`<line class="mst-market-history-chart-zero" x1=${svgNumber(plot.x)} y1=${svgNumber(zeroY)} x2=${svgNumber(plot.x + plot.width)} y2=${svgNumber(zeroY)}></line>` : this.emptyTemplate()}${xLabels}
+      </svg>`,
+        legend
+      });
+    }
+
+    // 物品排行：Top 10 的堆疊橫條（出售一段 + 購買一段），指標可切換金額 / 數量 / 筆數。
+    statsRankChartTemplate(records) {
+      const {TemplateRenderer, i18n, utils} = this.ctx;
+      const state = this.dialogState;
+      const metric = state.stats.rankMetric;
+      const title = i18n.t('marketHistoryStatsRankTitle');
+      const controls = this.chartTogglesTemplate(STATS_RANK_METRICS, STATS_RANK_LABEL_KEYS, metric, (key) => {
+        state.stats.rankMetric = key;
+        this.renderContent();
+      });
+      const pick = (item) => {
+        if (metric === 'quantity') return item.sellFilledQuantity;
+        if (metric === 'count') return item.sellCount;
+        return item.sellAmount;
+      };
+      const pickBuy = (item) => {
+        if (metric === 'quantity') return item.buyFilledQuantity;
+        if (metric === 'count') return item.buyCount;
+        return item.buyAmount;
+      };
+      const items = summarizeByItem(records, {getName: (hrid) => this.itemName({itemHrid: hrid, enhancementLevel: 0})})
+        .map((item) => ({...item, sellValue: pick(item), buyValue: pickBuy(item)}))
+        .map((item) => ({...item, total: item.sellValue + item.buyValue}))
+        .filter((item) => item.total > 0)
+        .sort((left, right) => right.total - left.total)
+        .slice(0, STATS_RANK_LIMIT);
+      if (!items.length) return this.statsEmptyCardTemplate(title, controls);
+      const maxValue = items[0].total;
+      const valueOf = (value) => (metric === 'amount' ? this.formatMoney(value) : utils.formatCompactNumber(value, 0));
+      const rows = items.map((item) => {
+        const [
+          sellSegment, buySegment
+        ] = layoutStackedSegments({
+          values: [
+            item.sellValue, item.buyValue
+          ],
+          length: maxValue > 0 ? (item.total / maxValue) * 100 : 0
+        });
+        return TemplateRenderer.html`
+      <div class="mst-market-history-rank-row">
+        <div class="mst-market-history-rank-item">
+          <svg aria-hidden="true"><use href=${this.getItemIconHref(item.itemHrid)}></use></svg>
+          <span>${this.itemLabel(item)}</span>
+        </div>
+        <div
+          class="mst-market-history-rank-track"
+          title=${`${i18n.t('marketHistoryStatsSideSell')} ${this.rawValueText(item.sellValue)} · ${i18n.t('marketHistoryStatsSideBuy')} ${this.rawValueText(item.buyValue)}`}
+        >
+          <span class="mst-market-history-rank-sell" style=${`width:${svgNumber(sellSegment.width)}%`}></span>
+          <span class="mst-market-history-rank-buy" style=${`width:${svgNumber(buySegment.width)}%`}></span>
+        </div>
+        <span class="mst-market-history-rank-value" title=${this.rawValueText(item.total)}>${valueOf(item.total)}</span>
+      </div>`;
+      });
+      return this.statsChartCardTemplate({
+        title,
+        controls,
+        body: TemplateRenderer.html`<div class="mst-market-history-rank">${rows}</div>`,
+        legend: [
+          this.statsLegendItemTemplate({
+            tone: 'income',
+            label: i18n.t('marketHistoryStatsSideSell'),
+            value: '',
+            raw: ''
+          }), this.statsLegendItemTemplate({
+            tone: 'expense',
+            label: i18n.t('marketHistoryStatsSideBuy'),
+            value: '',
+            raw: ''
+          })
+        ]
+      });
+    }
+
+    // 環形圖卡片：分類構成 / 記錄構成共用；圖例給出緊湊數值、佔比與精確原值。
+    statsDoughnutCardTemplate({title, controls, entries, centerCaption, formatter}) {
+      const {TemplateRenderer} = this.ctx;
+      if (!entries.length) return this.statsEmptyCardTemplate(title, controls);
+      const total = entries.reduce((sum, entry) => sum + entry.value, 0);
+      const cx = 92;
+      const cy = 92;
+      const arcs = layoutDoughnutArcs({
+        values: entries.map((entry) => entry.value),
+        cx,
+        cy,
+        outerRadius: 76,
+        innerRadius: 48
+      });
+      const slices = templateList(entries, (entry, index) => {
+        const arc = arcs[index];
+        if (!arc?.path) return null;
+        return TemplateRenderer.svg`
+      <path
+        class="mst-market-history-chart-slice"
+        d=${arc.path}
+        fill=${CHART_PALETTE[index % CHART_PALETTE.length]}
+        fill-rule="evenodd"
+      ><title>${`${entry.label} ${this.rawValueText(entry.value)}（${percentageText(arc.ratio)}）`}</title></path>`;
+      });
+      const legend = entries.map(
+        (entry, index) =>
+          TemplateRenderer.html`
+    <li class="mst-market-history-chart-legend-item">
+      <span
+        class="mst-market-history-chart-swatch"
+        style=${`background:${CHART_PALETTE[index % CHART_PALETTE.length]}`}
+      ></span>
+      <span class="mst-market-history-chart-legend-label">${entry.label}</span>
+      <span class="mst-market-history-chart-legend-value" title=${this.rawValueText(entry.value)}>${formatter(entry.value)} · ${percentageText(entry.value / total)}</span>
+    </li>`
+      );
+      return this.statsChartCardTemplate({
+        title,
+        controls,
+        body: TemplateRenderer.svg`
+      <div class="mst-market-history-chart-body">
+        <svg class="mst-market-history-chart-doughnut" viewBox="0 0 184 184" role="img" aria-label=${title}>
+          ${slices}
+          <text class="mst-market-history-chart-center-value" x=${String(cx)} y=${String(cy - 2)} text-anchor="middle">${formatter(total)}</text>
+          <text class="mst-market-history-chart-center-caption" x=${String(cx)} y=${String(cy + 14)} text-anchor="middle">${centerCaption}</text>
+        </svg>
+        <ul class="mst-market-history-chart-legend">${legend}</ul>
+      </div>`
+      });
+    }
+
+    // 分類構成：按物品分類彙總收入（稅後到賬/推算）或支出（購買金額）。
+    statsCategoryChartTemplate(records) {
+      const {i18n} = this.ctx;
+      const metric = this.dialogState.stats.categoryMetric;
+      const controls = this.chartTogglesTemplate(
+        STATS_CATEGORY_METRICS,
+        {expense: 'marketHistoryStatsSideBuy', income: 'marketHistoryStatsSideSell'},
+        metric,
+        (key) => {
+          this.dialogState.stats.categoryMetric = key;
+          this.renderContent();
+        }
+      );
+      const entries = buildStatsBreakdown(records, {keyOf: (record) => this.itemCategoryKey(record) || 'others'})
+        .map((group) => ({
+          label: i18n.t(CATEGORY_LABEL_KEYS[group.key] || 'marketHistoryStatsOthers'),
+          value: metric === 'income' ? group.income : group.expense
+        }))
+        .filter((entry) => entry.value > 0)
+        .sort((left, right) => right.value - left.value);
+      return this.statsDoughnutCardTemplate({
+        title: i18n.t('marketHistoryStatsShareTitle'),
+        controls,
+        entries,
+        centerCaption: metric === 'income' ? i18n.t('marketHistoryTotalsIncome') : i18n.t('marketHistoryTotalsExpense'),
+        formatter: (value) => this.formatMoney(value)
+      });
+    }
+
+    // 記錄構成：狀態分佈 / 型別分佈（條數佔比）。
+    statsComposeChartTemplate(summary) {
+      const {i18n} = this.ctx;
+      const dim = this.dialogState.stats.composeDim;
+      const counts = dim === 'status' ? summary.countsByStatus : summary.countsByType;
+      const entries = Object.keys(counts)
+        .map((key) => ({
+          label: i18n.t(dim === 'status' ? this.statusLabelKey(key) : this.typeLabelKey(key)),
+          value: counts[key]
+        }))
+        .sort((left, right) => right.value - left.value);
+      return this.statsDoughnutCardTemplate({
+        title: i18n.t('marketHistoryStatsComposeTitle'),
+        controls: this.chartTogglesTemplate(STATS_COMPOSE_DIMS, STATS_COMPOSE_LABEL_KEYS, dim, (key) => {
+          this.dialogState.stats.composeDim = key;
+          this.renderContent();
+        }),
+        entries,
+        centerCaption: i18n.t('marketHistoryTotalsCount'),
+        formatter: (value) => String(value)
+      });
+    }
+
+    // 按物品彙總表：給出圖表背後的精確數字（出售 / 購買金額與收入分開列）。
+    statsItemTableTemplate(records) {
+      const {TemplateRenderer, i18n, utils} = this.ctx;
+      const items = summarizeByItem(records, {
+        getName: (hrid) => this.itemName({itemHrid: hrid, enhancementLevel: 0})
+      }).sort((left, right) => right.amount - left.amount);
+      const rows = items.map(
+        (item) =>
+          TemplateRenderer.html`
+    <tr>
+      <td>
+        <div class="mst-market-history-item">
+          <svg aria-hidden="true"><use href=${this.getItemIconHref(item.itemHrid)}></use></svg>
+          <span>${this.itemLabel(item)}</span>
+        </div>
+      </td>
+      <td class="mst-market-history-number-cell" title=${this.rawValueText(item.count)}>${String(item.count)}</td>
+      <td class="mst-market-history-number-cell" title=${this.rawValueText(item.filledQuantity)}>${utils.formatCompactNumber(item.filledQuantity, 0)}</td>
+      <td class="mst-market-history-number-cell" title=${this.rawValueText(item.weightedPrice)}>${this.formatMoney(item.weightedPrice)}</td>
+      <td class="mst-market-history-number-cell" title=${this.rawValueText(item.sellAmount)}>${this.formatMoney(item.sellAmount)}</td>
+      <td class="mst-market-history-number-cell" title=${this.rawValueText(item.buyAmount)}>${this.formatMoney(item.buyAmount)}</td>
+      <td class="mst-market-history-number-cell mst-market-history-income-cell" title=${this.rawValueText(item.income)}>${this.formatMoney(item.income)}</td>
+    </tr>`
+      );
+      return TemplateRenderer.html`
+    <div class="mst-market-history-chart-card">
+      <header class="mst-market-history-chart-head">
+        <h4 class="mst-market-history-chart-title">${i18n.t('marketHistoryStatsTableTitle')}</h4>
+      </header>
+      <div class="mst-market-history-table-wrap mst-market-history-stats-table-wrap">
+        <table class="mst-market-history-table mst-market-history-stats-table">
+          <thead>
+            <tr>
+              <th>${i18n.t('marketHistoryColumnItem')}</th>
+              <th class="mst-market-history-number-head">${i18n.t('marketHistoryTotalsCount')}</th>
+              <th class="mst-market-history-number-head">${i18n.t('marketHistoryTotalsFilled')}</th>
+              <th class="mst-market-history-number-head">${i18n.t('marketHistoryStatsWeightedPrice')}</th>
+              <th class="mst-market-history-number-head">${i18n.t('marketHistoryTotalsSell')}</th>
+              <th class="mst-market-history-number-head">${i18n.t('marketHistoryTotalsBuy')}</th>
+              <th class="mst-market-history-number-head">${i18n.t('marketHistoryTotalsIncome')}</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+    }
+
+    statsTemplate() {
+      const {TemplateRenderer, i18n, utils} = this.ctx;
+      const filterBar = this.statsFilterBarTemplate();
+      const records = this.statsRecords();
+      if (!this.getRecords().length) {
+        return TemplateRenderer.html`
+  <div class="mst-market-history-stats">
+    ${filterBar}
+    <div class="mst-market-history-empty">${i18n.t('marketHistoryEmpty')}</div>
+  </div>`;
+      }
+      if (!records.length) {
+        return TemplateRenderer.html`
+  <div class="mst-market-history-stats">
+    ${filterBar}
+    <div class="mst-market-history-empty">${i18n.t('marketHistoryEmptyFiltered')}</div>
+  </div>`;
+      }
+      const summary = summarize(records);
+      const net = summary.net;
+      const overviewItems = [
+        [
+          i18n.t('marketHistoryTotalsCount'), String(summary.count), String(summary.count), ''
+        ], [
+          i18n.t(
+            'marketHistoryTotalsFilled'
+          ), utils.formatCompactNumber(summary.filledQuantity, 0), this.rawValueText(summary.filledQuantity), ''
+        ], [
+          i18n.t(
+            'marketHistoryTotalsIncome'
+          ), this.formatMoney(summary.collectedCoin), this.rawValueText(summary.collectedCoin), ''
+        ], [
+          i18n.t(
+            'marketHistoryTotalsExpense'
+          ), this.formatMoney(summary.nominalBuy), this.rawValueText(summary.nominalBuy), ''
+        ], [
+          i18n.t(
+            'marketHistoryStatsNet'
+          ), (net > 0 ? '+' : '') + this.formatMoney(net), this.rawValueText(net), net > 0 ? ' mst-market-history-stat-positive' : net < 0 ? ' mst-market-history-stat-negative' : ''
+        ]
+      ].map(
+        ([
+          label, value, raw, tone
+        ]) =>
+          TemplateRenderer.html`
+    <div class="mst-market-history-stat">
+      <span class="mst-market-history-stat-label">${label}</span>
+      <span class=${'mst-market-history-stat-value' + tone} title=${raw}>${value}</span>
+    </div>`
+      );
+      return TemplateRenderer.html`
+  <div class="mst-market-history-stats">
+    ${filterBar}
+    <div class="mst-market-history-stats-grid">${overviewItems}</div>
+    <div class="mst-market-history-chart-grid">
+      ${this.statsTrendChartTemplate(records)}${this.statsRankChartTemplate(records)}${this.statsCategoryChartTemplate(records)}${this.statsComposeChartTemplate(summary)}
+    </div>
+    ${this.statsItemTableTemplate(records)}
+  </div>`;
+    }
+
+    formatAxisValue(value) {
+      return this.ctx.utils.formatCompactNumber(Number(value) || 0, 1);
+    }
+
+    clearStatsFilters() {
+      this.dialogState.stats.filters = this.createStatsState().filters;
+      this.renderContent();
+    }
+
+    // ---- 互動 ----
+
+    clearFilters() {
+      const state = this.dialogState;
+      const keepPageSize = state.pageSize;
+      this.dialogState = {...this.createDialogState(), view: state.view, pageSize: keepPageSize};
+      this.pendingDeleteKey = null;
+      this.unbindPopoverDismiss();
+      this.refreshOpenDialog({forceToolbar: true});
+    }
+
+    toggleFilterList(field, key) {
+      const list = this.dialogState.filters[field];
+      const index = list.indexOf(key);
+      if (index === -1) list.push(key);
+      else list.splice(index, 1);
+      this.dialogState.page = 1;
+      this.renderToolbar();
+      this.renderContent();
+    }
+
+    setSort(key) {
+      const state = this.dialogState;
+      if (state.sort.key === key) state.sort.dir = state.sort.dir === 'asc' ? 'desc' : 'asc';
+      else {
+        state.sort.key = key;
+        state.sort.dir = 'desc';
+      }
+      this.renderToolbar();
+      this.renderContent();
+    }
+
+    // 單條刪除用「兩次點選確認」：第一次把按鈕切換成確認文案，第二次才真正刪除。
+    // 不用 SweetAlert 確認框——彈窗內再開 Swal 會把當前彈窗頂掉。
+    requestDeleteRecord(record) {
+      if (this.pendingDeleteKey === record.key) {
+        this.deleteRecord(record);
+        return;
+      }
+      this.pendingDeleteKey = record.key;
+      this.renderContent();
+    }
+
+    deleteRecord(record) {
+      const {i18n} = this.ctx;
+      const records = this.getRecords();
+      const index = records.findIndex((item) => item.key === record.key);
+      if (index >= 0) records.splice(index, 1);
+      this.pendingDeleteKey = null;
+      this.scheduleSave();
+      this.refreshOpenDialog();
+      this.ctx.Notifier?.toast(i18n.t('marketHistoryDeleteDone', 1), 'success');
+    }
+
+    // ---- 檢視切換與「管理」頁籤（匯入 / 匯出）----
+
+    // 檢視在彈窗內切換，不用巢狀彈窗（SweetAlert2 同一例項只能顯示一個 popup，巢狀會頂掉主彈窗）。
+    setView(view, {reset = false} = {}) {
+      const state = this.dialogState;
+      state.view = view;
+      if (reset) state.panel = this.createDialogState().panel;
+      this.pendingDeleteKey = null;
+      this.setStatusPanelOpen(false);
+      this.refreshOpenDialog({forceToolbar: true});
+    }
+
+    // 管理頁籤：匯入與匯出兩塊（原工具欄按鈕），各自獨立成區。
+    manageTemplate() {
+      const {TemplateRenderer, i18n} = this.ctx;
+      return TemplateRenderer.html`
+  <div class="mst-market-history-aux-body mst-market-history-manage">
+    <section class="mst-market-history-manage-section">
+      <div class="mst-market-history-aux-head">
+        <span class="mst-market-history-aux-title">${i18n.t('marketHistoryImportTitle')}</span>
+      </div>
+      ${this.importFormTemplate()}
+    </section>
+    <section class="mst-market-history-manage-section">
+      <div class="mst-market-history-aux-head">
+        <span class="mst-market-history-aux-title">${i18n.t('marketHistoryExportTitle')}</span>
+      </div>
+      ${this.exportFormTemplate()}
+    </section>
+  </div>`;
+    }
+
+    // 幫助頁籤：食用工具橋接指令碼的接入與兩個方向的資料遷移步驟。
+    helpTemplate() {
+      const {TemplateRenderer, i18n} = this.ctx;
+      const step = (text) => TemplateRenderer.html`<li class="mst-market-history-help-step">${text}</li>`;
+      const note = (key) => TemplateRenderer.html`<li class="mst-market-history-help-note">${i18n.t(key)}</li>`;
+      return TemplateRenderer.html`
+  <div class="mst-market-history-aux-body mst-market-history-manage mst-market-history-help">
+    <section class="mst-market-history-manage-section">
+      <div class="mst-market-history-aux-head">
+        <span class="mst-market-history-aux-title">${i18n.t('marketHistoryHelpBridgeTitle')}</span>
+      </div>
+      <ol class="mst-market-history-help-steps">
+        ${step(i18n.t('marketHistoryHelpBridgeStep1'))}
+        <li class="mst-market-history-help-step">
+          <div class="mst-market-history-help-code-row">
+            <code class="mst-market-history-help-code">${EDIBLE_BRIDGE_REQUIRE_LINE}</code>
+            <button
+              type="button"
+              class="mst-market-history-button"
+              @click=${() => this.copyBridgeRequireLine()}
+            >${i18n.t('marketHistoryHelpBridgeCopy')}</button>
+          </div>
+          <div class="mst-market-history-aux-note">${i18n.t('marketHistoryHelpBridgePinned')}</div>
+        </li>
+        ${step(i18n.t('marketHistoryHelpBridgeStep2'))} ${step(i18n.t('marketHistoryHelpBridgeStep3'))}
+      </ol>
+      <div class="mst-market-history-aux-note">${i18n.t('marketHistoryHelpBridgeResult')}</div>
+    </section>
+    <section class="mst-market-history-manage-section">
+      <div class="mst-market-history-aux-head">
+        <span class="mst-market-history-aux-title">${i18n.t('marketHistoryHelpExportTitle')}</span>
+      </div>
+      <ol class="mst-market-history-help-steps">
+        ${step(i18n.t('marketHistoryHelpExportStep1'))} ${step(i18n.t('marketHistoryHelpExportStep2'))} ${step(i18n.t('marketHistoryHelpExportStep3'))}
+      </ol>
+      <div class="mst-market-history-aux-note">${i18n.t('marketHistoryHelpExportResult')}</div>
+    </section>
+    <section class="mst-market-history-manage-section">
+      <div class="mst-market-history-aux-head">
+        <span class="mst-market-history-aux-title">${i18n.t('marketHistoryHelpTransferTitle')}</span>
+      </div>
+      <div class="mst-market-history-aux-hint">${i18n.t('marketHistoryHelpTransferBody')}</div>
+    </section>
+    <section class="mst-market-history-manage-section">
+      <div class="mst-market-history-aux-head">
+        <span class="mst-market-history-aux-title">${i18n.t('marketHistoryHelpNotesTitle')}</span>
+      </div>
+      <ul class="mst-market-history-help-notes">
+        ${note('marketHistoryHelpNoteScope')} ${note('marketHistoryHelpNoteOfficial')} ${note('marketHistoryHelpNoteEnvironment')} ${note('marketHistoryHelpNoteBackup')}
+      </ul>
+    </section>
+  </div>`;
+    }
+
+    async copyBridgeRequireLine() {
+      const {i18n, utils, Notifier} = this.ctx;
+      try {
+        await utils.writeClipboard(EDIBLE_BRIDGE_REQUIRE_LINE);
+        Notifier?.toast(i18n.t('marketHistoryHelpBridgeCopied'), 'success');
+      } catch (error) {
+        Notifier?.toast(i18n.t('clipboardWriteFailed', error?.message || error), 'error');
+      }
+    }
+
+    exportFormTemplate() {
+      const {TemplateRenderer, i18n} = this.ctx;
+      const panel = this.dialogState.panel;
+      const scopeOptions = Object.keys(EXPORT_SCOPE_LABEL_KEYS).map(
+        (key) =>
+          TemplateRenderer.html`
+    <label class="mst-market-history-checkbox">
+      <input
+        type="radio"
+        name="mst-market-history-export-scope"
+        .checked=${panel.exportScope === key}
+        @change=${() => {
+          panel.exportScope = key;
+          this.refreshOpenDialog({forceToolbar: true});
+        }}
+      />
+      <span>${i18n.t(EXPORT_SCOPE_LABEL_KEYS[key])}</span>
+    </label>`
+      );
+      const formatOptions = Object.keys(EXPORT_FORMAT_LABEL_KEYS).map(
+        (key) =>
+          TemplateRenderer.html`
+    <label class="mst-market-history-checkbox">
+      <input
+        type="radio"
+        name="mst-market-history-export-format"
+        .checked=${panel.exportFormat === key}
+        @change=${() => {
+          panel.exportFormat = key;
+          this.refreshOpenDialog({forceToolbar: true});
+        }}
+      />
+      <span>${i18n.t(EXPORT_FORMAT_LABEL_KEYS[key])}</span>
+    </label>`
+      );
+      const characterCount = Object.values(this.store.buckets || {}).reduce((sum, records) => sum + records.length, 0);
+      return TemplateRenderer.html`
+    <div class="mst-market-history-aux-group">${scopeOptions}</div>
+    <div class="mst-market-history-aux-group">${formatOptions}</div>
+    <div class="mst-market-history-aux-hint">${i18n.t('marketHistoryExportHint', this.getRecords().length, characterCount)}</div>
+    <div class="mst-market-history-aux-actions">
+      <button type="button" class="mst-market-history-button" @click=${() => this.applyExport()}>
+        ${i18n.t('marketHistoryExportApply')}
+      </button>
+      <span class="mst-market-history-aux-note">${i18n.t('marketHistoryExportPrivacy')}</span>
+    </div>`;
+    }
+
+    applyExport() {
+      const {i18n, utils} = this.ctx;
+      const panel = this.dialogState.panel;
+      const now = Date.now();
+      if (panel.exportFormat === 'csv') {
+        // CSV 只匯出當前篩選結果，供表格工具檢視，不支援匯入。
+        this.downloadCsv(this.visibleRecords());
+        return;
+      }
+      const payload = buildExportPayload(this.store, {
+        bucketKeys: panel.exportScope === 'all' ? null : [
+                this.currentBucketKey()
+              ],
+        now,
+        environment: this.environment,
+        characterId: this.characterId
+      });
+      const name = panel.exportScope === 'all' ? 'all' : this.characterName || this.characterId || 'all';
+      this.download(
+        JSON.stringify(payload),
+        'application/json',
+        i18n.t('marketHistoryExportFileName', name) + '_' + utils.formatLocalFileTime() + '.json'
+      );
+      this.ctx.Notifier?.toast(i18n.t('marketHistoryExportDone'), 'success');
+    }
+
+    downloadCsv(records) {
+      const {i18n, utils} = this.ctx;
+      const escape = (value) => {
+        const text = String(value ?? '');
+        return /[",\r\n]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
+      };
+      const header = [
+        i18n.t(
+          'marketHistoryColumnStatus'
+        ), i18n.t('marketHistoryColumnType'), i18n.t('marketHistoryColumnItem'), i18n.t('marketHistoryColumnProgress'), i18n.t('marketHistoryColumnPrice'),
+        i18n.t(
+          'marketHistoryColumnNominal'
+        ), i18n.t('marketHistoryColumnCollected'), i18n.t('marketHistoryTotalsPending'), i18n.t('marketHistoryColumnCreatedAt'), i18n.t('marketHistoryColumnFilledAt')
+      ];
+      const rows = records.map((record) => [
+        i18n.t(
+          this.statusLabelKey(getDisplayStatus(record))
+        ), i18n.t(this.typeLabelKey(getRecordType(record))), this.itemLabel(record), `${record.filledQuantity} / ${record.orderQuantity}`, record.price,
+        getRecordAmount(
+          record
+        ), getCollectedCount(record), getPendingCount(record), this.formatTime(record.createdAt), this.formatTime(getSortTimestamp(record, 'filledAt'))
+      ]);
+      const csv =
+        '\ufeff' +
+        [
+          header, ...rows
+        ]
+          .map((row) => row.map(escape).join(','))
+          .join('\r\n');
+      this.download(
+        csv,
+        'text/csv;charset=utf-8;',
+        i18n.t('marketHistoryCsvFileName') + '_' + utils.formatLocalFileTime() + '.csv'
+      );
+    }
+
+    download(content, type, fileName) {
+      const blob = new Blob(
+        [
+          content
+        ],
+        {type}
+      );
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    importFormTemplate() {
+      const {TemplateRenderer, i18n} = this.ctx;
+      const panel = this.dialogState.panel;
+      const modeOptions = Object.keys(IMPORT_MODE_LABEL_KEYS).map(
+        (key) =>
+          TemplateRenderer.html`
+    <label class="mst-market-history-checkbox">
+      <input
+        type="radio"
+        name="mst-market-history-import-mode"
+        .checked=${panel.importMode === key}
+        @change=${() => {
+          panel.importMode = key;
+          panel.importOverwriteConfirmed = false;
+          panel.importReport = null;
+          this.refreshOpenDialog({forceToolbar: true});
+        }}
+      />
+      <span>${i18n.t(IMPORT_MODE_LABEL_KEYS[key])}</span>
+    </label>`
+      );
+      const report = panel.importReport;
+      return TemplateRenderer.html`
+    <div class="mst-market-history-row">
+      <input
+        type="file"
+        accept="application/json,.json"
+        class="mst-market-history-file"
+        @change=${(event) => this.handleImportFile(event)}
+      />
+    </div>
+    <textarea
+      class="mst-market-history-textarea"
+      placeholder=${i18n.t('marketHistoryImportPaste')}
+      .value=${panel.importText}
+      @input=${(event) => {
+        panel.importText = event.target.value;
+        panel.importReport = null;
+      }}
+    ></textarea>
+    <div class="mst-market-history-aux-group">${modeOptions}</div>
+    ${
+      panel.importMode === 'overwrite'
+        ? TemplateRenderer.html`
+    <label class="mst-market-history-checkbox">
+      <input
+        type="checkbox"
+        .checked=${panel.importOverwriteConfirmed}
+        @change=${(event) => {
+          panel.importOverwriteConfirmed = event.target.checked;
+          this.refreshOpenDialog({forceToolbar: true});
+        }}
+      />
+      <span>${i18n.t('marketHistoryImportOverwriteConfirm')}</span>
+    </label>`
+        : null
+    }
+    ${panel.importError ? TemplateRenderer.html`<div class="mst-market-history-error">${panel.importError}</div>` : null}
+    ${
+      report
+        ? TemplateRenderer.html`
+    <div class="mst-market-history-aux-hint">
+      ${i18n.t('marketHistoryImportReport', report.added, report.updated, report.deduped, report.conflicts, report.skipped ?? 0)}
+    </div>`
+        : null
+    }
+    <div class="mst-market-history-aux-actions">
+      <button type="button" class="mst-market-history-button" @click=${() => this.previewImport()}>
+        ${i18n.t('marketHistoryImportPreview')}
+      </button>
+      <button
+        type="button"
+        class="mst-market-history-button"
+        ?disabled=${!report || (panel.importMode === 'overwrite' && !panel.importOverwriteConfirmed)}
+        @click=${() => this.applyImport()}
+      >
+        ${i18n.t('marketHistoryImportApply')}
+      </button>
+      <span class="mst-market-history-aux-note">${i18n.t('marketHistoryImportHint')}</span>
+    </div>`;
+    }
+
+    handleImportFile(event) {
+      const file = event?.target?.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (this.dialogState.view !== 'manage') return;
+        const panel = this.dialogState.panel;
+        panel.importText = String(reader.result || '');
+        panel.importFileName = file.name;
+        panel.importReport = null;
+        panel.importError = '';
+        this.refreshOpenDialog({forceToolbar: true});
+      };
+      reader.readAsText(file);
+    }
+
+    previewImport() {
+      const panel = this.dialogState.panel;
+      panel.importError = '';
+      panel.importReport = null;
+      const parsed = parseImportPayload(panel.importText);
+      if (!parsed.ok) {
+        panel.importError = this.importErrorText(parsed.reason);
+        this.refreshOpenDialog({forceToolbar: true});
+        return;
+      }
+      const previewStore = parseStore(serializeStore(this.store));
+      const result = mergeImport({
+        store: previewStore,
+        buckets: parsed.buckets,
+        mode: panel.importMode,
+        now: Date.now()
+      });
+      panel.importReport = {...result.report, skipped: parsed.skipped};
+      this.refreshOpenDialog({forceToolbar: true});
+    }
+
+    applyImport() {
+      const {i18n} = this.ctx;
+      const panel = this.dialogState.panel;
+      const parsed = parseImportPayload(panel.importText);
+      if (!parsed.ok) {
+        panel.importError = this.importErrorText(parsed.reason);
+        this.refreshOpenDialog({forceToolbar: true});
+        return;
+      }
+      const result = mergeImport({
+        store: this.store,
+        buckets: parsed.buckets,
+        mode: panel.importMode,
+        now: Date.now()
+      });
+      this.store = result.store;
+      this.scheduleSave();
+      panel.importReport = {...result.report, skipped: parsed.skipped};
+      this.refreshOpenDialog({forceToolbar: true});
+      this.ctx.Notifier?.toast(i18n.t('marketHistoryImportDone'), 'success');
+    }
+
+    importErrorText(reason) {
+      const {i18n} = this.ctx;
+      if (reason === 'unsupported-version') return i18n.t('marketHistoryImportErrorVersion');
+      if (reason === 'no-records') return i18n.t('marketHistoryImportErrorEmpty');
+      return i18n.t('marketHistoryImportErrorFormat');
     }
   }
 
@@ -26675,6 +31074,7 @@
         equipmentComparison,
         dungeonCalculator,
         subscribeNotification,
+        marketHistory,
         changelog,
         updateChecker
       }
@@ -26687,6 +31087,7 @@
       this.equipmentComparison = equipmentComparison;
       this.dungeonCalculator = dungeonCalculator;
       this.subscribeNotification = subscribeNotification;
+      this.marketHistory = marketHistory;
       this.changelog = changelog;
       this.updateChecker = updateChecker;
       this.dropdownCleanup = null;
@@ -26713,16 +31114,16 @@
           key: 'subscribeNotification',
           icon: 'action_queue',
           handler: () => this.subscribeNotification.openSettings()
-        }, {
+        }, {key: 'marketHistory', icon: 'marketplace', handler: () => this.marketHistory.open()}, {
           key: 'abilityUpgradeCalculator',
           icon: 'skills',
           handler: () => this.abilityCalculator.open()
-        }, {key: 'houseUpgradeCalculator', icon: 'house', handler: () => this.appController.openCalculator()}, {
+        }, {key: 'houseUpgradeCalculator', icon: 'house', handler: () => this.appController.openCalculator()},
+        {
           key: 'combatUpgradeCalculator',
           icon: 'experience',
           handler: () => this.combatCalculator.open()
-        },
-        {
+        }, {
           key: 'equipmentComparison',
           icon: 'loadout',
           handler: () => this.equipmentComparison.open()
@@ -26730,7 +31131,8 @@
           key: 'combatSimAiwwb',
           icon: 'combat',
           handler: () => this.openCombatSimulator()
-        }, {key: 'changelog', icon: 'patch_notes', handler: () => this.changelog.open()}, {
+        }, {key: 'changelog', icon: 'patch_notes', handler: () => this.changelog.open()},
+        {
           key: 'checkUpdate',
           icon: 'news',
           variant: hasUpdate ? 'update' : '',
@@ -26739,8 +31141,7 @@
             : i18n.t('checkUpdate'),
           handler: () =>
             this.updateChecker.hasUpdate() ? this.updateChecker.openInstallUrl() : this.updateChecker.openDialog()
-        },
-        {
+        }, {
           key: 'switchCharacter',
           icon: 'switch_character',
           handler: () => {
@@ -27291,6 +31692,7 @@
     HouseCalculatorUI.configure(ctx, ctx.Notifier);
     HouseCalculatorLauncher.configure(ctx);
     LabyrinthSupplyFeature.configure(ctx);
+    MarketHistoryFeature.configure(ctx);
     MarketplaceCartFeature.configure(ctx);
 
     ctx.AbilityUpgradeCalculatorFeature = AbilityUpgradeCalculatorFeature;
@@ -27309,6 +31711,7 @@
     ctx.HouseCalculator = HouseCalculator;
     ctx.HouseCalculatorUI = HouseCalculatorUI;
     ctx.LabyrinthSupplyFeature = LabyrinthSupplyFeature;
+    ctx.MarketHistoryFeature = MarketHistoryFeature;
     ctx.MarketplaceCartFeature = MarketplaceCartFeature;
     ctx.SubscribeNotificationFeature = SubscribeNotificationFeature;
     ctx.ToolkitMenuFeature = ToolkitMenuFeature;
@@ -27582,6 +31985,10 @@
 .mst-dungeon-empty{display:flex;min-height:8rem;align-items:center;justify-content:center;border:1px dashed var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);color:var(--color-neutral-300, #b9bbca);text-align:center}
 .mst-dungeon-table-wrap{overflow-x:auto;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);scrollbar-color:var(--color-space-300, #98a7e9) transparent;scrollbar-width:thin}
 .mst-dungeon-table-wrap[hidden]{display:none}
+.mst-dungeon-sim-tabs{display:flex;gap:.35rem;border-bottom:2px solid var(--color-divider, #454771);padding-bottom:.15rem}
+.mst-dungeon-sim-tabs .mst-dungeon-sim-tab{min-height:0;margin-bottom:-.15rem;border:0;border-bottom:2px solid transparent;border-radius:0;padding:.3rem .75rem;background:transparent;color:var(--color-text-dark-mode, #e7e7e7);font:inherit;font-weight:600;cursor:pointer;opacity:.7}
+.mst-dungeon-sim-tabs .mst-dungeon-sim-tab:hover{border-color:transparent;background:transparent}
+.mst-dungeon-sim-tabs .mst-dungeon-sim-tab-active,.mst-dungeon-sim-tabs .mst-dungeon-sim-tab-active:hover{border-bottom-color:var(--color-space-400, #7184d8);background:transparent;opacity:1}
 .mst-dungeon-tabs{display:flex}
 .mst-dungeon-tabs .mst-dungeon-tab{position:relative;box-sizing:border-box;min-width:3.125rem;min-height:2rem;margin:0;border:0;border-radius:var(--radius-sm, .25rem) var(--radius-sm, .25rem) 0 0;padding:.375rem;background:var(--color-midnight-500, #2c2e45);color:var(--color-text-dark-mode, #e7e7e7);font:var(--font-weight-medium, 500) var(--font-size-base, .875rem)/1.25 Roboto,Helvetica,Arial,sans-serif;letter-spacing:.02857em;cursor:pointer;transition:background-color .25s cubic-bezier(.4,0,.2,1)}
 .mst-dungeon-tabs .mst-dungeon-tab:after{content:"";position:absolute;right:0;bottom:0;left:0;height:2px;background:transparent;transition:background-color .3s cubic-bezier(.4,0,.2,1)}
@@ -27874,6 +32281,7 @@ to{transform:translateY(0);opacity:1}
         UpdateCheckerFeature,
         ClipboardCartImportFeature,
         LabyrinthSupplyFeature,
+        MarketHistoryFeature,
         MarketplaceCartFeature,
         SubscribeNotificationFeature,
         Notifier
@@ -27889,6 +32297,7 @@ to{transform:translateY(0);opacity:1}
       const equipmentComparisonService = new EquipmentComparisonService(marketDataService, combatSimulationService);
       const equipmentComparison = new EquipmentComparisonFeature(this.ctx, marketDataService, equipmentComparisonService);
       const subscribeNotification = new SubscribeNotificationFeature(this.ctx);
+      const marketHistory = new MarketHistoryFeature();
       const changelog = new ChangelogFeature(this.ctx);
       const updateChecker = new UpdateCheckerFeature(this.ctx);
       const toolkitMenu = new ToolkitMenuFeature(this.ctx, {
@@ -27899,6 +32308,7 @@ to{transform:translateY(0);opacity:1}
         equipmentComparison,
         dungeonCalculator,
         subscribeNotification,
+        marketHistory,
         changelog,
         updateChecker
       });
@@ -27912,6 +32322,8 @@ to{transform:translateY(0);opacity:1}
         abilityCalculator,
         equipmentComparison,
         dungeonCalculator,
+        subscribeNotification,
+        marketHistory,
         updateChecker
       };
       this.ctx.pageWindow.MWISunrisheToolkitState = 'app-features';
@@ -27926,6 +32338,7 @@ to{transform:translateY(0);opacity:1}
       new ClipboardCartImportFeature(this.ctx, Notifier).init();
       new LabyrinthSupplyFeature().init();
       new MarketplaceCartFeature().init();
+      marketHistory.init();
       subscribeNotification.init();
       this.languageController.init();
       this.observeDOM();
@@ -27977,9 +32390,11 @@ to{transform:translateY(0);opacity:1}
     const hostname = window.location.hostname;
     // 通過二級域判斷中英文遊戲站，保證 www 與子域名都能複用同一套配置。
     const domainname = hostname.substring(hostname.lastIndexOf('.', hostname.lastIndexOf('.') - 1) + 1);
-    // 市場資料來源直接取當前站點自身：油猴頭部 @match 已覆蓋 www/裸域/test 三種格式的
-    // milkywayidle.com 與 milkywayidlecn.com，任何入口頁面都讀取本站點自己的市場行情，
-    // 天然不會跨服混用（測試服、中文站與正式服的市場相互獨立，混用會導致估值差幾個數量級）。
+    // 遊戲只有兩個執行環境：正式服與測試服。milkywayidlecn.com 是正式服的中國官方映象入口，
+    // 與 milkywayidle.com 同屬正式服（官方提供的兩個入口，不是獨立伺服器），正式服與測試服
+    // 的資料互不相通。環境判定只看 test. 字首：hostname 以 test. 開頭為測試服，其餘遊戲域名為正式服。
+    // 市場資料來源按當前入口域名自身讀取：油猴頭部 @match 已覆蓋 www/裸域/test 三種格式的兩個域名，
+    // 任何入口頁面都直接讀取本站點的 game_data/marketplace.json，不跨域名混用。
     const marketUrl = `https://${hostname}/game_data/marketplace.json`;
 
     // CONFIG 只儲存執行期環境和閾值，具體業務常量集中放在 common/constants.js。
