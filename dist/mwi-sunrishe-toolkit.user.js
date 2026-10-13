@@ -3,7 +3,7 @@
 // @name:zh-CN         MWI Sunrishe 工具箱
 // @name:en            MWI Sunrishe Toolkit
 // @namespace          http://tampermonkey.net/
-// @version            2.20.1
+// @version            2.21.0
 // @description        MWI Sunrishe 綜合工具箱：提供角色/隊伍名片、技能/房屋/戰鬥升級規劃、裝備提升計算器、地下城收益、配裝同步和市場伴侶增強。
 // @description:zh-CN  MWI Sunrishe 綜合工具箱：提供角色/隊伍名片、技能/房屋/戰鬥升級規劃、裝備提升計算器、地下城收益、配裝同步和市場伴侶增強。
 // @description:en     MST toolkit for character/party cards, ability/house/combat upgrade planning, equipment comparison, dungeon profit, loadout sync, and Market Mate enhancements.
@@ -57,7 +57,7 @@
   'use strict';
 
   // 構建指令碼會靜態替換這個佔位符，業務程式碼不直接讀取 Node 環境變數。
-  const PACKAGE_VERSION = "2.20.1";
+  const PACKAGE_VERSION = "2.21.0";
 
   const BUILD_FLAGS = Object.freeze({
     // 目前只有語言切換按鈕需要區分 dev/prod：正式包不展示該除錯入口。
@@ -1839,6 +1839,9 @@
     close: {zh: '關閉', en: 'Close'},
     confirm: {zh: '確定', en: 'OK'},
     dayUnit: {zh: '天', en: 'd'},
+    yearUnit: {zh: '年', en: 'y'},
+    hourUnit: {zh: '小時', en: 'h'},
+    minuteUnit: {zh: '分', en: 'm'},
     messageSeparator: {zh: '；', en: '; '},
     marketPriceUnavailable: {zh: '暫無市場資料', en: 'No market data'},
     clipboardUnavailable: {zh: '當前環境不支援剪貼簿 API', en: 'Clipboard API is unavailable'}
@@ -2407,7 +2410,31 @@
     secondaryXpRate: {zh: '選修經驗 (K/h)', en: 'Secondary XP (K/h)'},
     useCurrentCombatXp: {zh: '使用當前戰鬥經驗', en: 'Use Current Combat XP'},
     currentCombatXpApplied: {zh: '已填入當前戰鬥小時經驗', en: 'Current combat XP rates filled'},
-    currentCombatXpUnavailable: {zh: '當前戰鬥小時經驗不可用', en: 'Current combat XP rates are unavailable'},
+    currentCombatXpUnavailable: {
+      zh: '本場戰鬥開始不足 1 分鐘或沒有經驗資料，暫時無法估算時間',
+      en: 'The battle started less than a minute ago or has no XP data, so time cannot be estimated yet'
+    },
+    combatUpgradeTimeNeeded: {zh: '升級所需時間', en: 'Time Needed'},
+    combatUpgradeTimeExact: {zh: '升級具體時間', en: 'Level Up At'},
+    combatUpgradeMilestoneNeeded: {zh: 'Lv.{0} 升級所需時間', en: 'Time to Lv.{0}'},
+    combatUpgradeMilestoneExact: {zh: 'Lv.{0} 升級具體時間', en: 'Lv.{0} At'},
+    combatUpgradeCalculatorForPlayer: {zh: '戰鬥升級計算器 · {0}', en: 'Combat Upgrade Calculator · {0}'},
+    combatUpgradeUnitEntry: {zh: '戰鬥升級計算器（{0}）', en: 'Combat upgrade calculator ({0})'},
+    combatUpgradePlayerName: {zh: '玩家：{0}', en: 'Player: {0}'},
+    combatUpgradeLevelsCached: {
+      zh: '技能等級來自 {0} 檢視的名片快取（非即時）',
+      en: 'Skill levels come from the profile viewed at {0} (not live)'
+    },
+    combatUpgradeLevelsCachedNoTime: {
+      zh: '技能等級來自名片快取（非即時，快取未記錄檢視時間）',
+      en: 'Skill levels come from the profile cache (not live; the cache has no timestamp)'
+    },
+    combatUpgradeLevelsMissing: {
+      zh: '未獲取到技能等級（需先在遊戲內點開該玩家資料），列表起始等級按 0 計算，請手動調整',
+      en: "Skill levels are unavailable (open this player's profile in game first); rows start at level 0 — adjust manually"
+    },
+    combatUpgradeRateLive: {zh: '經驗速率：本場戰鬥即時資料', en: 'XP rates: live from this battle'},
+    combatUpgradeRateLine: {zh: '經驗速率：{0}K/h', en: 'XP rate: {0}K/h'},
     optionalEph: {zh: 'EPH（選填）', en: 'EPH (optional)'},
     resetList: {zh: '重置列表', en: 'Reset List'},
     order: {zh: '序號', en: 'Sequence'},
@@ -7277,6 +7304,24 @@
   // 版本說明只寫使用者可感知的變化，更新版本時先改 docs/changelog.md，再同步這裡並補英文。
   const CHANGELOG_VERSIONS = [
     {
+      version: '2.21.0',
+      date: '2026-10-13',
+      notes: [
+        {
+          zh: '戰鬥升級計算器：導航欄裡懸浮「戰鬥」或戰鬥技能，可以直接看到本場的經驗速率、升級所需時間和預計升級時間；「戰鬥」項按本場有經驗的技能逐個列出。',
+          en: "Combat Upgrade Calculator: hovering the Combat nav entry or a combat skill shows this battle's XP rate, the time needed to level up, and the expected level-up time; the Combat entry lists each skill that gained XP in this battle."
+        }, {
+          zh: '戰鬥升級計算器：戰鬥的「交戰」介面裡懸浮隊伍中的玩家，可以用該玩家的等級與本場經驗開啟計算器，隊友的等級取自已檢視過的名片。',
+          en: "Combat Upgrade Calculator: hovering a party member in the battle screen opens the calculator with that player's levels and this battle's XP, and a teammate's levels come from the profile you have viewed."
+        }, {
+          zh: '戰鬥升級計算器：戰鬥開始不足 1 分鐘時不再估算升級時間，懸浮和自動填入都會說明資料不足；懸浮顯示的時間在停留期間固定不變。',
+          en: 'Combat Upgrade Calculator: no level-up time estimate during the first minute of a battle — hovering and auto-fill both explain that there is not enough data; the times shown while hovering stay fixed during one hover.'
+        }, {
+          zh: '隊伍名片：隊伍面板裡的「隊伍名片」按鈕改為橙色高亮，與旁邊的遊戲原生按鈕區分開。',
+          en: "Party Card: the Party Card button in the party panel is now highlighted in orange so it stands out from the game's own buttons beside it."
+        }
+      ]
+    }, {
       version: '2.20.1',
       date: '2026-10-12',
       notes: [
@@ -7352,7 +7397,8 @@
           en: 'New "Check for Updates": it checks in the background and, when a new version is found, shows a hint on the Toolkit entry and turns the button into "Update to vX" for one-click install; with no new version, click it to view the installed and latest versions.'
         }
       ]
-    }, {
+    },
+    {
       version: '2.17.2',
       date: '2026-09-24',
       notes: [
@@ -7370,8 +7416,7 @@
           en: 'Equipment Comparison: the simulation reflects only the selected equipment and no longer includes fixed bonuses such as character achievements; searching and switching equipment is faster.'
         }
       ]
-    },
-    {
+    }, {
       version: '2.17.1',
       date: '2026-09-23',
       notes: [
@@ -7438,7 +7483,8 @@
           en: "Combat Upgrade Calculator can now plan upgrades without a major profession, estimating duration and completion time from each row's XP."
         }
       ]
-    }, {
+    },
+    {
       version: '2.14.0',
       date: '2026-08-26',
       notes: [
@@ -7453,8 +7499,7 @@
           en: 'The Dungeon Profit "Drops" tab now matches the game\'s tab style.'
         }
       ]
-    },
-    {
+    }, {
       version: '2.13.0',
       date: '2026-08-21',
       notes: [
@@ -7502,7 +7547,8 @@
           en: 'Marketplace adds an "Add to cart" button next to "Refresh" that adds the currently viewed item to the MWITools cart, 1 per click; a specific enhancement level is kept and unenhanced items are added as +0 (cart only, never orders).'
         }
       ]
-    }, {
+    },
+    {
       version: '2.10.2',
       date: '2026-08-17',
       notes: [
@@ -7511,8 +7557,7 @@
           en: 'Fixed the market data source: prices are now always read from the current entry domain (release and test are separate environments, and the cn domain is a mirror entry of the release server), so pages with or without www or on the test domain all work without a fixed domain redirect.'
         }
       ]
-    },
-    {
+    }, {
       version: '2.10.1',
       date: '2026-08-17',
       notes: [
@@ -7570,7 +7615,8 @@
           en: 'Dungeon Profit adds a party size option (1-5): chest quantity uses the official formula `5 ÷ party size`, so with the default 5 members a standard chest is still 1.295 per run, and tickets, keys, and profit adjust automatically.'
         }
       ]
-    }, {
+    },
+    {
       version: '2.8.3',
       date: '2026-08-04',
       notes: [
@@ -7579,8 +7625,7 @@
           en: 'Fixed the Toolkit entry layout in the header; local debug scripts now include a file version and a web version; Dungeon Profit adds "Exclude cape value" and fixes a small deviation from rounding quantities too early; Combat Upgrade adds "Use current combat XP"; Equipment Comparison fixes two-handed weapon setups double-counting the off-hand and overstating the damage gain.'
         }
       ]
-    },
-    {
+    }, {
       version: '2.7.26',
       date: '2026-08-03',
       notes: [
@@ -7642,7 +7687,8 @@
           en: 'Fixed missing personal achievement bonuses when copying Milkonomy data.'
         }
       ]
-    }, {
+    },
+    {
       version: '1.2.5',
       date: '2026-04-17',
       legacy: true,
@@ -7652,8 +7698,7 @@
           en: 'Added support for the new profit site `hyhfish.github.io/milkonomy`.'
         }
       ]
-    },
-    {
+    }, {
       // 未在 GreasyFork 釋出過，無釋出記錄可查，不標註日期。
       version: '1.1.3',
       date: '',
@@ -10121,6 +10166,8 @@
 .mst-my-character-card-btn:hover{border-color:var(--color-space-300, #98a7e9);background:var(--color-midnight-400, #323450);color:var(--color-text-dark-mode, #e7e7e7)}
 .mst-my-character-name-card-btn{cursor:pointer}
 .mst-my-character-name-card-btn:focus-visible{outline:1px solid var(--color-space-200, #bbc5f1);outline-offset:1px}
+.mst-party-card-btn,[class*=Button_button__].mst-party-card-btn{background-color:var(--color-orange-500, #faa21e);color:#14151f}
+.mst-party-card-btn:hover,[class*=Button_button__].mst-party-card-btn:hover{background-color:var(--color-orange-400, #fbb54b)}
 .mst-header-level-toolkit{display:inline-flex;align-items:center;justify-content:flex-end;gap:var(--spacing-xs, .25rem)}
 [class*=Header_characterInfo] [class*=Header_info]>#mwitools-header-tools{margin-left:0;margin-right:0}
 .mst-download-section{text-align:center;margin-bottom:var(--spacing-sm-plus, .75rem)}
@@ -12947,6 +12994,18 @@
   }
 
   // combat-upgrade-planner
+  // 戰鬥升級里程碑：低於 119 級取下一個 10 的整數倍等級、119 級起取下一個 5 的整數倍等級（使用者口徑）；
+  // 算出的等級超過 200 時沒有下一個大等級。
+  const MILESTONE_LOW_LEVEL_LIMIT = 119;
+  const MILESTONE_LOW_LEVEL_STEP = 10;
+  const MILESTONE_HIGH_LEVEL_STEP = 5;
+  // 技能等級上限與 7 個戰鬥技能清單：計算、懸浮與彈窗列表共用一份，避免多處硬編碼。
+  const MAX_SKILL_LEVEL = 200;
+  const COMBAT_SKILL_HRIDS = [
+    '/skills/stamina', '/skills/intelligence', '/skills/attack', '/skills/defense', '/skills/melee',
+    '/skills/ranged', '/skills/magic'
+  ];
+
   class CombatUpgradePlanner {
     constructor(ctx) {
       this.ctx = ctx;
@@ -12962,13 +13021,27 @@
       return 'flexible';
     }
 
-    getDefaultPrimarySkillHrid() {
+    // 下一個大等級；超過 200 級返回 null，呼叫方據此隱藏「Lv 等級」兩行。
+    getMilestoneLevel(level) {
+      const safeLevel = Math.max(0, Math.floor(Number(level) || 0));
+      const step = safeLevel < MILESTONE_LOW_LEVEL_LIMIT ? MILESTONE_LOW_LEVEL_STEP : MILESTONE_HIGH_LEVEL_STEP;
+      const nextLevel = (Math.floor(safeLevel / step) + 1) * step;
+      return nextLevel <= MAX_SKILL_LEVEL ? nextLevel : null;
+    }
+
+    // 技能狀態解析器：沒有解析器時讀自己（即時角色資料），傳入時用外部快照（隊友的名片快取等級）。
+    resolveSkillState(getSkillState, skillHrid) {
+      if (typeof getSkillState === 'function') return getSkillState(skillHrid) || {level: 0, experience: 0};
       const {CharacterDataService} = this.ctx;
+      return CharacterDataService.getCharacterSkill(skillHrid) || {level: 0, experience: 0};
+    }
+
+    getDefaultPrimarySkillHrid(getSkillState) {
       return [
         '/skills/melee', '/skills/ranged', '/skills/magic'
       ].reduce((highestHrid, skillHrid) => {
-        const highestLevel = Number(CharacterDataService.getCharacterSkill(highestHrid)?.level || 0);
-        const currentLevel = Number(CharacterDataService.getCharacterSkill(skillHrid)?.level || 0);
+        const highestLevel = Number(this.resolveSkillState(getSkillState, highestHrid)?.level || 0);
+        const currentLevel = Number(this.resolveSkillState(getSkillState, skillHrid)?.level || 0);
         return currentLevel > highestLevel ? skillHrid : highestHrid;
       });
     }
@@ -13057,7 +13130,7 @@
       return requiredExperience / hourlyRate;
     }
 
-    calculatePlan(rows, primaryRate, secondaryRate) {
+    calculatePlan(rows, primaryRate, secondaryRate, getSkillState) {
       const {CharacterDataService, utils} = this.ctx;
       const {sequenceById, concurrentAllowedById} = this.getSequenceState(rows);
       const sequenceDurations = new Map();
@@ -13066,7 +13139,14 @@
       let maxSequence = 0;
 
       for (const row of rows) {
-        const context = this.getPlanRowContext(row, sequenceById, previousBySkill, CharacterDataService, utils);
+        const context = this.getPlanRowContext(
+          row,
+          sequenceById,
+          previousBySkill,
+          CharacterDataService,
+          utils,
+          getSkillState
+        );
         // 重複專業繼承上一次訓練後的精確經驗，不允許再手動指定起點。
         if (context.isRepeated) row.customStart = false;
         this.applyCustomStart(row, context, CharacterDataService, utils);
@@ -13093,10 +13173,10 @@
       return {results, sequenceById, concurrentAllowedById, sequenceDurations, totalHours};
     }
 
-    getPlanRowContext(row, sequenceById, previousBySkill, CharacterDataService, utils) {
+    getPlanRowContext(row, sequenceById, previousBySkill, CharacterDataService, utils, getSkillState) {
       const sequence = sequenceById.get(row.id);
       const previous = previousBySkill.get(row.skillHrid);
-      const actual = CharacterDataService.getCharacterSkill(row.skillHrid) || {level: 0, experience: 0};
+      const actual = this.resolveSkillState(getSkillState, row.skillHrid);
       const actualLevel = utils.clampLevel(actual.level, 0, 200);
       const actualExperience = Math.max(
         CharacterDataService.getLevelExperience(actualLevel),
@@ -13232,19 +13312,351 @@
     }
   }
 
+  // combat-upgrade-tooltip
+  // 導航欄懸浮升級時間：戰鬥技能在「升級所需經驗」後拼接速率行與 4 行時間；「戰鬥」項在說明之後追加技能塊。
+  // 遊戲結構與口徑見 `docs/analysis/戰鬥升級懸浮時間與交戰入口需求說明書.md` §2.1 / §3.2 / §4.4。
+
+  const COMBAT_TOOLTIP_SELECTOR = '[class*="NavigationBar_navigationSkillTooltip"]';
+  const NAV_ROW_SELECTOR = '[class*="NavigationBar_nav__"], [class*="NavigationBar_navigationLink__"]';
+  const TOOLTIP_INFO_SELECTOR = '[class*="NavigationBar_info"]';
+  const INJECTED_CLASS = 'mst-combat-tooltip';
+  const SKILL_TIME_CLASS = 'mst-combat-tooltip-time';
+  const COMBAT_BLOCK_CLASS = 'mst-combat-tooltip-combat';
+
+  const combatUpgradeTooltip = {
+    hoverController: null,
+    hoveredTarget: null,
+    hoverRow: null,
+    // 懸浮輪次：進入新的導航行時遞增。提示框內容在**同一輪懸浮期間保持凍結**（使用者要求，
+    // 數字不能一邊懸浮一邊跳），只在下一輪懸浮時重新讀取資料。
+    hoverToken: 0,
+
+    mount(feature) {
+      this.bindHoverTracking();
+      document.querySelectorAll(COMBAT_TOOLTIP_SELECTOR).forEach((tooltip) => this.render(feature, tooltip));
+    },
+
+    // 記錄當前懸浮的導航行：提示框掛在 body 的 popper 裡，用行本身反推目標不依賴 MUI 內部結構。
+    bindHoverTracking() {
+      if (this.hoverController) return;
+      const controller = new AbortController();
+      const options = {capture: true, signal: controller.signal};
+      document.addEventListener(
+        'mouseover',
+        (event) => {
+          const row = event.target?.closest?.(NAV_ROW_SELECTOR);
+          // 行內移動（圖示與文字之間）會重複觸發 mouseover，只有換行才算新一輪懸浮。
+          if (!row || row === this.hoverRow) return;
+          this.hoverRow = row;
+          this.hoverToken += 1;
+          this.hoveredTarget = this.readNavTarget(row);
+        },
+        options
+      );
+      document.addEventListener(
+        'mouseout',
+        (event) => {
+          const row = event.target?.closest?.(NAV_ROW_SELECTOR);
+          if (!row) return;
+          if (event.relatedTarget && row.contains(event.relatedTarget)) return;
+          this.hoverRow = null;
+          this.hoveredTarget = null;
+        },
+        options
+      );
+      this.hoverController = controller;
+    },
+
+    // 從導航行圖示反推目標：skills sprite → 戰鬥技能；misc sprite 的 combat → 「戰鬥」項。
+    // 行內第一個 svg 是「戰鬥」項的摺疊三角（NavigationBar_toggleContainer），必須跳過。
+    readNavTarget(row) {
+      const uses = [
+        ...(row?.querySelectorAll?.('svg use') || [])
+      ].filter((use) => !use.closest('[class*="NavigationBar_toggleContainer"]'));
+      for (const use of uses) {
+        const href = use.getAttribute?.('href') || use.getAttribute?.('xlink:href') || '';
+        const hashIndex = href.indexOf('#');
+        if (hashIndex < 0) continue;
+        const sprite = href.slice(0, hashIndex);
+        const fragment = href.slice(hashIndex + 1);
+        if (!sprite || !fragment) continue;
+        if (sprite.includes('skills_sprite')) return {kind: 'skill', skillHrid: '/skills/' + fragment};
+        if (sprite.includes('misc_sprite') && fragment === 'combat') return {kind: 'combat', skillHrid: ''};
+      }
+      return null;
+    },
+
+    // 提示框判定：「戰鬥」項只有名稱 + 說明兩個子元素，戰鬥技能多出等級 / 總經驗 / 升級所需經驗三行。
+    getTooltipChildren(tooltip) {
+      return [
+        ...tooltip.children
+      ].filter((child) => !String(child.className || '').includes(INJECTED_CLASS));
+    },
+
+    resolveTarget(feature, tooltip) {
+      const children = this.getTooltipChildren(tooltip);
+      if (children.length <= 2) return {kind: 'combat', skillHrid: ''};
+      const name = children[0]?.textContent?.trim() || '';
+      const skillHrid = COMBAT_SKILL_HRIDS.find(
+        (hrid) => feature.ctx.DataHub.getLocalizedGameName('skillNames', hrid) === name
+      );
+      if (skillHrid) return {kind: 'skill', skillHrid};
+      // 名稱反查失敗（遊戲新增語言等）時退回懸浮行記錄的目標，但必須確認這個提示框就是當前懸浮行的
+      // ——同一時刻可能殘留正在關閉的提示框，行文本與提示框名稱比對可以避免把別的行的資料寫進來。
+      if (this.hoveredTarget?.kind !== 'skill' || !this.isTooltipOfHoveredRow(name)) return null;
+      return this.hoveredTarget;
+    },
+
+    isTooltipOfHoveredRow(name) {
+      const row = this.hoverRow;
+      if (!row || !name) return false;
+      return row.textContent.trim().startsWith(name);
+    },
+
+    render(feature, tooltip) {
+      // 同一輪懸浮內只計算一次：內容（含時間行）保持凍結，下一輪懸浮才重新讀資料。
+      const token = String(this.hoverToken);
+      if (tooltip.dataset.mstCombatToken === token) return;
+      tooltip.dataset.mstCombatToken = token;
+      const target = this.resolveTarget(feature, tooltip);
+      if (!target) {
+        this.clearContainers(tooltip);
+        return;
+      }
+      if (target.kind === 'skill') this.renderSkillTooltip(feature, tooltip, target.skillHrid);
+      else this.renderCombatTooltip(feature, tooltip);
+    },
+
+    ensureContainer(tooltip, className, beforeInfo) {
+      const existing = [
+        ...tooltip.children
+      ].find((child) => String(child.className || '').includes(className));
+      if (existing) return existing;
+      const container = document.createElement('div');
+      container.className = className;
+      const info = beforeInfo ? tooltip.querySelector(TOOLTIP_INFO_SELECTOR) : null;
+      // 技能行插在「升級所需經驗」之後、說明之前（與原指令碼一致）；「戰鬥」塊追加在說明之後。
+      if (info) tooltip.insertBefore(container, info);
+      else tooltip.appendChild(container);
+      return container;
+    },
+
+    removeContainer(tooltip, className) {
+      [
+        ...tooltip.children
+      ].forEach((child) => {
+        if (String(child.className || '').includes(className)) child.remove();
+      });
+    },
+
+    // 兩類注入容器一起清掉：沒有目標、沒有資料或滿級時用。
+    clearContainers(tooltip) {
+      this.removeContainer(tooltip, SKILL_TIME_CLASS);
+      this.removeContainer(tooltip, COMBAT_BLOCK_CLASS);
+    },
+
+    renderSkillTooltip(feature, tooltip, skillHrid) {
+      const rate = feature.getBattleSkillRates()?.get(skillHrid) || 0;
+      // 懸浮的是自己的導航欄：等級固定讀自己，不受彈窗裡選中的玩家上下文影響。
+      const state = feature.getCharacterSkill(skillHrid, null);
+      const linesHtml = rate > 0 ? this.getTimeLinesHtml(feature, state.level, state.experience, rate) : '';
+      if (!linesHtml) {
+        this.clearContainers(tooltip);
+        return;
+      }
+      // 「戰鬥」塊與技能行同時懸浮時會互相干擾，按目標互斥清理。
+      this.removeContainer(tooltip, COMBAT_BLOCK_CLASS);
+      const container = this.ensureContainer(tooltip, SKILL_TIME_CLASS, true);
+      container.innerHTML = linesHtml;
+    },
+
+    renderCombatTooltip(feature, tooltip) {
+      const rates = feature.getBattleSkillRates();
+      if (!rates) {
+        this.clearContainers(tooltip);
+        return;
+      }
+      const blocks = [];
+      this.getSortedSkillHrids(feature, [
+        ...rates.keys()
+      ]).forEach((skillHrid) => {
+        const state = feature.getCharacterSkill(skillHrid, null);
+        const linesHtml = this.getTimeLinesHtml(feature, state.level, state.experience, rates.get(skillHrid));
+        // 滿級技能沒有可顯示的時間，與「沒有資料的技能不顯示」同口徑。
+        if (!linesHtml) return;
+        blocks.push({skillHrid, level: state.level, linesHtml});
+      });
+      if (!blocks.length) {
+        this.removeContainer(tooltip, COMBAT_BLOCK_CLASS);
+        return;
+      }
+      this.removeContainer(tooltip, SKILL_TIME_CLASS);
+      const container = this.ensureContainer(tooltip, COMBAT_BLOCK_CLASS, false);
+      container.innerHTML = blocks
+        .map((block, index) => {
+          const divider = index > 0 ? '<div class="mst-combat-tooltip-divider"></div>' : '';
+          const skillName = feature.ctx.utils.escapeHtml(`${feature.getSkillName(block.skillHrid)} Lv.${block.level}`);
+          return `${divider}<div class="mst-combat-tooltip-skill">${skillName}</div>${block.linesHtml}`;
+        })
+        .join('');
+    },
+
+    getSortedSkillHrids(feature, skillHrids) {
+      const detailMap = feature.ctx.DataHub.getClientDataMap?.('skillDetailMap') || {};
+      return [
+        ...skillHrids
+      ].sort((left, right) => Number(detailMap[left]?.sortIndex || 0) - Number(detailMap[right]?.sortIndex || 0));
+    },
+
+    // 速率行 + 4 行時間文案；滿級、沒有速率或算不出需求時返回空串（呼叫方據此不注入）。
+    getTimeLinesHtml(feature, level, experience, rate) {
+      const {CharacterDataService, i18n, utils} = feature.ctx;
+      const safeLevel = utils.clampLevel(level, 0, MAX_SKILL_LEVEL);
+      if (safeLevel >= MAX_SKILL_LEVEL || !(rate > 0)) return '';
+      const experienceValue = Math.max(0, Number(experience) || 0);
+      const baseNeed = CharacterDataService.getLevelExperience(safeLevel + 1) - experienceValue;
+      if (!(baseNeed > 0)) return '';
+      const baseSeconds = Math.ceil((baseNeed / rate) * 3600);
+      if (!Number.isFinite(baseSeconds)) return '';
+      const rows = [
+        // 先給出本場該技能的小時經驗速率（K/h，與計算器輸入框同口徑），再給由它推出的時間。
+        i18n.t(
+          'combatUpgradeRateLine',
+          feature.state.formatRateInputValue(rate)
+        ), `${i18n.t('combatUpgradeTimeNeeded')}：${this.formatDuration(feature, baseSeconds)}`, `${i18n.t('combatUpgradeTimeExact')}：${this.formatUpgradeTime(baseSeconds)}`
+      ];
+      // 里程碑超過 200 級時不顯示這兩行（滿級技能在上面已整體跳過）。
+      const milestoneLevel = feature.getMilestoneLevel(safeLevel);
+      const milestoneNeed =
+        milestoneLevel == null ? 0 : CharacterDataService.getLevelExperience(milestoneLevel) - experienceValue;
+      if (milestoneNeed > 0) {
+        const milestoneSeconds = Math.ceil((milestoneNeed / rate) * 3600);
+        if (Number.isFinite(milestoneSeconds)) {
+          rows.push(
+            `${i18n.t('combatUpgradeMilestoneNeeded', milestoneLevel)}：${this.formatDuration(feature, milestoneSeconds)}`,
+            `${i18n.t('combatUpgradeMilestoneExact', milestoneLevel)}：${this.formatUpgradeTime(milestoneSeconds)}`
+          );
+        }
+      }
+      return rows.map((row) => `<div>${utils.escapeHtml(row)}</div>`).join('');
+    },
+
+    // 時長格式：zh 緊排（1年2天3小時20分），en 用空格分隔（1 y 2 d 3 h 20 m）。
+    formatDuration(feature, seconds) {
+      const {i18n} = feature.ctx;
+      let rest = Math.max(0, Math.floor(Number(seconds) || 0));
+      const years = Math.floor(rest / 31536000);
+      rest %= 31536000;
+      const days = Math.floor(rest / 86400);
+      rest %= 86400;
+      const hours = Math.floor(rest / 3600);
+      rest %= 3600;
+      const minutes = Math.floor(rest / 60);
+      const parts = [];
+      if (years > 0) parts.push(`${years.toLocaleString(i18n.locale)}${i18n.t('yearUnit')}`);
+      if (days > 0) parts.push(`${days}${i18n.t('dayUnit')}`);
+      if (hours > 0) parts.push(`${hours}${i18n.t('hourUnit')}`);
+      if (minutes > 0 || !parts.length) parts.push(`${minutes}${i18n.t('minuteUnit')}`);
+      return parts.join(i18n.languageKey === 'zh' ? '' : ' ');
+    },
+
+    // 具體時間沿用原指令碼：MM/DD HH:mm，本地時區；只有超過 30 天且跨年度才補年份。
+    formatUpgradeTime(seconds) {
+      const now = new Date();
+      const upgradeDate = new Date(now.getTime() + Math.max(0, Number(seconds) || 0) * 1000);
+      const pad = (value) => String(value).padStart(2, '0');
+      const month = pad(upgradeDate.getMonth() + 1);
+      const day = pad(upgradeDate.getDate());
+      const hours = pad(upgradeDate.getHours());
+      const minutes = pad(upgradeDate.getMinutes());
+      const days = Math.floor((Number(seconds) || 0) / 86400);
+      return days >= 30 && upgradeDate.getFullYear() > now.getFullYear()
+        ? `${upgradeDate.getFullYear()}/${month}/${day} ${hours}:${minutes}`
+        : `${month}/${day} ${hours}:${minutes}`;
+    }
+  };
+
+  // combat-upgrade-battle-entry
+  // 交戰介面每個玩家單位右上角的計算器入口：懸浮時出現，點選開啟該玩家的戰鬥升級計算器並預填本場經驗速率。
+  // 遊戲結構與互動約束見 `docs/analysis/戰鬥升級懸浮時間與交戰入口需求說明書.md` §2.2 / §4.5。
+  const UNIT_SELECTOR = '[class*="CombatUnit_combatUnit__"]';
+  const ENTRY_CLASS = 'mst-combat-unit-entry';
+
+  const combatUpgradeBattleEntry = {
+    mount(feature) {
+      document.querySelectorAll(UNIT_SELECTOR).forEach((unit) => this.mountUnit(feature, unit));
+    },
+
+    mountUnit(feature, unit) {
+      if (unit.querySelector(`:scope > .${ENTRY_CLASS}`)) return;
+      const combatUnit = this.readCombatUnit(feature, unit);
+      // 怪物沒有主修 / 選修訓練，只有玩家單位掛入口。
+      if (combatUnit?.isPlayer !== true) return;
+      const characterId = combatUnit.character?.id ?? combatUnit.characterId ?? null;
+      if (characterId == null) return;
+      const name = String(combatUnit.name || '');
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = ENTRY_CLASS;
+      button.dataset.characterName = name;
+      button.title = feature.getUnitEntryTitle(name);
+      this.mountIcon(feature, button);
+      button.addEventListener('click', (event) => {
+        // 單位本身的點選會開啟遊戲原生單位詳情彈窗，入口必須阻斷冒泡。
+        event.preventDefault();
+        event.stopPropagation();
+        feature.open({characterId, name});
+      });
+      unit.appendChild(button);
+    },
+
+    // 單位 div 自己的 props 只有 className/onClick/children，需要沿 fiber 向上找 CombatUnit 的 props。
+    readCombatUnit(feature, unit) {
+      let node = feature.ctx.DataHub.getReactFiber?.(unit) || null;
+      while (node) {
+        const candidate = node.memoizedProps?.combatUnit;
+        if (candidate) return candidate;
+        node = node.return;
+      }
+      return null;
+    },
+
+    mountIcon(feature, button) {
+      const {TemplateRenderer, utils} = feature.ctx;
+      const sprite = utils.getSpriteUrl('misc') || '/static/media/misc_sprite.02869244.svg';
+      TemplateRenderer.render(
+        () => TemplateRenderer.html`<svg aria-hidden="true"><use href=${sprite + '#experience'}></use></svg>`,
+        button
+      );
+    },
+
+    refreshLanguage(feature) {
+      document.querySelectorAll(`.${ENTRY_CLASS}`).forEach((button) => {
+        button.title = feature.getUnitEntryTitle(button.dataset.characterName || '');
+      });
+    }
+  };
+
+  var MST_COMBAT_UPGRADE_CSS = String.raw`.mst-combat-tooltip-time,.mst-combat-tooltip-combat{line-height:1.4}
+.mst-combat-tooltip-combat{margin-top:.25rem;border-top:1px solid #000;padding-top:.25rem}
+.mst-combat-tooltip-divider{margin:.25rem 0;border-top:1px solid #000}
+.mst-combat-tooltip-skill{font-weight:500}
+.mst-combat-player-hint{margin-bottom:.5rem;font-size:.8125rem;line-height:1.5;opacity:.85}
+.mst-combat-unit-entry{position:absolute;top:2px;right:2px;z-index:5;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;width:1.25rem;height:1.25rem;padding:0;border:1px solid rgba(0,0,0,.45);border-radius:.25rem;background-color:var(--color-orange-500, #faa21e);color:#14151f;cursor:pointer;opacity:0;pointer-events:none;transition:opacity .15s ease-out,transform .15s ease-out}
+.mst-combat-unit-entry svg{width:.875rem;height:.875rem;fill:currentColor}
+[class*=CombatUnit_combatUnit]:hover .mst-combat-unit-entry,[class*=CombatUnit_combatUnit]:focus-within .mst-combat-unit-entry{opacity:1;pointer-events:auto}
+.mst-combat-unit-entry:hover{transform:scale(1.08)}`;
+
   // combat-upgrade-dialog-view
   const combatUpgradeDialogView = {
-    COMBAT_SKILL_HRIDS: new Set([
-      '/skills/stamina', '/skills/intelligence', '/skills/attack', '/skills/defense', '/skills/melee',
-      '/skills/ranged', '/skills/magic'
-    ]),
+    COMBAT_SKILL_HRIDS: new Set(COMBAT_SKILL_HRIDS),
 
     getProfessionGridHtml(feature) {
       const {CharacterDataService, i18n, utils} = feature.ctx;
       return CharacterDataService.getCombatSkills()
         .map((entry) => {
           const skillHrid = entry.detail.hrid;
-          const level = Number(entry.characterSkill?.level || 0);
+          const level = Number(feature.getCharacterSkill(skillHrid)?.level || 0);
           return `<button type="button" class="mst-combat-profession" data-skill-hrid="${utils.escapeHtml(skillHrid)}" title="${utils.escapeHtml(i18n.t('doubleClickToAdd'))}">
     <svg aria-hidden="true"><use href="${utils.escapeHtml(feature.getSkillIconHref(skillHrid))}"></use></svg>
     <strong>${utils.escapeHtml(feature.getSkillName(skillHrid))}</strong>
@@ -13265,6 +13677,7 @@
       <button type="button" class="mst-combat-current-xp">${utils.escapeHtml(i18n.t('useCurrentCombatXp'))}</button>
       <button type="button" class="mst-calculator-reset">${utils.escapeHtml(i18n.t('resetList'))}</button>
     </div>
+    ${feature.getPlayerHintHtml()}
     <div class="mst-combat-profession-picker">
       ${feature.getProfessionGridHtml()}
     </div>
@@ -13515,7 +13928,7 @@
   // combat-upgrade-language-refresh
   const combatUpgradeLanguageRefresh = {
     refreshLanguage(feature) {
-      const {TemplateRenderer, i18n} = feature.ctx;
+      const {TemplateRenderer} = feature.ctx;
       const popup = feature.popup;
       if (!popup?.isConnected) return;
       // 語言切換時重繪表頭和文案，但保留工具欄輸入與表格滾動位置。
@@ -13532,7 +13945,7 @@
       if (!contentRoot) return;
       TemplateRenderer.renderHtml(() => feature.getDialogHtml(), contentRoot);
       const title = popup.querySelector('.swal2-title');
-      if (title) title.textContent = i18n.t('combatUpgradeCalculator');
+      if (title) title.textContent = feature.getDialogTitle();
       feature.bind(popup);
       this.restoreToolbarValues(popup, values);
       feature.recalculate();
@@ -13843,6 +14256,9 @@
 
   // combat-upgrade-state
   const combatUpgradeState = {
+    // 戰鬥開始不足 1 分鐘不做估算（使用者決策）：幾秒取樣會把速率放大幾十倍。
+    MIN_BATTLE_SECONDS: 60,
+
     getGameState(feature) {
       const doc = feature.ctx.pageWindow?.document || document;
       const gamePageElement = doc.querySelector('[class^="GamePage"]');
@@ -13854,33 +14270,138 @@
       return null;
     },
 
-    getCurrentBattleExperienceFill(feature, nowMs = Date.now()) {
-      return this.getBattleExperienceFill(feature, this.getGameState(feature), nowMs);
+    getSelfCharacterId(feature) {
+      const {CharacterDataService, DataHub} = feature.ctx;
+      return CharacterDataService.raw?.character?.id ?? DataHub.getGameState?.()?.character?.id ?? null;
     },
 
-    getBattleExperienceFill(feature, gameState, nowMs = Date.now()) {
-      const characterId = gameState?.character?.id;
+    // 開啟彈窗時的資料來源：自己 = 即時角色資料；隊友 = 名片快取快照 + 本場戰鬥速率。
+    // {characterId, isSelf, levels: Map<skillHrid, level> | null, levelsTimestamp, name}
+    buildPlayerContext(feature, player) {
+      const {DataHub} = feature.ctx;
+      if (!player || player.characterId == null) return null;
+      const characterId = String(player.characterId);
+      const name = String(player.name || '');
+      const selfCharacterId = this.getSelfCharacterId(feature);
+      if (selfCharacterId != null && characterId === String(selfCharacterId)) {
+        return {characterId, isSelf: true, levels: null, levelsTimestamp: 0, name};
+      }
+      const stored = DataHub.getProfile?.(characterId) || null;
+      const levels = new Map();
+      (stored?.profile?.characterSkills || []).forEach((skill) => {
+        if (skill?.skillHrid) levels.set(skill.skillHrid, Number(skill.level) || 0);
+      });
+      return {
+        characterId,
+        isSelf: false,
+        levels: levels.size ? levels : null,
+        // 名片快取的資料時間：指令碼收到該資料的毫秒時間戳，展示在提示行裡。
+        levelsTimestamp: Number(stored?.timestamp) || 0,
+        name
+      };
+    },
+
+    getContextCharacterId(feature) {
+      return feature.playerContext?.characterId ?? this.getSelfCharacterId(feature);
+    },
+
+    // 隊友的名片快取只有等級、沒有經驗：按該等級 0% 起算（提示行會寫明非即時）。
+    getCharacterSkill(feature, skillHrid, context = feature.playerContext) {
+      const {CharacterDataService} = feature.ctx;
+      if (!context || context.isSelf)
+        return CharacterDataService.getCharacterSkill(skillHrid) || {level: 0, experience: 0};
+      const level = context.levels?.get(skillHrid);
+      if (level == null) return {level: 0, experience: 0};
+      return {level, experience: CharacterDataService.getLevelExperience(level)};
+    },
+
+    // 自己在當前戰鬥裡的逐技能經驗速率（原始經驗 / 小時）；不足 60 秒或沒有資料時返回 null。
+    getBattleSkillRates(feature, nowMs = Date.now()) {
+      return this.getBattleSkillRatesFromState(
+        feature,
+        this.getGameState(feature),
+        this.getSelfCharacterId(feature),
+        nowMs
+      );
+    },
+
+    getBattleSkillRatesFromState(feature, gameState, characterId, nowMs = Date.now()) {
       const battlePlayers = Array.isArray(gameState?.battlePlayers) ? gameState.battlePlayers : [];
       const combatStartMs = new Date(gameState?.combatStartTime || 0).getTime();
-      if (!characterId || !battlePlayers.length || !Number.isFinite(combatStartMs) || combatStartMs <= 0) return null;
-      const player = battlePlayers.find((unit) => unit?.character?.id === characterId);
-      const elapsedHours = Math.max(1 / 3600, (Number(nowMs) - combatStartMs) / 3600000);
-      const rates = Object.entries(player?.totalSkillExperienceMap || {})
-        .filter(
+      if (characterId == null || !battlePlayers.length || !Number.isFinite(combatStartMs) || combatStartMs <= 0)
+        return null;
+      const player = battlePlayers.find((unit) => String(unit?.character?.id) === String(characterId));
+      if (!player) return null;
+      const elapsedSeconds = (Number(nowMs) - combatStartMs) / 1000;
+      if (!(elapsedSeconds >= this.MIN_BATTLE_SECONDS)) return null;
+      const rates = new Map();
+      Object.entries(player.totalSkillExperienceMap || {}).forEach(
+        ([
+          skillHrid, experience
+        ]) => {
+          if (!combatUpgradeDialogView.COMBAT_SKILL_HRIDS.has(skillHrid)) return;
+          const rate = (Math.max(0, Number(experience) || 0) / elapsedSeconds) * 3600;
+          if (rate > 0) rates.set(skillHrid, rate);
+        }
+      );
+      return rates.size ? rates : null;
+    },
+
+    getBattleExperienceFill(feature, gameState, nowMs = Date.now(), characterId = gameState?.character?.id) {
+      const rates = this.getBattleSkillRatesFromState(feature, gameState, characterId, nowMs);
+      if (!rates) return null;
+      return this.getExperienceFillFromRates(
+        feature,
+        [
+          ...rates
+        ].map(
           ([
-            skillHrid
-          ]) => combatUpgradeDialogView.COMBAT_SKILL_HRIDS.has(skillHrid)
+            skillHrid, rate
+          ]) => ({skillHrid, rate})
         )
-        .map(
-          ([
-            skillHrid, experience
-          ]) => ({
-            skillHrid,
-            rate: Math.max(0, Number(experience) || 0) / elapsedHours
-          })
-        )
-        .filter((entry) => entry.rate > 0);
-      return this.getExperienceFillFromRates(feature, rates);
+      );
+    },
+
+    getCurrentBattleExperienceFill(feature, nowMs = Date.now()) {
+      return this.getBattleExperienceFill(
+        feature,
+        this.getGameState(feature),
+        nowMs,
+        this.getContextCharacterId(feature)
+      );
+    },
+
+    // 彈窗標題與資料來源提示行：沒有玩家上下文（工具箱選單入口）時退回原有標題、不渲染提示行。
+    getDialogTitle(feature) {
+      const {i18n} = feature.ctx;
+      const name = feature.playerContext?.name;
+      return name ? i18n.t('combatUpgradeCalculatorForPlayer', name) : i18n.t('combatUpgradeCalculator');
+    },
+
+    getPlayerHintHtml(feature) {
+      const {i18n, utils} = feature.ctx;
+      const context = feature.playerContext;
+      if (!context) return '';
+      const parts = [
+        i18n.t('combatUpgradePlayerName', context.name || '')
+      ];
+      if (!context.isSelf) {
+        // 隊友的等級只能來自名片快取：必須寫出資料的檢視時間；沒有記錄時間時退化為通用提示，
+        // 絕不顯示一個算出來的時間（避免使用者以為快取資料是當下的）。
+        parts.push(
+          context.levels
+            ? context.levelsTimestamp > 0
+              ? i18n.t('combatUpgradeLevelsCached', utils.formatDateTime(context.levelsTimestamp))
+              : i18n.t('combatUpgradeLevelsCachedNoTime')
+            : i18n.t('combatUpgradeLevelsMissing')
+        );
+      }
+      parts.push(
+        this.getCurrentBattleExperienceFill(feature)
+          ? i18n.t('combatUpgradeRateLive')
+          : i18n.t('currentCombatXpUnavailable')
+      );
+      return `<div class="mst-combat-player-hint">${utils.escapeHtml(parts.join(i18n.t('messageSeparator')))}</div>`;
     },
 
     getExperienceFillFromRates(feature, rates) {
@@ -13923,20 +14444,22 @@
       return String(Number((Math.max(0, Number(rate) || 0) / 1000).toFixed(1)));
     },
 
-    applyCurrentBattleExperience(feature) {
+    applyCurrentBattleExperience(feature, options = {}) {
       const {Notifier, i18n} = feature.ctx;
+      // 跟隨當前玩家上下文：從隊友單位開啟時填的是隊友的本場速率。
       const fill = this.getCurrentBattleExperienceFill(feature);
       if (!fill) {
-        Notifier.toast(i18n.t('currentCombatXpUnavailable'), 'warning');
-        return;
+        if (!options.silent) Notifier.toast(i18n.t('currentCombatXpUnavailable'), 'warning');
+        return false;
       }
       const primaryInput = feature.popup?.querySelector('[data-field="primary-rate"]');
       const secondaryInput = feature.popup?.querySelector('[data-field="secondary-rate"]');
-      if (!primaryInput || !secondaryInput) return;
+      if (!primaryInput || !secondaryInput) return false;
       primaryInput.value = this.formatRateInputValue(fill.primaryRate);
       secondaryInput.value = this.formatRateInputValue(fill.secondaryRate);
       feature.recalculate();
-      Notifier.toast(i18n.t('currentCombatXpApplied'), 'success');
+      if (!options.silent) Notifier.toast(i18n.t('currentCombatXpApplied'), 'success');
+      return true;
     },
 
     getSkillName(feature, skillHrid) {
@@ -13951,8 +14474,9 @@
     },
 
     createRow(feature, skillHrid, defaultPrimarySkillHrid = feature.planner.getDefaultPrimarySkillHrid()) {
-      const {CharacterDataService, utils} = feature.ctx;
-      const current = CharacterDataService.getCharacterSkill(skillHrid) || {level: 0};
+      const {utils} = feature.ctx;
+      // 起始等級跟隨當前玩家上下文：自己是即時等級，隊友是名片快取等級（經驗按該等級 0% 起算）。
+      const current = feature.getCharacterSkill(skillHrid);
       const startLevel = utils.clampLevel(current.level, 0, 199);
       const trainingTypeMode = feature.planner.getTrainingTypeMode(skillHrid);
       let trainingType = trainingTypeMode;
@@ -13982,7 +14506,7 @@
           )
         : new Map();
       feature.nextRowId = 0;
-      const defaultPrimarySkillHrid = feature.planner.getDefaultPrimarySkillHrid();
+      const defaultPrimarySkillHrid = feature.getDefaultPrimarySkillHrid();
       const defaultSkillHrids = new Set([
         '/skills/stamina', '/skills/intelligence', '/skills/attack', '/skills/defense', defaultPrimarySkillHrid
       ]);
@@ -14040,6 +14564,9 @@
       this.popup = null;
       this.helpController = null;
       this.bindController = null;
+      // 開啟彈窗時的玩家上下文（null = 工具箱選單入口，等同自己且不顯示名字）。
+      this.playerContext = null;
+      this.observer = null;
     }
 
     getSkillName(skillHrid) {
@@ -14054,8 +14581,37 @@
       return this.planner.getTrainingTypeMode(skillHrid);
     }
 
+    getMilestoneLevel(level) {
+      return this.planner.getMilestoneLevel(level);
+    }
+
     getDefaultPrimarySkillHrid() {
-      return this.planner.getDefaultPrimarySkillHrid();
+      return this.planner.getDefaultPrimarySkillHrid((skillHrid) => this.getCharacterSkill(skillHrid));
+    }
+
+    getCharacterSkill(skillHrid, context = this.playerContext) {
+      return this.state.getCharacterSkill(this, skillHrid, context);
+    }
+
+    buildPlayerContext(player) {
+      return this.state.buildPlayerContext(this, player);
+    }
+
+    getDialogTitle() {
+      return this.state.getDialogTitle(this);
+    }
+
+    getPlayerHintHtml() {
+      return this.state.getPlayerHintHtml(this);
+    }
+
+    getBattleSkillRates(nowMs = Date.now()) {
+      return this.state.getBattleSkillRates(this, nowMs);
+    }
+
+    getUnitEntryTitle(name) {
+      const {i18n} = this.ctx;
+      return name ? i18n.t('combatUpgradeUnitEntry', name) : i18n.t('combatUpgradeCalculator');
     }
 
     getHourlyExperience(row, primaryRate, secondaryRate) {
@@ -14070,16 +14626,16 @@
       return this.state.resetState(this, preserveExperienceOverrides);
     }
 
-    getBattleExperienceFill(gameState, nowMs = Date.now()) {
-      return this.state.getBattleExperienceFill(this, gameState, nowMs);
+    getBattleExperienceFill(gameState, nowMs = Date.now(), characterId = gameState?.character?.id) {
+      return this.state.getBattleExperienceFill(this, gameState, nowMs, characterId);
     }
 
     getExperienceFillFromRates(rates) {
       return this.state.getExperienceFillFromRates(this, rates);
     }
 
-    applyCurrentBattleExperience() {
-      return this.state.applyCurrentBattleExperience(this);
+    applyCurrentBattleExperience(options) {
+      return this.state.applyCurrentBattleExperience(this, options);
     }
 
     getSequenceState() {
@@ -14103,7 +14659,9 @@
     }
 
     calculatePlan(primaryRate, secondaryRate) {
-      return this.planner.calculatePlan(this.rows, primaryRate, secondaryRate);
+      return this.planner.calculatePlan(this.rows, primaryRate, secondaryRate, (skillHrid) =>
+        this.getCharacterSkill(skillHrid)
+      );
     }
 
     getProfessionGridHtml() {
@@ -14134,32 +14692,50 @@
       return this.view.refreshLanguage(this);
     }
 
-    open() {
+    // 可帶玩家上下文開啟：`open({characterId, name})`（交戰介面單位入口）；
+    // 不傳引數時保持原有行為（工具箱選單入口，等同自己且不顯示玩家名）。
+    open(player = null) {
       const {DataHub, CharacterDataService, Notifier, i18n} = this.ctx;
       if (!DataHub.getClientData()?.levelExperienceTable || !CharacterDataService.getCombatSkills().length) {
         return Notifier.alert(i18n.t('calculatorDataNotReady'), 'warning');
       }
+      this.playerContext = this.buildPlayerContext(player);
       this.resetState();
       return Notifier.html({
-        title: i18n.t('combatUpgradeCalculator'),
+        title: this.getDialogTitle(),
         html: this.getDialogHtml(),
         width: 'min(56rem, calc(100vw - 1rem))',
         popupClass: 'mst-upgrade-calculator-dialog',
         icon: 'experience',
-        didOpen: (popup) => this.bind(popup),
+        didOpen: (popup) => {
+          this.bind(popup);
+          // 從玩家單位開啟時自動填入該玩家的本場經驗速率；填不上由提示行說明原因，不再彈 toast。
+          if (this.playerContext) this.applyCurrentBattleExperience({silent: true});
+        },
         willClose: () => {
           this.bindController?.abort();
           this.bindController = null;
           this.helpController?.cleanup();
           this.helpController = null;
           this.popup = null;
+          this.playerContext = null;
         }
       });
     }
 
     init() {
-      const {LanguageEvents} = this.ctx;
-      LanguageEvents.subscribe(() => this.refreshLanguage());
+      const {CONFIG, LanguageEvents, utils} = this.ctx;
+      LanguageEvents.subscribe(() => {
+        this.refreshLanguage();
+        combatUpgradeBattleEntry.refreshLanguage(this);
+      });
+      if (!CONFIG?.isGameSite) return;
+      StyleService.ensure('mst-combat-upgrade-style', MST_COMBAT_UPGRADE_CSS);
+      // 懸浮時間與交戰介面入口複用公共觀察器（禁止在業務模組自建 MutationObserver）。
+      this.observer = utils.observeBody(() => {
+        combatUpgradeTooltip.mount(this);
+        combatUpgradeBattleEntry.mount(this);
+      });
     }
   }
 
