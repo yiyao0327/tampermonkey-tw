@@ -3,7 +3,7 @@
 // @name:zh-CN         MWI Sunrishe 工具箱
 // @name:en            MWI Sunrishe Toolkit
 // @namespace          http://tampermonkey.net/
-// @version            2.19.0
+// @version            2.20.1
 // @description        MWI Sunrishe 綜合工具箱：提供角色/隊伍名片、技能/房屋/戰鬥升級規劃、裝備提升計算器、地下城收益、配裝同步和市場伴侶增強。
 // @description:zh-CN  MWI Sunrishe 綜合工具箱：提供角色/隊伍名片、技能/房屋/戰鬥升級規劃、裝備提升計算器、地下城收益、配裝同步和市場伴侶增強。
 // @description:en     MST toolkit for character/party cards, ability/house/combat upgrade planning, equipment comparison, dungeon profit, loadout sync, and Market Mate enhancements.
@@ -57,7 +57,7 @@
   'use strict';
 
   // 構建指令碼會靜態替換這個佔位符，業務程式碼不直接讀取 Node 環境變數。
-  const PACKAGE_VERSION = "2.19.0";
+  const PACKAGE_VERSION = "2.20.1";
 
   const BUILD_FLAGS = Object.freeze({
     // 目前只有語言切換按鈕需要區分 dev/prod：正式包不展示該除錯入口。
@@ -119,6 +119,31 @@
     return Boolean(
       data && typeof data === 'object' && (data.itemDetailMap || data.actionDetailMap || data.houseRoomDetailMap)
     );
+  }
+
+  // marketplace-panel-state
+  // 從錨點 DOM 的 React fiber 鏈向上找 MarketplacePanel 類元件例項並返回其 state；
+  // 遊戲原始碼（MarketplacePanel 元件）該 state 含 marketListingsView / itemHrid / enhancementLevel，
+  // 訂單簿檢視下 itemHrid 與 enhancementLevel 就是當前檢視的物品與強化等級（物品掛牌頁的錨點判定）。
+  // 市場加購（讀取當前物品）與市場交易記錄的掛牌頁速覽共用，所以放在公共層。
+  function readMarketplacePanelState(fiber) {
+    let current = fiber;
+    while (current) {
+      const instance = current.stateNode;
+      const state = instance?.state;
+      if (
+        state &&
+        typeof state === 'object' &&
+        'marketListingsView' in state &&
+        'itemHrid' in state &&
+        'enhancementLevel' in state &&
+        typeof instance.handleRefresh === 'function'
+      ) {
+        return state;
+      }
+      current = current.return;
+    }
+    return null;
   }
 
   // data-hub-client-cache
@@ -2576,9 +2601,12 @@
     marketHistoryCategoryAccessories: {zh: '飾品', en: 'Accessories'},
     marketHistoryCategoryTools: {zh: '工具', en: 'Tools'},
     marketHistoryTimeAll: {zh: '建立時間', en: 'Created'},
-    marketHistoryTimeToday: {zh: '今天', en: 'Today'},
     marketHistoryTime7d: {zh: '近 7 天', en: 'Last 7 days'},
+    marketHistoryTime15d: {zh: '近 15 天', en: 'Last 15 days'},
     marketHistoryTime30d: {zh: '近 30 天', en: 'Last 30 days'},
+    marketHistoryTime60d: {zh: '近 60 天', en: 'Last 60 days'},
+    marketHistoryTime90d: {zh: '近 90 天', en: 'Last 90 days'},
+    marketHistoryTime180d: {zh: '近 180 天', en: 'Last 180 days'},
     marketHistoryTimeCustom: {zh: '自定義', en: 'Custom'},
     marketHistorySortHint: {zh: '點選切換升序/降序', en: 'Click to toggle ascending/descending'},
     marketHistoryMoreFilters: {zh: '更多', en: 'More'},
@@ -2604,6 +2632,7 @@
     marketHistoryStatusActive: {zh: '有效', en: 'Active'},
     marketHistoryStatusPartial: {zh: '部分成交', en: 'Partially filled'},
     marketHistoryStatusFilled: {zh: '已完成', en: 'Filled'},
+    marketHistoryStatusUnconfirmed: {zh: '未確認', en: 'Unconfirmed'},
     marketHistoryStatusCancelled: {zh: '已取消', en: 'Cancelled'},
     marketHistoryStatusExpired: {zh: '已過期', en: 'Expired'},
     marketHistoryStatusPartialCancelled: {zh: '部分成交後取消', en: 'Cancelled (partially filled)'},
@@ -2631,11 +2660,8 @@
     marketHistoryTotalsBuy: {zh: '購買金額', en: 'Buy amount'},
     marketHistoryTotalsIncome: {zh: '收入金額', en: 'Income'},
     marketHistoryTotalsExpense: {zh: '支出金額', en: 'Expense'},
-    marketHistoryTotalsPending: {zh: '待領取', en: 'Pending'},
     marketHistoryPagePrev: {zh: '上一頁', en: 'Prev'},
     marketHistoryPageNext: {zh: '下一頁', en: 'Next'},
-    marketHistoryStatsTimeField: {zh: '建立時間', en: 'Created'},
-    marketHistoryStatsTime90d: {zh: '近 90 天', en: 'Last 90 days'},
     marketHistoryStatsSide: {zh: '方向', en: 'Direction'},
     marketHistoryStatsSideSell: {zh: '出售', en: 'Sells'},
     marketHistoryStatsSideBuy: {zh: '購買', en: 'Buys'},
@@ -2670,23 +2696,32 @@
     marketHistoryClaimedAt: {zh: '領取時間', en: 'Collected at'},
     marketHistoryImportNote: {zh: '匯入備註', en: 'Import note'},
     marketHistoryCollectedEstimated: {
-      zh: '該記錄缺少官方到賬資料，按已成交數量 × 單價 ×（1 − {0}% 稅率）推算',
-      en: 'Missing official collected data; estimated as filled quantity × price × (1 − {0}% tax)'
+      zh: '該記錄缺少官方到賬資料，按已成交數量 × 單價、並用官方收稅方式（每件 {0}% 向上取整）推算',
+      en: 'Missing official collected data; estimated from filled quantity × price with the official per-item tax ({0}%, rounded up per item)'
     },
     marketHistoryCollectedEstimatedBuy: {
       zh: '該記錄缺少官方到賬資料，按已成交數量 × 單價推算（購買不扣稅）',
       en: 'Missing official collected data; estimated as filled quantity × price (buys are not taxed)'
     },
-    marketHistoryPending: {zh: '待領取', en: 'Pending'},
     marketHistoryRawValue: {zh: '原值', en: 'Raw'},
     marketHistoryCoin: {zh: '金幣', en: 'coins'},
+    marketHistoryTaxDerived: {
+      zh: '成交價與掛牌價不一致（價格隨行情移動或以更優價成交）：官方稅費對應的成交額在 {0} 與 {1} 之間（{2}% 稅率）；「金額」列按掛牌價計算，只作參考',
+      en: 'Fill price differs from the listing price (the price moved with the market, or the fill was at a better price): the official tax implies a gross between {0} and {1} ({2}% tax); the Amount column uses the listing price and is for reference only'
+    },
     marketHistoryInstantFallback: {
-      zh: '未收到官方條目，按委託資訊記錄（實際成交價可能更優，差額會退還）',
-      en: 'No official entry received; recorded from the request (the actual price may be better, with a refund).'
+      zh: '未收到官方條目，按委託資訊記錄：是否成交與成交價無法與官方核對（實際成交價可能更優，差額會退還）',
+      en: 'No official entry received; recorded from the request, so the fill itself and its price cannot be verified (the actual price may be better, with a refund).'
     },
     marketHistoryUnobservedNote: {
       zh: '頁面關閉期間結束，未觀測到結束原因（成交/取消/過期）',
       en: 'Ended while the page was closed; the exact cause was not observed.'
+    },
+    // 物品掛牌頁（訂單簿檢視）：掛牌按鈕行兩端的「最近兩次成交單價」速覽——只顯示單價、
+    // 不帶標籤（最近的一條在前），懸浮裡給出該條的完整明細。
+    marketHistoryListingHintTitle: {
+      zh: '{0}\n單價 {1} × 成交數量 {2}\n金額 {3}\n建立時間 {4}',
+      en: '{0}\nUnit price {1} × Filled {2}\nAmount {3}\nCreated {4}'
     },
     marketHistoryDeleteDone: {zh: '已刪除 {0} 條記錄', en: '{0} records deleted'},
     marketHistoryDeleteConfirmClickOne: {zh: '確認刪除', en: 'Confirm'},
@@ -2739,6 +2774,58 @@
       en: 'The file was exported by a newer version; update the script first.'
     },
     marketHistoryImportErrorEmpty: {zh: '檔案中沒有有效的交易記錄', en: 'No valid records in the file'},
+    marketHistoryRepairTitle: {zh: '資料修復', en: 'Data repair'},
+    marketHistoryRepairHint: {
+      zh: '掃描全部角色與環境的記錄，修復歷史版本寫下的結構性問題資料；修復前建議先在「匯出交易記錄」裡備份一份。',
+      en: 'Scans every character and server and repairs structurally inconsistent data; export a backup first if you are unsure.'
+    },
+    marketHistoryRepairDuplicate: {
+      zh: '重複訂單記錄：同一訂單合併為一條（{0} 組）',
+      en: 'Duplicate order records: merge into one ({0})'
+    },
+    marketHistoryRepairStatusQuantity: {
+      zh: '狀態與成交進度：按官方狀態修正（{0} 條）',
+      en: 'Status vs. fill progress: align to official status ({0})'
+    },
+    marketHistoryRepairUnobservedEnded: {
+      zh: '進行中但已不在掛單列表：標記結束（原因未觀測，時間標推斷）（{0} 條）',
+      en: 'Active but no longer in the listing snapshot: mark as ended (reason unobserved) ({0})'
+    },
+    marketHistoryRepairCollectedFields: {
+      zh: '收入 / 支出欄位：清除方向不符的值與多餘的推算標記（{0} 條）',
+      en: 'Income/expense fields: clear mismatched values and stale estimate flags ({0})'
+    },
+    marketHistoryRepairAmountRecalc: {
+      zh: '金額偏差：按數量 × 單價重算（購買不等即算錯，出售收入偏差超一半）（{0} 條）',
+      en: 'Amount off: recompute as quantity × price (buys must match exactly; sells off by over half) ({0})'
+    },
+    marketHistoryRepairSettleEvidence: {
+      zh: '到賬金額：補記缺失的結清明細（{0} 條）',
+      en: 'Collected amount: add missing claim entry ({0})'
+    },
+    marketHistoryRepairUnknownKey: {
+      zh: '無法識別的記錄：刪除（{0} 條）',
+      en: 'Unrecognized records: delete ({0})'
+    },
+    marketHistoryRepairApply: {zh: '修復選中項', en: 'Repair selected'},
+    marketHistoryRepairNothing: {zh: '未發現可修復的問題資料。', en: 'No repairable data found.'},
+    marketHistoryRepairDone: {zh: '資料修復完成', en: 'Repair finished'},
+    marketHistoryRepairResultDuplicate: {zh: '重複訂單：合併 {0} 組', en: 'Duplicate orders: merged {0}'},
+    marketHistoryRepairResultStatusQuantity: {
+      zh: '狀態與成交進度：修正 {0} 條',
+      en: 'Status vs. progress: fixed {0}'
+    },
+    marketHistoryRepairResultUnobservedEnded: {
+      zh: '不在掛單列表：標記結束 {0} 條',
+      en: 'No longer listed: ended {0}'
+    },
+    marketHistoryRepairResultCollectedFields: {
+      zh: '收入 / 支出欄位：修正 {0} 條',
+      en: 'Income/expense fields: fixed {0}'
+    },
+    marketHistoryRepairResultAmountRecalc: {zh: '金額偏差過大：重算 {0} 條', en: 'Amounts far off: recomputed {0}'},
+    marketHistoryRepairResultSettleEvidence: {zh: '結清明細：補記 {0} 條', en: 'Claim entries: added {0}'},
+    marketHistoryRepairResultUnknownKey: {zh: '無法識別的記錄：刪除 {0} 條', en: 'Unrecognized records: deleted {0}'},
     marketHistorySaveFailed: {
       zh: '交易記錄儲存失敗，請檢查油猴儲存空間',
       en: 'Failed to save market records. Check userscript storage.'
@@ -2805,6 +2892,11 @@
         labyrinthEntryScreen: '[class*="LabyrinthPanel_entryScreen__"]',
         labyrinthButtonsContainer: '[class*="LabyrinthPanel_buttonsContainer__"]',
         marketplaceNavButtons: '[class*="MarketplacePanel_marketNavButtonContainer__"]',
+        // 物品掛牌頁（訂單簿檢視）的訂單簿容器：作為「當前是訂單簿檢視」的判據（物品摘要檢視沒有它）。
+        marketOrderBooks: '[class*="MarketplacePanel_orderBooksContainer__"]',
+        // 掛牌按鈕行（「+ 新出售掛牌 / + 新購買掛牌」，display: flex + space-between）：
+        // 模組把這一行設為相對定位錨點，兩側的最近成交提示條相對它絕對定位。
+        marketNewListingButtons: '[class*="MarketplacePanel_newListingButtonsContainer__"]',
         // 市場主標籤欄（「商品列表 / 我的掛牌」所在行，display: flex，與標籤同排）。
         marketplaceTabs: '[class*="MarketplacePanel_tabsComponentContainer__"]',
         // 主標籤按鈕所在的 MUI flex 行；優先匹配使用者實測的 MarketplacePanel 直接子級，
@@ -3275,6 +3367,44 @@
         return formatted + (unit?.suffix || '');
       },
 
+      // 遊戲市場的價格寫法（對照遊戲原始碼 main chunk 的 formatMarketplacePrice，常量 K/M/B/T 與 EPSILON=1e-9）：
+      // 10 萬以下顯示整數（不帶千位分隔符），10 萬 / 1000 萬 / 100 億 / 10 萬億起換算 K / M / B / T 字尾，
+      // 換算後不足 100 保留兩位、不足 1000 保留一位、再大取整。市場裡的掛單價、可交易區間、
+      // 商品列表價格都走這套寫法，掛牌頁速覽的單價必須與之一致。
+      formatMarketplacePrice(value) {
+        // 與遊戲一致的換算誤差補償（遊戲常量 EPSILON = 1e-9），避免浮點尾差把整數檔算少 1。
+        const EPSILON = 1e-9;
+        const number = Number(value) || 0;
+        const abs = Math.abs(number);
+        const K = 1e3;
+        const M = 1e6;
+        const B = 1e9;
+        const T = 1e12;
+        let scaled = number;
+        let suffix = '';
+        if (abs < 100 * K) scaled = Math.sign(number) * Math.floor(abs);
+        else if (abs < 10 * M) {
+          scaled = number / K;
+          suffix = 'K';
+        } else if (abs < 10 * B) {
+          scaled = number / M;
+          suffix = 'M';
+        } else if (abs < 10 * T) {
+          scaled = number / B;
+          suffix = 'B';
+        } else if (abs <= 1e3 * T) {
+          scaled = number / T;
+          suffix = 'T';
+        } else return 'Lots!';
+        if (suffix) {
+          const scaledAbs = Math.abs(scaled);
+          const digits = scaledAbs < 100 ? 2 : scaledAbs < 1e3 ? 1 : 0;
+          const factor = 10 ** digits;
+          scaled = (Math.sign(scaled) * Math.floor((scaledAbs + EPSILON) * factor)) / factor;
+        }
+        return String(scaled) + suffix;
+      },
+
       formatDateTime(value) {
         const date = value instanceof Date ? value : new Date(value);
         if (Number.isNaN(date.getTime())) return '-';
@@ -3583,7 +3713,9 @@
         try {
           marketMate = pageWindow.MWITools?.shopping;
           if (marketMate?.ready === true && typeof marketMate.openMarketplace === 'function') {
-            return marketMate.openMarketplace(fullHrid) === true;
+            // MWITools 的簽名是 (itemHrid, enhancementLevel = 0)：必須帶上強化等級，
+            // 否則物品頁按等級取訂單簿時對不上、一直停在「正在載入」。
+            return marketMate.openMarketplace(fullHrid, Number(enhancementLevel) || 0) === true;
           }
         } catch (error) {
           this.warnUnavailable('openMarketplace', {itemHrid, fullHrid, accessError: error?.message || String(error)});
@@ -7145,6 +7277,46 @@
   // 版本說明只寫使用者可感知的變化，更新版本時先改 docs/changelog.md，再同步這裡並補英文。
   const CHANGELOG_VERSIONS = [
     {
+      version: '2.20.1',
+      date: '2026-10-12',
+      notes: [
+        {
+          zh: '修復：市場交易記錄裡按掛牌價成交的訂單被打上星號、收入被算高的問題（官方按每件向上取整收稅，之前把這項取整當成了成交價與掛牌價不一致）；現在只有官方稅費確實證明成交價與掛牌價不同的訂單才顯示星號。',
+          en: 'Fix: orders filled at their listing price were marked with an asterisk and their income was inflated (the game rounds tax up per item, which was mistaken for a price difference); now the asterisk only appears when the official tax truly proves the fill price differed from the listing price.'
+        }
+      ]
+    }, {
+      version: '2.20.0',
+      date: '2026-10-12',
+      notes: [
+        {
+          zh: '市場交易記錄：訂單成交時即計入收入 / 支出，不再顯示“待領取”，舊記錄裡未領取的部分會自動計入。',
+          en: 'Market History: an order counts toward income/expense as soon as it fills — "Pending" is no longer shown, and uncollected parts in old records are counted in automatically.'
+        }, {
+          zh: '市場交易記錄：開啟遊戲頁後立刻發生的成交與領取不再漏記；登入時補記的訂單會歸入正確的伺服器並補全金額，測試服與正式服不再混在一起。',
+          en: 'Market History: fills and collections right after you open the game are no longer missed; orders picked up at login go to the correct server and have their amounts filled in, so test-server and live records no longer mix.'
+        }, {
+          zh: '市場交易記錄：“管理”頁籤新增“資料修復”，可一鍵修復重複、狀態或金額異常的記錄，修復前可先備份。',
+          en: 'Market History: the Manage tab gains "Data repair" — fix duplicate orders and records with a wrong status or amount in one click; export a backup first if you want to be safe.'
+        }, {
+          zh: '市場交易記錄：“管理”頁籤的匯入內容關閉彈窗即清空，不再跨次保留。',
+          en: 'Market History: import content in the Manage tab is cleared when the dialog closes instead of being kept for next time.'
+        }, {
+          zh: '市場交易記錄：區間價訂單的收入改按真實成交額顯示，列表“金額”列旁的星號提示掛牌價與實際成交價不一致。',
+          en: 'Market History: range-priced orders now show income based on the real traded amount, and an asterisk next to the Amount column marks rows where the listing price differs from the traded price.'
+        },
+        {
+          zh: '市場交易記錄：沒等到官方資料的“立即購買 / 立即出售”記錄標為“未確認”，可按狀態篩選。',
+          en: 'Market History: "Buy now / Sell now" records still waiting for official data are marked "Unconfirmed" and can be filtered by status.'
+        }, {
+          zh: '市場交易記錄：市場裡點開物品的掛牌頁，在“+ 新出售掛牌 / + 新購買掛牌”按鈕上方顯示自己最近兩次出售 / 收購的成交單價；列表“單價”列與統計頁“加權均價”列也改用市場裡的價格寫法。',
+          en: 'Market History: on the item listing page, your two most recent sell and buy unit prices appear above the Sell Listing / Buy Listing buttons; the Unit Price column and the stats Weighted Price column now use the same format as prices in the market.'
+        }, {
+          zh: '修復：從技能升級計算器跳轉市場物品時，訂單簿可能一直停在“正在載入”。',
+          en: 'Fixed: jumping from the ability upgrade calculator to a market item could leave the order book stuck on "Loading".'
+        }
+      ]
+    }, {
       version: '2.19.0',
       date: '2026-10-11',
       notes: [
@@ -7198,7 +7370,8 @@
           en: 'Equipment Comparison: the simulation reflects only the selected equipment and no longer includes fixed bonuses such as character achievements; searching and switching equipment is faster.'
         }
       ]
-    }, {
+    },
+    {
       version: '2.17.1',
       date: '2026-09-23',
       notes: [
@@ -7235,8 +7408,7 @@
           en: 'Dungeon Profit adds an "Exclude cowbell value" option (off by default): when checked, cowbells and bags of cowbells are excluded from profit and their value in the results and drop table shows as 0.'
         }
       ]
-    },
-    {
+    }, {
       version: '2.16.0',
       date: '2026-09-08',
       notes: [
@@ -7281,7 +7453,8 @@
           en: 'The Dungeon Profit "Drops" tab now matches the game\'s tab style.'
         }
       ]
-    }, {
+    },
+    {
       version: '2.13.0',
       date: '2026-08-21',
       notes: [
@@ -7305,8 +7478,7 @@
           en: 'Dungeon Profit improvements: the dungeon dropdown now shows D1-D4 numbers to match the in-game dungeon map, and the results area has a new "Drops" tab listing items, drop rates, expected quantities, and best-ask/best-bid prices per standard and refined chest, with details on hover; prices are calculated from market quotes before tax.'
         }
       ]
-    },
-    {
+    }, {
       version: '2.11.1',
       date: '2026-08-18',
       notes: [
@@ -7339,7 +7511,8 @@
           en: 'Fixed the market data source: prices are now always read from the current entry domain (release and test are separate environments, and the cn domain is a mirror entry of the release server), so pages with or without www or on the test domain all work without a fixed domain redirect.'
         }
       ]
-    }, {
+    },
+    {
       version: '2.10.1',
       date: '2026-08-17',
       notes: [
@@ -7379,8 +7552,7 @@
           en: 'Fixed cowbell value sometimes being calculated as 0: when a bag of cowbells has no market price it falls back to the official guide price and then to the market snapshot trade price (about 1.075M coins per bag), with cowbells at one tenth, so it no longer shows 0.'
         }
       ]
-    },
-    {
+    }, {
       version: '2.9.1',
       date: '2026-08-11',
       notes: [
@@ -7407,7 +7579,8 @@
           en: 'Fixed the Toolkit entry layout in the header; local debug scripts now include a file version and a web version; Dungeon Profit adds "Exclude cape value" and fixes a small deviation from rounding quantities too early; Combat Upgrade adds "Use current combat XP"; Equipment Comparison fixes two-handed weapon setups double-counting the off-hand and overstating the damage gain.'
         }
       ]
-    }, {
+    },
+    {
       version: '2.7.26',
       date: '2026-08-03',
       notes: [
@@ -7428,8 +7601,7 @@
           en: 'Improved dialog positioning on small screens and mobile browsers so the ability picker and Toolkit menu stay within the visible area.'
         }
       ]
-    },
-    {
+    }, {
       version: '2.7.20',
       date: '2026-08-02',
       notes: [
@@ -7480,7 +7652,8 @@
           en: 'Added support for the new profit site `hyhfish.github.io/milkonomy`.'
         }
       ]
-    }, {
+    },
+    {
       // 未在 GreasyFork 釋出過，無釋出記錄可查，不標註日期。
       version: '1.1.3',
       date: '',
@@ -7504,8 +7677,7 @@
           en: 'Fixed Milkonomy sync failing when no loadout had ever been configured.'
         }
       ]
-    },
-    {
+    }, {
       version: '1.0.1',
       date: '2026-04-15',
       legacy: true,
@@ -25502,6 +25674,7 @@
 .mst-market-history-popover-hint{padding:.3rem .35rem .15rem;font-size:.75rem;opacity:.6}
 .mst-market-history-inline{display:inline-flex;align-items:center;gap:.3rem;font-size:.85rem;opacity:.9}
 .mst-market-history-checkbox{display:inline-flex;align-items:center;gap:.35rem;font-size:.9rem;cursor:pointer}
+.mst-market-history-checkbox:has(input:disabled){cursor:default;opacity:.6}
 .mst-market-history-stats-filters{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem .9rem}
 .mst-market-history-chart-grid{display:grid;gap:.6rem;grid-template-columns:repeat(auto-fit,minmax(26rem,1fr))}
 .mst-market-history-chart-card{display:flex;flex-direction:column;gap:.4rem;min-width:0;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem);padding:.5rem .6rem;background:var(--color-midnight-600, #27283b)}
@@ -25551,7 +25724,7 @@
 .mst-market-history-table-wrap{flex:1 1 auto;min-height:0;overflow:auto;border:1px solid var(--color-midnight-100, #454771);border-radius:var(--radius-sm, .25rem)}
 .mst-market-history-table{width:100%;border-collapse:collapse;font-size:.85rem}
 .mst-market-history-table{display:table;table-layout:auto}
-.mst-market-history-table-records{table-layout:fixed}
+.mst-market-history-table-records{table-layout:fixed;min-width:72rem}
 .mst-market-history-table-records tbody td{overflow:hidden;text-overflow:ellipsis}
 .mst-market-history-table thead{display:table-header-group}
 .mst-market-history-table tbody{display:table-row-group}
@@ -25574,7 +25747,14 @@
 .mst-market-history-item svg{width:1.5rem;height:1.5rem;flex:0 0 auto}
 .mst-market-history-item span{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .mst-market-history-muted{opacity:.4}
-.mst-market-history-pending{margin-left:.3rem;font-size:.75rem;opacity:.75}
+.mst-market-history-price-mark{margin-left:.15rem;color:var(--color-space-200, #bbc5f1);cursor:help}
+[class*=MarketplacePanel_newListingButtonsContainer__]{position:relative;padding-top:1.05rem}
+.mst-market-history-listing-hint{position:absolute;top:0;z-index:1100;display:flex;align-items:baseline;gap:.6rem;font-size:var(--font-size-base, .875rem);line-height:1.2;white-space:nowrap;pointer-events:none}
+.mst-market-history-listing-hint-sell{left:0}
+.mst-market-history-listing-hint-buy{right:0}
+.mst-market-history-listing-hint-item{font-weight:600;font-variant-numeric:tabular-nums;cursor:help;pointer-events:auto}
+.mst-market-history-listing-hint-sell .mst-market-history-listing-hint-item{color:var(--color-jade-300, #86d7b1)}
+.mst-market-history-listing-hint-buy .mst-market-history-listing-hint-item{color:var(--color-scarlet-300, #ef8f98)}
 .mst-market-history-status{display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;border-radius:999px;padding:.1rem .5rem;font-size:.78rem;white-space:nowrap}
 .mst-market-history-status-active{background:#7184d861}
 .mst-market-history-status-partial{background:#7184d880}
@@ -25775,6 +25955,7 @@
   const INSTANT_MATCH_WINDOW_MS = 60 * 1000;
   // 直購兜底記錄跨裝置內容去重的時間窗。
   const INSTANT_DEDUPE_WINDOW_MS = 10 * 60 * 1000;
+  const CLAIMS_LIMIT = 20;
   // 記錄量超過閾值時只提示使用者匯出清理，不自動刪除。
   const RECORDS_SOFT_LIMIT = 20000;
   const STORE_BYTES_SOFT_LIMIT = 4 * 1024 * 1024;
@@ -25796,8 +25977,8 @@
   };
 
   const HISTORY_STATUS_KEYS = [
-    'active', 'partial', 'filled', 'cancelled', 'expired',
-    'partialCancelled', 'partialExpired', 'unobserved'
+    'active', 'partial', 'filled', 'unconfirmed', 'cancelled',
+    'expired', 'partialCancelled', 'partialExpired', 'unobserved'
   ];
 
   const HISTORY_TYPE_KEYS = [
@@ -25832,6 +26013,10 @@
     taxTaken: 0,
     unclaimedItemCount: 0,
     unclaimedCoinCount: 0,
+    // 待領取（官方未領取值）只是臨時中間狀態：成交完成（收到「可領取」的條目）即計入
+    // 收入/支出，領取只記確認明細、不再影響金額。這兩個欄位保留為與官方對賬的增量基準，
+    // 不參與展示；`unclaimedCounted` 表示當前基準已併入累計到賬（舊資料首次讀取時遷移）。
+    unclaimedCounted: true,
     collectedCoinCount: 0,
     collectedItemCount: 0,
     // 到賬推算：官方到賬/領取資料缺失時按歷史稅率推算金額，並記錄所用稅率。
@@ -25902,47 +26087,155 @@
   // 出售按成交當時的歷史稅率扣稅：普通物品 2026-08-14 前 2%、08-14 起 5%、09-28 起 4%，
   // 牛鈴袋始終 18%；推算結果標 collectedEstimated 並在懸浮提示裡說明。
   // 當前普通稅率的單一來源見 src/common/constants.js 的 MARKET_TAX_RATE，這裡按歷史檔位列出。
+  // fraction 是稅率的精確分數（[分子, 分母]），供「稅費 → 成交價區間」的整數判定使用，
+  // 不靠浮點比較（8 ÷ 0.04 這類除法會把區間邊界算偏）。
   const TAX_HISTORY = [
     {
       before: Date.parse('2026-08-14T00:00:00+08:00'),
-      rate: 0.02
-    }, {before: Date.parse('2026-09-28T00:00:00+08:00'), rate: 0.05}, {before: Infinity, rate: 0.04}
+      rate: 0.02,
+      fraction: [
+        1, 50
+      ]
+    }, {before: Date.parse('2026-09-28T00:00:00+08:00'), rate: 0.05, fraction: [
+        1, 20
+      ]}, {before: Infinity, rate: 0.04, fraction: [
+        1, 25
+      ]}
   ];
   const COWBELL_BAG_HRID = '/items/bag_of_10_cowbells';
   const COWBELL_BAG_TAX_RATE = 0.18;
+  const COWBELL_BAG_TAX_FRACTION = [
+    9, 50
+  ];
 
-  function collectedTaxRateOf(record, at = 0) {
-    if (record?.itemHrid === COWBELL_BAG_HRID) return COWBELL_BAG_TAX_RATE;
-    const tier = TAX_HISTORY.find((entry) => at < entry.before);
-    return tier ? tier.rate : TAX_HISTORY[TAX_HISTORY.length - 1].rate;
+  function taxTierOf(record, at = 0) {
+    if (record?.itemHrid === COWBELL_BAG_HRID) {
+      return {rate: COWBELL_BAG_TAX_RATE, fraction: COWBELL_BAG_TAX_FRACTION};
+    }
+    const tier = TAX_HISTORY.find((entry) => at < entry.before) || TAX_HISTORY[TAX_HISTORY.length - 1];
+    return {rate: tier.rate, fraction: tier.fraction};
   }
 
-  // 缺少官方到賬資料時推算這筆交易的金額（一律記在 collectedCoinCount，不寫物品件數）：
-  // 出售按成交當時的市場稅率扣稅（數量 × 單價 ×（1 − 稅率）），購買不扣稅（數量 × 單價）。
-  // 每次歸一化都重新推算：公式調整後已存資料會自動糾正；
-  // 重新推算前先清掉舊推算值，保證它不會被當成官方資料（`collectedEstimated` 只由這裡寫）。
+  // 官方按**單件**收稅、每件向上取整：稅費 = ceil(單價 × 稅率) × 已成交數量，不是「總額 × 稅率」的
+  // 浮點值。2026-10-12 用 672 條匯出裡全部 385 條可倒算的出售記錄核對，這個口徑逐條吻合（按總額
+  // 取整隻能對上 303 條、按單件四捨五入 352 條）：單價 12 的糖按 5% 收 1 金幣/件就是這麼來的。
+  function unitTaxOf(price, [
+      num, den
+    ]) {
+    return Math.ceil((price * num) / den);
+  }
+
+  // 稅費證據：由官方稅費反推的「單件稅費檔位」只能把成交價限定在一個區間裡——單件稅費為 k 時
+  // 成交價落在 ((k − 1) ÷ 稅率, k ÷ 稅率]，區間內任何價格產生的官方稅費完全相同，區間寬度就是
+  // 一個稅費檔位（4% 檔 25 金幣、5% 檔 20、2% 檔 50、牛鈴袋 18% 檔 5.56）。
+  // 所以「倒算值與掛牌價不同」**不能**說明價格移動過（此前就是這麼判定的，結果單價不是檔位整數倍
+  // 的記錄全部誤標、收入被算高）；只有下面兩種情況才算稅費與掛牌價不符：
+  // - 單件稅費 k 不是整數：各次成交的單件稅費不同 → 成交價不止一個，不可能每次都按掛牌價成交；
+  // - k 是整數但掛牌價落在區間之外：成交價確實高於區間上限或低於區間下限。
+  // 購買（不扣稅）與證據不全（沒有稅費、缺時間、成交跨稅率調整日）返回 null。
+  function taxEvidenceOf(record) {
+    if (!record || record.side !== 'sell') return null;
+    const filled = toCount(record.filledQuantity);
+    const price = toMoney(record.price);
+    const tax = toCount(record.taxTaken);
+    if (!filled || !price || !tax) return null;
+    const from = toTimestamp(record.createdAt);
+    const to = toTimestamp(record.filledAt) || toTimestamp(record.firstFillAt) || toTimestamp(record.updatedAt);
+    if (!from || !to) return null;
+    // 成交必然發生在建立之後、結束之前（兩個時間都是官方值或可靠觀測）：這段時間跨過稅率調整日時
+    // 稅費裡混了兩個檔位，除以單一稅率會偏，放棄判定；牛鈴袋始終 18% 一檔，不受日期影響。
+    if (
+      record.itemHrid !== COWBELL_BAG_HRID &&
+      TAX_HISTORY.some((entry) => Number.isFinite(entry.before) && from < entry.before && entry.before <= to)
+    ) {
+      return null;
+    }
+    const at = toTimestamp(record.filledAt) || toTimestamp(record.firstFillAt) || toTimestamp(record.createdAt);
+    const {rate, fraction} = taxTierOf(record, at);
+    if (!(rate > 0)) return null;
+    const [
+      num, den
+    ] = fraction;
+    const unitTax = tax / filled;
+    const singleUnitTax = Number.isInteger(unitTax);
+    // 區間判定與邊界都用整數交叉相乘（price × 分子 與 檔位 × 分母），避免浮點除法把邊界算偏。
+    const contradicts = singleUnitTax ? !(price * num > (unitTax - 1) * den && price * num <= unitTax * den) : true;
+    // 證據允許的成交額（毛額）區間：((稅費 − 數量) ÷ 稅率, 稅費 ÷ 稅率]。
+    const grossLow = Math.floor(((tax - filled) * den) / num) + 1;
+    const grossHigh = Math.floor((tax * den) / num);
+    const nominal = price * filled;
+    // 應得額（稅後）：與掛牌價自洽時就是「按掛牌價成交」的到賬額——稅是官方值、逐件向上取整，
+    // 結果精確；確有差異時取證據下限，寧可少算也不虛增（官方到賬更完整時本來就不會被覆蓋）。
+    const expected = Math.max(0, contradicts ? grossLow - tax : nominal - tax);
+    return {rate, unitTax, singleUnitTax, contradicts, grossLow, grossHigh, nominal, expected};
+  }
+
+  // 應得額（一律按公式算，只作為「官方金額不足時補齊」的目標，不覆蓋更高的官方值）：
+  // - 出售有稅費證據：見 taxEvidenceOf（自洽 → 按掛牌價成交的到賬額；確有差異 → 證據下限）；
+  // - 出售沒有稅費證據（舊資料、跨稅率調整日）：按官方口徑估算——到賬 = 單價 × 數量 − 逐件向上取整
+  //   的稅，與官方收稅方式一致（按浮點比例估稅會把小額物品算高：官方對 12 金幣的糖按 1 金幣/件收）；
+  // - 購買不扣稅：數量 × 單價。
+  // 數量或單價缺失（為 0）時返回 null——算不出應得額的記錄不推算，避免寫出假金額。
+  // 「已完成訂單的金額補齊」與資料修復的「金額偏差過大」共用這一個公式。
+  function expectedCollectedOf(record) {
+    const filled = toCount(record?.filledQuantity);
+    const nominal = toMoney(record?.price) * filled;
+    if (!filled || !nominal) return null;
+    // 只有出售側扣市場稅；購買側付多少就是多少。
+    if (record.side !== 'sell') return {expected: nominal, rate: 0};
+    const evidence = taxEvidenceOf(record);
+    if (evidence) return {expected: evidence.expected, rate: evidence.rate};
+    const at = record.filledAt || record.firstFillAt || record.createdAt || 0;
+    const {rate, fraction} = taxTierOf(record, at);
+    const tax = unitTaxOf(toMoney(record.price), fraction) * filled;
+    return {expected: Math.max(0, nominal - tax), rate};
+  }
+
+  // 對外（介面標註）用：只有官方稅費**與掛牌價不符**時才返回證據允許的成交額區間與稅率，此時
+  // 「金額」列（掛牌價 × 已成交數量）只作參考；與掛牌價自洽的記錄（稅費無法證明價格移動過）
+  // 不標註、金額也按掛牌價口徑。
+  function taxDerivedAmountOf(record) {
+    const evidence = taxEvidenceOf(record);
+    if (!evidence || !evidence.contradicts) return null;
+    return {grossLow: evidence.grossLow, grossHigh: evidence.grossHigh, rate: evidence.rate};
+  }
+
+  // 已完成訂單的金額補齊（一律記在 collectedCoinCount，不寫物品件數）：官方金額（成交時按
+  // 可領取值增量累計的部分）不足應得額時——例如快照補齊的訂單隻帶回剩餘可領取值、已領取
+  // 部分無從得知——按 expectedCollectedOf 的口徑補齊（出售扣官方口徑的稅、購買不扣）。
+  // - 只對**已終結**的訂單（已完成 / 已取消 / 已過期 / 結束未觀測）補齊：進行中的訂單官方資料
+  //   還會繼續來，不推算，避免與後續的增量重複；
+  // - **只補不足、不覆蓋官方值**：官方累計達到或超過應得額時原樣保留（成交價受價格帶調整或
+  //   以更優價成交時，官方到賬與按掛牌價的推算值本來就可能有差異）；
+  // - 完全沒有官方證據的純推算記錄重新按最新公式計算（公式調整後可自動糾正），帶官方線索的
+  //   記錄只補差額（`collectedEstimated` 標記金額含推算成分，懸浮提示裡說明）。
   function estimateCollected(record) {
     if (!record) return record;
-    const base = record.collectedEstimated
-      ? {...record, collectedCoinCount: 0, collectedItemCount: 0, collectedEstimated: false, collectedTaxRate: 0}
-      : record;
-    const filled = toCount(base.filledQuantity);
-    const official =
-      toCount(base.collectedCoinCount) > 0 ||
-      toCount(base.collectedItemCount) > 0 ||
-      toCount(base.unclaimedCoinCount) > 0 ||
-      toCount(base.unclaimedItemCount) > 0 ||
-      (Array.isArray(base.claims) && base.claims.length > 0);
-    if (official) return base;
-    if (!filled) return base;
-    const nominal = toMoney(base.price) * filled;
-    if (!nominal) return base;
-    const at = base.filledAt || base.firstFillAt || base.createdAt || 0;
-    // 只有出售側扣市場稅；購買側付多少就是多少。
-    const rate = base.side === 'sell' ? collectedTaxRateOf(base, at) : 0;
+    const terminal = TERMINAL_STATUSES.has(record.status) || record.endedUnobserved;
+    if (!terminal) return record;
+    const computed = expectedCollectedOf(record);
+    if (!computed) return record;
+    const {expected, rate} = computed;
+    const hasOfficialEvidence =
+      toCount(record.unclaimedCoinCount) > 0 ||
+      toCount(record.unclaimedItemCount) > 0 ||
+      (Array.isArray(record.claims) && record.claims.length > 0);
+    if (record.collectedEstimated && !hasOfficialEvidence) {
+      // 純推算記錄（金額只來自推算）：按最新公式重算，公式調整後能自動糾正；
+      // 推算只寫金額、不寫物品件數（舊版曾把購買側件數記進金額）。
+      return {
+        ...record,
+        collectedCoinCount: expected,
+        collectedItemCount: 0,
+        collectedEstimated: expected > 0,
+        collectedTaxRate: expected > 0 ? rate : 0
+      };
+    }
+    // 帶官方線索（或已有官方入賬）：只補不足，不覆蓋官方值。
+    if (toCount(record.collectedCoinCount) >= expected) return record;
     return {
-      ...base,
-      collectedCoinCount: Math.max(0, Math.floor(nominal * (1 - rate))),
+      ...record,
+      collectedCoinCount: expected,
       collectedEstimated: true,
       collectedTaxRate: rate
     };
@@ -25979,7 +26272,9 @@
       toCount(source.filledQuantity),
       record.orderQuantity || toCount(source.filledQuantity)
     );
-    record.status = TERMINAL_STATUSES.has(source.status) ? source.status : LISTING_STATUSES.ACTIVE;
+    // 狀態統一解析：相容官方 hrid（`/market_listing_status/*`）與內部短值——直接帶 hrid 的
+    // 記錄（匯入的資料、手工構造的測試資料）不再被當成「有效」。
+    record.status = normalizeListingStatus(source.status);
     record.createdAt = toTimestamp(source.createdAt) || 0;
     record.updatedAt = toTimestamp(source.updatedAt) || record.createdAt;
     record.firstFillAt = toTimestamp(source.firstFillAt);
@@ -25991,17 +26286,24 @@
     record.claimedAt = toTimestamp(source.claimedAt);
     record.expiresAt = toTimestamp(source.expiresAt);
     record.taxTaken = toCount(source.taxTaken);
-    record.unclaimedItemCount = toCount(source.unclaimedItemCount);
-    record.unclaimedCoinCount = toCount(source.unclaimedCoinCount);
-    record.collectedCoinCount = toCount(source.collectedCoinCount);
-    record.collectedItemCount = toCount(source.collectedItemCount);
+    // 待領取口徑（v2.20.0）：成交完成即計入收入/支出，待領取只作與官方對賬的增量基準。
+    // 舊資料（缺 unclaimedCounted 標記，v2.19.0 及更早）首次讀取時把「官方仍未領取」的部分
+    // 併入累計到賬——那些訂單在成交時就已完成；遷移後標記隨記錄持久化，重複讀取不重複累計。
+    const pendingItemCount = toCount(source.unclaimedItemCount);
+    const pendingCoinCount = toCount(source.unclaimedCoinCount);
+    const pendingAlreadyCounted = source.unclaimedCounted === true;
+    record.unclaimedItemCount = pendingItemCount;
+    record.unclaimedCoinCount = pendingCoinCount;
+    record.unclaimedCounted = true;
+    record.collectedCoinCount = toCount(source.collectedCoinCount) + (pendingAlreadyCounted ? 0 : pendingCoinCount);
+    record.collectedItemCount = toCount(source.collectedItemCount) + (pendingAlreadyCounted ? 0 : pendingItemCount);
     record.collectedEstimated = Boolean(source.collectedEstimated);
     record.collectedTaxRate = Number(source.collectedTaxRate) > 0 ? Number(source.collectedTaxRate) : 0;
     record.claims = (Array.isArray(source.claims) ? source.claims : [])
       .map(normalizeClaim)
       .filter(Boolean)
       .sort((left, right) => left.at - right.at)
-      .slice(-20);
+      .slice(-CLAIMS_LIMIT);
     record.origin = [
       'snapshot', 'update', 'request', 'import'
     ].includes(source.origin) ? source.origin : 'update';
@@ -26083,7 +26385,7 @@
         seen.add(signature);
         unique.push(claim);
       });
-    return unique.slice(-20);
+    return unique.slice(-CLAIMS_LIMIT);
   }
 
   // 歸一化匯入備註：按「；」分段並去重。舊版本曾無上限追加同一段備註
@@ -26224,7 +26526,15 @@
   }
 
   // 狀態推進：在既有記錄上應用一次官方條目觀測，返回新記錄（不改原物件）。
-  function applyListingObservation(record, fields, now, {origin = 'update', inferredTime = false} = {}) {
+  // environment / characterId：當前會話的環境與角色，只在新建記錄時使用——登入快照會補齊
+  // 「訂單建立時指令碼沒收到訊息、只在快照裡出現」的訂單（可能一個都沒成交，也可能已全部成交
+  // 待領取），這些記錄必須落在正確環境裡，不能寫死 live（否則測試服記錄會串到正式服桶）。
+  function applyListingObservation(
+    record,
+    fields,
+    now,
+    {origin = 'update', inferredTime = false, environment = '', characterId = ''} = {}
+  ) {
     const previous = record ? normalizeRecord(record) : null;
     const base =
       previous ||
@@ -26232,8 +26542,8 @@
         key: buildListingKey(fields.listingId),
         listingId: fields.listingId,
         itemHrid: fields.itemHrid,
-        environment: 'live',
-        characterId: '',
+        environment: environment === 'test' ? 'test' : 'live',
+        characterId: String(characterId || ''),
         origin,
         inferredTime,
         createdAt: now,
@@ -26272,7 +26582,8 @@
     if (fields.status === LISTING_STATUSES.FILLED) next.filledAt = pickEarlier(base.filledAt, now);
     if (fields.status === LISTING_STATUSES.CANCELLED) next.cancelledAt = pickEarlier(base.cancelledAt, now);
     if (fields.status === LISTING_STATUSES.EXPIRED) next.expiredAt = pickEarlier(base.expiredAt, now);
-    if (TERMINAL_STATUSES.has(fields.status)) next.endedUnobserved = false;
+    // 觀測到條目本身（含仍然是有效狀態）就說明這單還在，解除此前按快照推斷的「結束（原因未觀測）」。
+    next.endedUnobserved = false;
     // 實際到賬：觀測到待領取數量減少（領取動作）時按減少量累計；即時鏈路不按稅率估算。
     // 官方待領取資料首次出現時作廢此前的推算值（推算值只服務於匯入的歷史資料）。
     const officialPending = toCount(fields.unclaimedCoinCount) > 0 || toCount(fields.unclaimedItemCount) > 0;
@@ -26285,18 +26596,39 @@
     }
     const baseCollectedCoin = discardingEstimate ? 0 : toCount(base.collectedCoinCount);
     const baseCollectedItem = discardingEstimate ? 0 : toCount(base.collectedItemCount);
-    const coinDrop = toCount(base.unclaimedCoinCount) - fields.unclaimedCoinCount;
-    const itemDrop = toCount(base.unclaimedItemCount) - fields.unclaimedItemCount;
-    if (coinDrop > 0 || itemDrop > 0) {
-      next.collectedCoinCount = baseCollectedCoin + Math.max(0, coinDrop);
-      next.collectedItemCount = baseCollectedItem + Math.max(0, itemDrop);
-      next.claims = mergeClaims(base.claims, [
-        {at: now, coinCount: Math.max(0, coinDrop), itemCount: Math.max(0, itemDrop)}
+    // 推算值作廢時對賬基準一併歸零：官方未領取值要重新入賬，否則「基準已經等於官方值」時
+    // 增量算出來是 0，官方金額會被丟掉（終態記錄有「金額補齊」兜底，進行中的記錄不會補）。
+    const baseUnclaimedCoin = discardingEstimate ? 0 : toCount(base.unclaimedCoinCount);
+    const baseUnclaimedItem = discardingEstimate ? 0 : toCount(base.unclaimedItemCount);
+    // 領取明細是真實發生過的記錄，推算作廢只歸零累計金額，不清明細。
+    const baseClaims = Array.isArray(base.claims) ? base.claims.slice() : [];
+    const baseClaimedAt = toTimestamp(base.claimedAt);
+    // 待領取口徑（v2.20.0）：官方未領取值的**增加**是新成交（收到可領取的條目即視為訂單
+    // 完成），立即併入累計到賬；**減少**只是玩家把已計入的錢取到手，不改金額，只補一條
+    // 領取確認（時間與本次取走的金額）。待領取欄位本身保留為增量基準，不參與展示。
+    const coinGain = fields.unclaimedCoinCount - baseUnclaimedCoin;
+    const itemGain = fields.unclaimedItemCount - baseUnclaimedItem;
+    // 正向增量只在「確實有新成交」時入賬：官方未領取值是一條領取後歸零的臨時值，重複投遞、
+    // 亂序到達或跨標籤頁舊口徑合併都可能讓同一個舊值再次出現，照著差額入賬就會把同一筆成交
+    // 記兩次（實測樣本：同一筆成交被累計兩次，金額正好是應得額的兩倍）。判定依據是成交進度
+    // ——有新成交時進度必然增加；還沒有任何入賬（首次拿到官方憑據、推算金額剛被作廢、直購
+    // 這類「請求即完成」的訂單）也不受限。
+    const accrualOpen = nextFilled > previousFilled || !(baseCollectedCoin > 0 || baseCollectedItem > 0);
+    next.collectedCoinCount = baseCollectedCoin + (accrualOpen ? Math.max(0, coinGain) : 0);
+    next.collectedItemCount = baseCollectedItem + (accrualOpen ? Math.max(0, itemGain) : 0);
+    if (coinGain < 0 || itemGain < 0) {
+      next.claims = mergeClaims(baseClaims, [
+        {at: now, coinCount: Math.max(0, -coinGain), itemCount: Math.max(0, -itemGain)}
       ]);
       next.claimedAt = now;
+    } else {
+      next.claims = baseClaims;
+      next.claimedAt = baseClaimedAt;
     }
-    next.unclaimedCoinCount = fields.unclaimedCoinCount;
-    next.unclaimedItemCount = fields.unclaimedItemCount;
+    // 被攔下的重複值同時不寫回基準：否則下一次真實成交會拿被汙染的舊值做差，金額少記或錯記。
+    next.unclaimedCoinCount = coinGain > 0 && !accrualOpen ? baseUnclaimedCoin : fields.unclaimedCoinCount;
+    next.unclaimedItemCount = itemGain > 0 && !accrualOpen ? baseUnclaimedItem : fields.unclaimedItemCount;
+    next.unclaimedCounted = true;
     if (previous) next.origin = previous.origin;
     return normalizeRecord(next);
   }
@@ -26312,7 +26644,11 @@
       const existing = records.find((item) => item.key === key) || null;
       const next = applyListingObservation(existing, fields, now, options);
       if (!next) return;
-      upsertRecord(records, next);
+      // 同一資料流上的連續觀測：applyListingObservation 已基於既有記錄完整推進（進度取大、
+      // 到賬累計、終態時間取早都已在內部完成），直接替換即可。若再走一次欄位級合併，
+      // 會把「撤銷按請求補記」的結果抹掉——合併規則裡累計到賬取大、領取明細只增不減。
+      if (existing) records[records.indexOf(existing)] = next;
+      else records.push(next);
       if (existing) updated.push(next.key);
       else created.push(next.key);
     });
@@ -26322,24 +26658,32 @@
   // 快照對賬：快照裡沒有的本機記錄按規則收尾。
   // - 有效/部分成交記錄消失且期間沒有觀測到終態 → 結束（原因未觀測）；
   // - 已成交/已取消/已過期但仍帶未領取數量 → 視為已被領取，補記實際到賬。
-  function reconcileWithSnapshot(records, listings, now) {
+  // 只有官方確實下發 myMarketListings（陣列，可為空）時才對賬：欄位缺失時不能把
+  // 「沒有快照」當成「所有條目都不在了」，否則會把本機記錄誤標為已領取/未觀測結束。
+  // snapshotAt：快照自身的取數時間（官方 currentTimestamp，預設按處理時刻）。快照之後才觀測到
+  // 的記錄不能拿它判斷——那種記錄不在快照裡只是因為快照沒趕上（指令碼晚於登入事件初始化、
+  // 用 DataHub 兜底補對賬時處理時刻晚於快照本身），當成「條目已不在」會把還在進行的訂單
+  // 誤標結束、把剛成交的錢誤記成已領取。
+  function reconcileWithSnapshot(records, listings, now, {snapshotAt = now} = {}) {
+    if (!Array.isArray(listings)) return {unobserved: [], settled: []};
     const snapshotIds = new Set(
       listings.map((listing) => (listing && listing.id != null ? String(listing.id) : '')).filter(Boolean)
     );
+    const stamp = toTimestamp(snapshotAt) || toTimestamp(now) || 0;
     const unobserved = [];
     const settled = [];
     records.forEach((record) => {
       if (record.listingId == null || snapshotIds.has(String(record.listingId))) return;
+      if (stamp && toTimestamp(record.updatedAt) > stamp) return;
       const pendingCoin = toCount(record.unclaimedCoinCount);
       const pendingItem = toCount(record.unclaimedItemCount);
       if (pendingCoin || pendingItem) {
-        record.collectedCoinCount = toCount(record.collectedCoinCount) + pendingCoin;
-        record.collectedItemCount = toCount(record.collectedItemCount) + pendingItem;
+        // 條目已從快照消失：這部分已被領取（離線期間或在其他裝置上）。金額在成交時
+        // 就已計入到賬，這裡只補一條領取確認（時間與金額），不重複累計；待領取基準
+        // 保留原值，避免之後又收到該條目時把舊值當成新成交。
         record.claims = mergeClaims(record.claims, [
           {at: now, coinCount: pendingCoin, itemCount: pendingItem}
         ]);
-        record.unclaimedCoinCount = 0;
-        record.unclaimedItemCount = 0;
         record.claimedAt = record.claimedAt || now;
         record.updatedAt = now;
         settled.push(record.key);
@@ -26453,6 +26797,8 @@
       const id = message.claimMarketListingData?.marketListingId;
       const record = records.find((item) => item.listingId != null && String(item.listingId) === String(id));
       if (!record) return {changed: false};
+      // 金額已在每次成交（收到可領取條目）時計入，這裡只記領取請求時間；
+      // 領取確認（時間與金額明細）由隨後的官方歸零觀測或登入快照對賬補上。
       record.claimRequestedAt = now;
       record.updatedAt = now;
       return {changed: true};
@@ -26471,7 +26817,17 @@
     return {changed: false};
   }
 
+  // display-helpers
+  // 直購/直售的兜底記錄：只按出站請求記下、官方條目始終沒有出現（一旦按內容關聯到官方條目，
+  // `listingId` 會被寫成官方 id，就不再是未確認）。官方確實存在不下發條目的情況（§4.5），
+  // 所以這類記錄既可能是真實成交、也可能是失敗請求（服務端只回了錯誤提示），無法自行判斷，
+  // 介面按「未確認」展示、可按狀態篩出來人工處理。
+  function isUnconfirmedInstant(record) {
+    return Boolean(record) && record.kind === 'instant' && record.listingId == null;
+  }
+
   function getDisplayStatus(record) {
+    if (isUnconfirmedInstant(record)) return 'unconfirmed';
     if (record.endedUnobserved) return 'unobserved';
     if (record.status === LISTING_STATUSES.ACTIVE) {
       return toCount(record.filledQuantity) > 0 ? 'partial' : 'active';
@@ -26493,10 +26849,6 @@
     return toMoney(record.price) * toCount(record.filledQuantity);
   }
 
-  function getPendingCount(record) {
-    return record.side === 'sell' ? toCount(record.unclaimedCoinCount) : toCount(record.unclaimedItemCount);
-  }
-
   // 「收入/支出」列取值：出售是收入（稅後金幣，官方資料優先、缺失時按歷史稅率推算），
   // 購買是支出（付了多少：數量 × 單價，不扣稅）。
   function getCollectedCount(record) {
@@ -26509,6 +26861,33 @@
       return record.filledAt || record.cancelledAt || record.expiredAt || record.updatedAt || record.createdAt;
     if (field === 'updatedAt') return record.updatedAt || record.createdAt;
     return record.createdAt;
+  }
+
+  // 物品掛牌頁速覽（掛牌按鈕上方的最近兩次成交）：取該物品該強化等級下、出售 / 收購各自**最近兩條
+  // 成交價**（按建立時間從新到舊，第一次 = 最近的一條、第二次 = 緊挨著的一條）。兩條過濾——
+  // ① 已成交數量為 0 的不算（取消 / 進行中的空單不是成交，避免把上一次真實成交頂掉）；
+  // ② **取消的訂單不算**（使用者口徑：取消的單不參與，哪怕取消前成交過一部分）。
+  // 返回 `{sell, buy}` 兩個陣列（各自按時間從新到舊，沒有記錄時為空陣列）。
+  function findRecentTradedRecords(records, itemHrid, enhancementLevel, limit = 2) {
+    const level = Math.max(0, toCount(enhancementLevel));
+    const count = Math.max(1, toCount(limit) || 2);
+    const recent = {sell: [], buy: []};
+    (Array.isArray(records) ? records : []).forEach((record) => {
+      if (!record || record.itemHrid !== itemHrid) return;
+      if (record.side !== 'sell' && record.side !== 'buy') return;
+      if (toCount(record.enhancementLevel) !== level) return;
+      if (!toCount(record.filledQuantity)) return;
+      if (record.status === LISTING_STATUSES.CANCELLED) return;
+      recent[record.side].push(record);
+    });
+    [
+      'sell', 'buy'
+    ].forEach((side) => {
+      recent[side] = recent[side]
+        .sort((a, b) => (toTimestamp(b.createdAt) || 0) - (toTimestamp(a.createdAt) || 0))
+        .slice(0, count);
+    });
+    return recent;
   }
 
   // query（篩選 / 排序 / 分頁）
@@ -26606,31 +26985,23 @@
   function summarize(records) {
     const summary = {
       count: records.length,
-      orderQuantity: 0,
       filledQuantity: 0,
       nominalSell: 0,
       nominalBuy: 0,
       collectedCoin: 0,
-      pendingCoin: 0,
-      collectedItem: 0,
-      pendingItem: 0,
       net: 0,
       countsByStatus: {},
       countsByType: {}
     };
     records.forEach((record) => {
-      summary.orderQuantity += toCount(record.orderQuantity);
       summary.filledQuantity += toCount(record.filledQuantity);
       const amount = getRecordAmount(record);
       if (record.side === 'sell') {
         summary.nominalSell += amount;
         summary.collectedCoin += toCount(record.collectedCoinCount);
-        summary.pendingCoin += toCount(record.unclaimedCoinCount);
       } else {
         // 購買不扣稅，支出金額就是名義金額（單價 × 已成交數量）。
         summary.nominalBuy += amount;
-        summary.collectedItem += toCount(record.collectedItemCount);
-        summary.pendingItem += toCount(record.unclaimedItemCount);
       }
       const status = getDisplayStatus(record);
       summary.countsByStatus[status] = (summary.countsByStatus[status] || 0) + 1;
@@ -26642,8 +27013,8 @@
     return summary;
   }
 
-  // 分組合計的公共累加器：按 keyOf 分組，逐條累計條數、成交數量、金額與出售/購買兩側口徑。
-  // 出售側金額記 sellAmount、收入記 income（collectedCoin 為同值舊名），購買側金額記 expense/buyAmount。
+  // 分組合計的公共累加器：按 keyOf 分組，逐條累計條數、成交數量與出售/購買兩側口徑。
+  // 出售側金額記 sellAmount、收入記 income；購買側金額記 buyAmount、支出記 expense。
   function accumulateGroups(records, keyOf, createGroup) {
     const groups = new Map();
     records.forEach((record) => {
@@ -26656,15 +27027,10 @@
       group.count += 1;
       group.filledQuantity += filled;
       group.amount += amount;
-      group.nominal += amount;
-      group.pendingCoin += toCount(record.unclaimedCoinCount);
-      group.pendingItem += toCount(record.unclaimedItemCount);
-      group.collectedItem += toCount(record.collectedItemCount);
       if (record.side === 'sell') {
         group.sellCount += 1;
         group.sellAmount += amount;
         group.sellFilledQuantity += filled;
-        group.collectedCoin += toCount(record.collectedCoinCount);
         group.income += toCount(record.collectedCoinCount);
       } else {
         group.buyCount += 1;
@@ -26681,10 +27047,6 @@
       count: 0,
       filledQuantity: 0,
       amount: 0,
-      nominal: 0,
-      collectedCoin: 0,
-      pendingCoin: 0,
-      collectedItem: 0,
       income: 0,
       expense: 0,
       sellAmount: 0,
@@ -26837,6 +27199,344 @@
     return {bucket: effective, requestedBucket: bucket, expectedBucket, from, to, buckets};
   }
 
+  // repair（「管理」頁籤的「資料修復」）
+  // 掃描並修復結構上不一致的記錄；全部是純函式——不改動入引數組與記錄物件，只返回修復後的
+  // 新陣列與各型別的改動條數。掃描與修復共用同一套判定函式，保證介面顯示的條數就是修復時
+  // 實際改動的條數；每類修復都是冪等的（修完再掃為 0）。
+  const REPAIR_TYPE_KEYS = [
+    'duplicateListings', 'statusQuantity', 'unobservedEnded', 'collectedFields', 'amountRecalc',
+    'settleEvidence', 'unknownKey'
+  ];
+  // 「金額偏差過大」的判定閾值：與應得額的差超過「一半」或 1000 金幣（取較大者）才算明顯錯誤。
+  // 閾值以內的差異保留——成交價受價格帶調整、以更優價成交等影響，官方值與按掛牌價的公式值
+  // 本來就可能不一致。
+  const REPAIR_AMOUNT_DEVIATION_RATIO = 0.5;
+  const REPAIR_AMOUNT_DEVIATION_SLACK = 1000;
+  // 本機記錄的鍵一定是官方 id 鍵或直購兜底鍵，其餘鍵（早期測試、手工資料）無法與官方訂單對應。
+  const KNOWN_RECORD_KEY_PREFIXES = [
+    'listing:', 'instant:'
+  ];
+
+  function createRepairReport() {
+    const report = {};
+    REPAIR_TYPE_KEYS.forEach((type) => {
+      report[type] = 0;
+    });
+    return report;
+  }
+
+  function sumClaims(record, field) {
+    return (Array.isArray(record.claims) ? record.claims : []).reduce((sum, claim) => sum + toCount(claim[field]), 0);
+  }
+
+  function isKnownRecordKey(record) {
+    const key = String(record?.key || '');
+    return KNOWN_RECORD_KEY_PREFIXES.some((prefix) => key.startsWith(prefix));
+  }
+
+  // 同一訂單 id 在一個角色桶裡只應有一條記錄：跨裝置匯入（內容去重視窗之外）與早期版本都可能
+  // 留下重複。合併規則與跨裝置合併一致：終態優先、進度與到賬取大、時間取早、領取明細合併。
+  function groupDuplicateListings(records) {
+    const groups = new Map();
+    records.forEach((record) => {
+      if (record.listingId == null) return;
+      const id = String(record.listingId);
+      const group = groups.get(id);
+      if (group) group.push(record);
+      else
+        groups.set(id, [
+          record
+        ]);
+    });
+    return groups;
+  }
+
+  function mergeDuplicateListingGroup(group) {
+    const listingId = String(group[0].listingId);
+    let merged = group[0];
+    group.slice(1).forEach((record) => {
+      merged = mergeRecords(merged, record);
+    });
+    // 主鍵統一用官方 id 鍵（即時鏈路關聯直購記錄時也是這麼建的）；直購記錄保留直購語義。
+    merged = {
+      ...merged,
+      key: buildListingKey(listingId),
+      listingId,
+      kind: group.some((record) => record.kind === 'instant') ? 'instant' : merged.kind
+    };
+    return normalizeRecord(merged) || merged;
+  }
+
+  // 官方狀態是權威：已完成即全部成交（數量按訂單數量補齊）。只處理真正的矛盾——
+  // 已完成但成交數量不足；進度已滿卻仍是進行中（按已完成收尾）。
+  function repairStatusQuantity(record) {
+    const orderQuantity = toCount(record.orderQuantity);
+    if (!orderQuantity) return null;
+    const filledQuantity = toCount(record.filledQuantity);
+    if (record.status === LISTING_STATUSES.FILLED) {
+      if (filledQuantity === orderQuantity) return null;
+      const at = record.filledAt || record.firstFillAt || record.updatedAt || record.createdAt || 0;
+      return normalizeRecord({
+        ...record,
+        filledQuantity: orderQuantity,
+        firstFillAt: record.firstFillAt || at || null,
+        filledAt: record.filledAt || at || null
+      });
+    }
+    if (record.status === LISTING_STATUSES.ACTIVE && filledQuantity >= orderQuantity) {
+      const at = record.firstFillAt || record.updatedAt || record.createdAt || 0;
+      return normalizeRecord({
+        ...record,
+        status: LISTING_STATUSES.FILLED,
+        filledAt: record.filledAt || at || null
+      });
+    }
+    return null;
+  }
+
+  // 出售只會有金幣到賬、購買只會有物品到賬：方向不符的累計值是舊版本寫法或合併留下的殘值，
+  // 清除後歸一化會按當前口徑重新整理。另有幾種欄位級矛盾一起處理：
+  // - 出售側的推算金額必須帶稅率（懸浮提示按稅率說明推算口徑），缺失或與成交時間檔位不符時重算；
+  // - 出售側被官方憑據完全解釋的金額（累計到賬 = 結清明細 + 剩餘未領取，且不低於應得額）不該
+  //   還掛著推算標記，否則懸浮會按稅率說明推算口徑；
+  // - 購買側不扣稅，稅率欄位只能是 0。
+  // 會寫金額欄位的分支（出售的推算標記 / 購買的金幣殘值）在「金額偏差」命中的記錄上讓位給
+  // 金額重算（兩類互斥，避免同一條記錄兩邊都改、報告與實際改動條數對不上）。
+  function repairCollectedFields(record) {
+    const next = {...record};
+    const recalculating = largeAmountDeviationOf(record);
+    let changed = false;
+    if (record.side === 'sell') {
+      if (toCount(record.collectedItemCount) > 0) {
+        next.collectedItemCount = 0;
+        changed = true;
+      }
+      if (record.collectedEstimated && !recalculating) {
+        const computed = expectedCollectedOf(record);
+        const explanations = sumClaims(record, 'coinCount') + toCount(record.unclaimedCoinCount);
+        const explainedByOfficial =
+          toCount(record.collectedCoinCount) > 0 &&
+          explanations === toCount(record.collectedCoinCount) &&
+          (!computed || toCount(record.collectedCoinCount) >= computed.expected);
+        if (explainedByOfficial) {
+          next.collectedEstimated = false;
+          next.collectedTaxRate = 0;
+          changed = true;
+        } else if (
+          computed &&
+          toCount(record.collectedCoinCount) > 0 &&
+          Number(record.collectedTaxRate) !== computed.rate
+        ) {
+          next.collectedTaxRate = computed.rate;
+          changed = true;
+        }
+      }
+    } else {
+      if (Number(record.collectedTaxRate) > 0) {
+        next.collectedTaxRate = 0;
+        changed = true;
+      }
+      if (!record.collectedEstimated && toCount(record.collectedCoinCount) > 0 && !recalculating) {
+        next.collectedCoinCount = 0;
+        next.collectedTaxRate = 0;
+        changed = true;
+      }
+    }
+    if (!changed) return null;
+    return normalizeRecord(next);
+  }
+
+  // 進行中但已不在當前掛單列表裡：官方快照裡沒有這單，說明它早就結束（賣完被領走、取消或過期），
+  // 只是本機沒收到終態訊息——按與登入快照對賬一致的口徑標記「結束（原因未觀測）」，時間標推斷，
+  // 金額隨後按 §7.7 的規則補齊。判定只用「快照之後沒有再觀測過」的記錄：快照之後觀測過的記錄
+  // （含快照之後新建的）快照給不出結論，留給下次登入的快照對賬；進度已滿的記錄交給
+  // 「狀態與成交進度」按已完成收尾，這裡不參與。
+  function repairUnobservedEnded(record, {now = 0, snapshot = null} = {}) {
+    if (!snapshot || !snapshot.ids) return null;
+    if (record.endedUnobserved || record.status !== LISTING_STATUSES.ACTIVE || record.listingId == null) return null;
+    if (snapshot.ids.has(String(record.listingId))) return null;
+    if (!(toTimestamp(record.updatedAt) <= toTimestamp(snapshot.at))) return null;
+    const orderQuantity = toCount(record.orderQuantity);
+    if (orderQuantity && toCount(record.filledQuantity) >= orderQuantity) return null;
+    return normalizeRecord({
+      ...record,
+      endedUnobserved: true,
+      inferredTime: true,
+      updatedAt: now
+    });
+  }
+
+  // 金額偏差：已終結的訂單裡，累計到賬與應得額不一致的按 expectedCollectedOf 的口徑重算
+  // （出售扣官方口徑的稅、購買不扣）——舊版本公式、跨版本合併或手工資料留下的錯誤金額
+  // （實測樣本：同一筆成交被累計兩次時金額正好是應得額的整數倍）。
+  // - **購買側**：口徑就是「數量 × 單價」，只要有出入就是錯的，全部重算；
+  // - **出售側**：官方到賬可能受價格帶調整、以更優價成交影響，只處理「差超過一半或 1000 金幣」
+  //   的明顯錯誤，閾值以內的差異保留；
+  // - 只處理算得出應得額的記錄（數量與單價都有值），算不出的不猜測。
+  function largeAmountDeviationOf(record) {
+    const terminal = TERMINAL_STATUSES.has(record.status) || record.endedUnobserved;
+    if (!terminal) return null;
+    const computed = expectedCollectedOf(record);
+    if (!computed) return null;
+    const collected = toCount(record.collectedCoinCount);
+    const slack =
+      record.side === 'sell'
+        ? Math.max(REPAIR_AMOUNT_DEVIATION_SLACK, Math.floor(computed.expected * REPAIR_AMOUNT_DEVIATION_RATIO))
+        : 0;
+    if (Math.abs(collected - computed.expected) <= slack) return null;
+    return computed;
+  }
+
+  function repairAmountRecalc(record) {
+    const computed = largeAmountDeviationOf(record);
+    if (!computed) return null;
+    return normalizeRecord({
+      ...record,
+      collectedCoinCount: computed.expected,
+      collectedEstimated: true,
+      collectedTaxRate: computed.rate
+    });
+  }
+
+  // 賬對不上：累計到賬既沒有推算標記，又超過「結清明細之和 + 剩餘未領取」——典型是領取明細
+  // 丟失或舊版本直接寫下的金額。補一條結清明細把賬對上，金額本身不動。領取明細有 20 條上限，
+  // 已經記滿的記錄不參與，避免把正常的截斷當成缺憑據；出售裡偏差過大的記錄交給「金額偏差」
+  // 重算金額（兩邊都會動金幣累計，互斥），購買側的金額與物品是兩條獨立賬，不互斥。
+  function repairSettleEvidence(record) {
+    if (record.collectedEstimated) return null;
+    if ((Array.isArray(record.claims) ? record.claims.length : 0) >= CLAIMS_LIMIT) return null;
+    if (record.side === 'sell' && largeAmountDeviationOf(record)) return null;
+    const diffCoin =
+      record.side === 'sell'
+        ? toCount(record.collectedCoinCount) - sumClaims(record, 'coinCount') - toCount(record.unclaimedCoinCount)
+        : 0;
+    const diffItem =
+      record.side === 'buy'
+        ? toCount(record.collectedItemCount) - sumClaims(record, 'itemCount') - toCount(record.unclaimedItemCount)
+        : 0;
+    if (diffCoin <= 0 && diffItem <= 0) return null;
+    const at = record.claimedAt || record.filledAt || record.firstFillAt || record.updatedAt || record.createdAt || 0;
+    return normalizeRecord({
+      ...record,
+      claims: mergeClaims(record.claims, [
+        {at, coinCount: Math.max(0, diffCoin), itemCount: Math.max(0, diffItem)}
+      ]),
+      claimedAt: record.claimedAt || at || null
+    });
+  }
+
+  // 掃描一批記錄的可修復條數：按型別獨立統計（與只勾選該型別時的實際改動條數一致）。
+  function scanRepairIssues(records, {snapshot = null} = {}) {
+    const list = (Array.isArray(records) ? records : []).filter(Boolean);
+    const report = createRepairReport();
+    list.forEach((record) => {
+      if (!isKnownRecordKey(record)) report.unknownKey += 1;
+      if (repairStatusQuantity(record)) report.statusQuantity += 1;
+      if (repairUnobservedEnded(record, {now: 0, snapshot})) report.unobservedEnded += 1;
+      if (repairCollectedFields(record)) report.collectedFields += 1;
+      if (repairAmountRecalc(record)) report.amountRecalc += 1;
+      if (repairSettleEvidence(record)) report.settleEvidence += 1;
+    });
+    groupDuplicateListings(list).forEach((group) => {
+      if (group.length > 1) report.duplicateListings += 1;
+    });
+    return report;
+  }
+
+  // 掃描整個儲存（全部角色與環境的分桶），只讀，供「管理」頁籤顯示每種問題的條數。
+  // snapshots：`{ [分桶鍵]: {at, ids} }`——「進行中但已不在掛單列表」只有拿到過登入快照的
+  // 角色桶才能判斷，沒有快照的桶這一類恆為 0。
+  function scanStoreRepairs(store, {snapshots} = {}) {
+    const report = createRepairReport();
+    Object.entries(store?.buckets || {}).forEach(
+      ([
+        bucket, records
+      ]) => {
+        const part = scanRepairIssues(records, {snapshot: snapshots?.[bucket] || null});
+        REPAIR_TYPE_KEYS.forEach((type) => {
+          report[type] += part[type];
+        });
+      }
+    );
+    return report;
+  }
+
+  // 按選中的型別修復一批記錄（一個角色桶的內容）。順序：先刪無法識別的鍵、再合併重複訂單，
+  // 然後按狀態 → 快照判斷 → 欄位 → 金額的順序修正——後面的判定要看到前面修正後的狀態
+  // （例如快照裡沒有的「進度已滿」記錄先按已完成收尾，就不再算作「結束原因未觀測」）。
+  function repairRecords(records, types, {now = Date.now(), snapshot = null} = {}) {
+    const selected = new Set((Array.isArray(types) ? types : []).filter((type) => REPAIR_TYPE_KEYS.includes(type)));
+    const report = createRepairReport();
+    let list = (Array.isArray(records) ? records : []).filter(Boolean);
+    if (!selected.size) return {records: list.slice(), report};
+    if (selected.has('unknownKey')) {
+      list = list.filter((record) => {
+        if (isKnownRecordKey(record)) return true;
+        report.unknownKey += 1;
+        return false;
+      });
+    }
+    if (selected.has('duplicateListings')) {
+      const groups = groupDuplicateListings(list);
+      const mergedIds = new Set();
+      const next = [];
+      list.forEach((record) => {
+        const id = record.listingId == null ? '' : String(record.listingId);
+        const group = id ? groups.get(id) : null;
+        if (!group || group.length < 2) {
+          next.push(record);
+          return;
+        }
+        if (mergedIds.has(id)) return;
+        mergedIds.add(id);
+        report.duplicateListings += 1;
+        next.push(mergeDuplicateListingGroup(group));
+      });
+      list = next;
+    }
+    list = list.map((record) => {
+      let next = record;
+      if (selected.has('statusQuantity')) {
+        const fixed = repairStatusQuantity(next);
+        if (fixed) {
+          next = fixed;
+          report.statusQuantity += 1;
+        }
+      }
+      if (selected.has('unobservedEnded')) {
+        const fixed = repairUnobservedEnded(next, {now, snapshot});
+        if (fixed) {
+          next = fixed;
+          report.unobservedEnded += 1;
+        }
+      }
+      if (selected.has('collectedFields')) {
+        const fixed = repairCollectedFields(next);
+        if (fixed) {
+          next = fixed;
+          report.collectedFields += 1;
+        }
+      }
+      if (selected.has('amountRecalc')) {
+        const fixed = repairAmountRecalc(next);
+        if (fixed) {
+          next = fixed;
+          report.amountRecalc += 1;
+        }
+      }
+      if (selected.has('settleEvidence')) {
+        const fixed = repairSettleEvidence(next);
+        if (fixed) {
+          next = fixed;
+          report.settleEvidence += 1;
+        }
+      }
+      // updatedAt 既是「這條記錄最近被指令碼改動過」的標記，也是列表快取的簽名來源。
+      return next === record ? record : {...next, updatedAt: now};
+    });
+    return {records: list, report};
+  }
+
   // import / export
   function buildExportPayload(store, {bucketKeys, now, environment, characterId} = {}) {
     const buckets = {};
@@ -26983,7 +27683,8 @@
   // - 入站 `market_listings_updated.endMarketListings`：新增、成交、狀態變化、領取後清除；
   // - 出站 `post_market_order`（isInstantOrder）/ `cancel_market_listing` / `claim_market_listing`。
   // 實際到賬金額以官方未領取數量（`unclaimedCoinCount` 為扣稅後金幣）為權威值；
-  // 只有完全沒有官方資料的記錄（典型是匯入的歷史資料）才按成交當時的稅率推算，見 store.js 的到賬推算。
+  // 只有完全沒有官方資料的記錄（典型是匯入的歷史資料）才按成交當時的稅率推算，見 store.js 的到賬推算；
+  // 「管理」頁籤的資料修復用於清理歷史版本寫下的結構性問題資料，見 store.js 的 repair 段。
 
   const SAVE_DEBOUNCE_MS = 500;
   // 幫助頁籤裡給出的食用工具橋接指令碼地址：固定在提交 4851b02（橋接指令碼 v1.2.0），
@@ -26998,19 +27699,21 @@
     20, 50, 100, 200, 500,
     1000
   ];
+  // 記錄與統計兩個頁籤共用同一套時間範圍選項（口徑都是建立時間）：
+  // 下拉預設項即「建立時間」（兼作控制元件標題、不再另加標籤），不給「今天」（當天資料通常只有幾筆，趨勢圖看不出東西）。
   const TIME_PRESETS = [
-    'all', 'today', '7d', '30d', 'custom'
+    'all', '7d', '15d', '30d', '60d',
+    '90d', '180d', 'custom'
   ];
-  // 統計頁的時間範圍：不給「今天」（當天資料通常只有幾筆，趨勢圖看不出東西），多了近 90 天。
-  // 口徑是建立時間，標籤與記錄頁籤的時間下拉一致（記錄頁籤的預設項也叫「建立時間」）。
-  const STATS_TIME_PRESETS = [
-    'all', '7d', '30d', '90d', 'custom'
-  ];
-  const STATS_TIME_LABEL_KEYS = {
-    all: 'marketHistoryFilterAny',
+  const TIME_PRESET_DAYS = {'7d': 7, '15d': 15, '30d': 30, '60d': 60, '90d': 90, '180d': 180};
+  const TIME_PRESET_LABEL_KEYS = {
+    all: 'marketHistoryTimeAll',
     '7d': 'marketHistoryTime7d',
+    '15d': 'marketHistoryTime15d',
     '30d': 'marketHistoryTime30d',
-    '90d': 'marketHistoryStatsTime90d',
+    '60d': 'marketHistoryTime60d',
+    '90d': 'marketHistoryTime90d',
+    '180d': 'marketHistoryTime180d',
     custom: 'marketHistoryTimeCustom'
   };
   const STATS_SIDE_LABEL_KEYS = {
@@ -27083,16 +27786,11 @@
     accessories: 'marketHistoryCategoryAccessories',
     tools: 'marketHistoryCategoryTools'
   };
-  const TIME_PRESET_LABEL_KEYS = {
-    all: 'marketHistoryTimeAll',
-    today: 'marketHistoryTimeToday',
-    '7d': 'marketHistoryTime7d',
-    '30d': 'marketHistoryTime30d',
-    custom: 'marketHistoryTimeCustom'
-  };
   // 記錄表格的列定義：寬度寫在表頭（table-layout: fixed 以第一行為準），numeric 列右對齊，
   // sortable 列的 key 與 store.sortRecords 支援的排序鍵一致（列頭點選即排序，不再另設工具欄排序）。
   // 首列（核取方塊）與序號列由模板單獨渲染，這裡只貢獻列寬。
+  // 每一列都必須寫寬度：固定佈局下沒有寬度的列在容器變窄時會被壓成 0 寬度（物品列曾整列消失），
+  // 表格同時宣告最小寬度（= 列寬合計，見 styles.css）讓窄容器改為橫向滾動。
   const RECORD_COLUMNS = [
     {key: 'select', width: '2.25rem'}, {
       key: 'index',
@@ -27103,7 +27801,7 @@
       key: 'type',
       labelKey: 'marketHistoryColumnType',
       width: '5.5rem'
-    }, {key: 'item', labelKey: 'marketHistoryColumnItem', sortable: true},
+    }, {key: 'item', labelKey: 'marketHistoryColumnItem', width: '14rem', sortable: true},
     {
       key: 'filledQuantity',
       labelKey: 'marketHistoryColumnProgress',
@@ -27133,6 +27831,7 @@
     active: 'marketHistoryStatusActive',
     partial: 'marketHistoryStatusPartial',
     filled: 'marketHistoryStatusFilled',
+    unconfirmed: 'marketHistoryStatusUnconfirmed',
     cancelled: 'marketHistoryStatusCancelled',
     expired: 'marketHistoryStatusExpired',
     partialCancelled: 'marketHistoryStatusPartialCancelled',
@@ -27157,15 +27856,28 @@
     merge: 'marketHistoryImportModeMerge',
     overwrite: 'marketHistoryImportModeOverwrite'
   };
+  // 「資料修復」的文案 key：核取方塊標籤（帶問題條數）與修復結果各一套，靜態對映不用拼接 key。
+  const REPAIR_LABEL_KEYS = {
+    duplicateListings: 'marketHistoryRepairDuplicate',
+    statusQuantity: 'marketHistoryRepairStatusQuantity',
+    unobservedEnded: 'marketHistoryRepairUnobservedEnded',
+    collectedFields: 'marketHistoryRepairCollectedFields',
+    amountRecalc: 'marketHistoryRepairAmountRecalc',
+    settleEvidence: 'marketHistoryRepairSettleEvidence',
+    unknownKey: 'marketHistoryRepairUnknownKey'
+  };
+  const REPAIR_RESULT_KEYS = {
+    duplicateListings: 'marketHistoryRepairResultDuplicate',
+    statusQuantity: 'marketHistoryRepairResultStatusQuantity',
+    unobservedEnded: 'marketHistoryRepairResultUnobservedEnded',
+    collectedFields: 'marketHistoryRepairResultCollectedFields',
+    amountRecalc: 'marketHistoryRepairResultAmountRecalc',
+    settleEvidence: 'marketHistoryRepairResultSettleEvidence',
+    unknownKey: 'marketHistoryRepairResultUnknownKey'
+  };
 
   function formatItemKey(itemHrid, enhancementLevel) {
     return String(itemHrid || '') + '::' + String(Number(enhancementLevel) || 0);
-  }
-
-  function startOfToday(now) {
-    const date = new Date(now);
-    date.setHours(0, 0, 0, 0);
-    return date.getTime();
   }
 
   function parseDateInput(value, endOfDay = false) {
@@ -27173,6 +27885,21 @@
     if (!text) return null;
     const stamp = Date.parse(text + (endOfDay ? 'T23:59:59.999' : 'T00:00:00'));
     return Number.isFinite(stamp) ? stamp : null;
+  }
+
+  // 時間範圍預設 → 篩選起止時間：記錄與統計兩個頁籤共用（口徑都是建立時間）。
+  function applyTimePreset(filters, now) {
+    const days = TIME_PRESET_DAYS[filters.timePreset];
+    if (days) {
+      filters.timeFrom = now - days * DAY_MS;
+      filters.timeTo = null;
+    } else if (filters.timePreset === 'custom') {
+      filters.timeFrom = parseDateInput(filters.timeFrom, false);
+      filters.timeTo = parseDateInput(filters.timeTo, true);
+    } else {
+      filters.timeFrom = null;
+      filters.timeTo = null;
+    }
   }
 
   // SVG 座標只保留兩位小數，省體積也避免一長串浮點尾巴。
@@ -27236,6 +27963,11 @@
       this.pendingDeleteKey = null;
       this.popoverDismiss = null;
       this.dialogState = this.createDialogState();
+      // 最近一次登入快照（按分桶存訂單 id 與快照時間）：資料修復用它判斷「進行中但已不在掛單列表」。
+      this.listingSnapshots = {};
+      // 物品掛牌頁速覽（訂單簿上方的最近成交條）：兩個方向的節點與渲染簽名（未變化不重建）。
+      this.listingHintNodes = {sell: null, buy: null};
+      this.listingHintSignature = '';
       this.searchTextCache = new Map();
       this.queryCache = {signature: '', records: []};
       this.statsCache = {signature: '', records: []};
@@ -27249,11 +27981,13 @@
           exportScope: 'current',
           exportFormat: 'json',
           importText: '',
-          importFileName: '',
           importMode: 'merge',
           importOverwriteConfirmed: false,
           importReport: null,
-          importError: ''
+          importError: '',
+          // 「資料修復」的勾選型別與上次修復報告（與匯入狀態一致，不跨次保留）。
+          repairSelected: new Set(),
+          repairReport: null
         },
         filters: {
           keyword: '',
@@ -27311,19 +28045,53 @@
       StyleService.ensure('mst-market-history-style', MST_MARKET_HISTORY_CSS);
       this.environment = CONFIG.isTestServer ? 'test' : 'live';
       this.characterId = String(CONFIG.characterId || '');
-      // GM 讀取是非同步介面：先載入歷史，再掛監聽，避免把「讀取中的空儲存」寫回覆蓋已有資料。
+      // GM 讀取是非同步介面：監聽器先同步掛上、事件按到達時間入隊，歷史載入後再依次處理。
+      // 既避免把「讀取中的空儲存」寫回覆蓋已有資料，也避免就緒前（頁面載入後的頭幾秒，
+      // 玩家常在這時點「全部收集」）的領取請求與成交訊息被丟掉。
+      this.ready = false;
+      this.eventQueue = [];
+      this.wsListeners = {
+        init: (event) => this.queueWsEvent('init', event.detail),
+        message: (event) => this.queueWsEvent('message', event.detail),
+        send: (event) => this.queueWsEvent('send', event.detail)
+      };
+      window.addEventListener('mst:ws:init-character-data', this.wsListeners.init);
+      window.addEventListener('mst:ws:message', this.wsListeners.message);
+      window.addEventListener('mst:ws:send', this.wsListeners.send);
+      window.addEventListener('pagehide', () => this.flushSave());
       this.loadStore().then(() => {
-        window.addEventListener('mst:ws:init-character-data', (event) => this.onInitCharacterData(event.detail));
-        window.addEventListener('mst:ws:message', (event) => this.onWsMessage(event.detail));
-        window.addEventListener('mst:ws:send', (event) => this.onWsSend(event.detail));
-        window.addEventListener('pagehide', () => this.flushSave());
+        this.ready = true;
+        if (this.eventQueue.length) {
+          const queued = this.eventQueue;
+          this.eventQueue = [];
+          queued.forEach((item) => this.handleWsEvent(item.kind, item.detail, item.at));
+        }
         this.watchStorage();
-        utils.observeBody(() => this.syncButton());
+        utils.observeBody(() => {
+          this.syncButton();
+          this.syncListingHints();
+        });
+        this.syncListingHints();
         LanguageEvents?.subscribe(() => this.handleLanguageChange());
         // 兜底：指令碼初始化晚於登入快照時，用 DataHub 已儲存的角色資料補一次快照對賬。
         const rawCharacterData = this.ctx.DataHub?.characterData?.raw;
         if (rawCharacterData) this.onInitCharacterData(rawCharacterData);
       });
+    }
+
+    queueWsEvent(kind, detail) {
+      const at = Date.now();
+      if (!this.ready) {
+        this.eventQueue.push({kind, detail, at});
+        return;
+      }
+      this.handleWsEvent(kind, detail, at);
+    }
+
+    handleWsEvent(kind, detail, at) {
+      if (kind === 'init') this.onInitCharacterData(detail, at);
+      else if (kind === 'message') this.onWsMessage(detail, at);
+      else this.onWsSend(detail, at);
     }
 
     async loadStore() {
@@ -27398,6 +28166,8 @@
     }
 
     scheduleSave() {
+      // 記錄隨時可能因成交 / 領取變化，掛牌頁速覽跟著重新整理（不在物品頁時只是一次空查詢）。
+      this.syncListingHints();
       if (this.saveTimer) return;
       this.saveTimer = setTimeout(() => {
         this.saveTimer = null;
@@ -27410,6 +28180,8 @@
         clearTimeout(this.saveTimer);
         this.saveTimer = null;
       }
+      // 儲存尚未載入時不能寫回：此刻的記憶體資料是空桶，寫入會覆蓋已有歷史（事件已排隊，就緒後重放）。
+      if (!this.ready) return;
       try {
         this.store.updatedAt = Date.now();
         this.ctx.GmApi.setValue(this.storageKey(), serializeStore(this.store));
@@ -27421,7 +28193,7 @@
 
     // ---- 官方訊息接入 ----
 
-    onInitCharacterData(data) {
+    onInitCharacterData(data, now = Date.now()) {
       const {CONFIG} = this.ctx;
       const nextCharacterId = String(data?.character?.id ?? CONFIG.characterId ?? this.characterId ?? '');
       const changed = nextCharacterId !== this.characterId;
@@ -27430,11 +28202,25 @@
       if (nextName) this.characterName = nextName;
       if (changed) this.dialogState = this.createDialogState();
       const records = this.getRecords();
-      const now = Date.now();
-      const listings = Array.isArray(data?.myMarketListings) ? data.myMarketListings : [];
-      // 快照只用於補齊與對賬：新出現的時間按登入時間推斷，已有記錄不被覆蓋成推斷時間。
-      applyListingBatch(records, listings, now, {origin: 'snapshot', inferredTime: true});
-      const result = reconcileWithSnapshot(records, listings, now);
+      // 官方確實下發 myMarketListings 時才拿它補齊與對賬；欄位缺失時保持 undefined 傳給
+      // 對賬函式（store 側按「沒有快照」處理），不能在這裡退化成空陣列——空陣列等於
+      // 「我的掛單一條都不剩」，會把本機記錄全部誤標為已領取 / 結束。
+      const listings = data?.myMarketListings;
+      // 快照時間取事件自帶的伺服器時間：指令碼晚於登入事件初始化時（下面用 DataHub 兜底補
+      // 一次對賬），處理時刻晚於快照本身，用它判斷會把「快照之後才觀測到」的記錄誤判成
+      // 已不在掛單列表（結束 / 已領取）。
+      const snapshotAt = parseIsoTimestamp(data?.currentTimestamp) || now;
+      // 快照只用於補齊與對賬：新出現的時間按登入時間推斷（有官方建立時間則直接用官方值），
+      // 已有記錄不被覆蓋成推斷時間；補齊「建立時沒收到訊息、只在快照裡出現」的訂單時，
+      // 環境與角色取當前會話，避免測試服記錄被寫進正式服桶。
+      applyListingBatch(records, Array.isArray(listings) ? listings : [], now, {
+        origin: 'snapshot',
+        inferredTime: true,
+        environment: this.environment,
+        characterId: this.characterId
+      });
+      const result = reconcileWithSnapshot(records, listings, now, {snapshotAt});
+      this.rememberListingSnapshot(listings, snapshotAt);
       if (result.unobserved.length || result.settled.length || changed) {
         console.info('[MST] 市場交易記錄快照對賬:', {
           records: records.length,
@@ -27447,13 +28233,24 @@
       this.refreshOpenDialog();
     }
 
-    onWsMessage(message) {
+    // 記下本會話拿到的登入快照（訂單 id 集合與快照取數時間，取官方 currentTimestamp），
+    // 供資料修復判斷「進行中但已不在掛單列表」的記錄；只有快照之後沒有再觀測過
+    // （updatedAt ≤ 快照時間）的記錄才用這份快照判斷，之後又觀測過的記錄快照給不出結論
+    // （見 store.js 的 repair 段）。
+    rememberListingSnapshot(listings, at) {
+      if (!Array.isArray(listings)) return;
+      this.listingSnapshots[this.currentBucketKey()] = {
+        at,
+        ids: new Set(listings.map((item) => String(item?.id ?? '')).filter(Boolean))
+      };
+    }
+
+    onWsMessage(message, now = Date.now()) {
       if (!message || typeof message !== 'object') return;
       if (message.type !== 'market_listings_updated') return;
       const listings = Array.isArray(message.endMarketListings) ? message.endMarketListings : [];
       if (!listings.length) return;
       const records = this.getRecords();
-      const now = Date.now();
       listings.forEach((listing) => {
         // 直購/直售請求先落記錄的，官方條目到達時按內容關聯為同一條，再按官方 id 跟蹤。
         if (linkInstantRecords(records, listing, now)) return;
@@ -27463,17 +28260,17 @@
             listing
           ],
           now,
-          {origin: 'update'}
+          {origin: 'update', environment: this.environment, characterId: this.characterId}
         );
       });
       this.scheduleSave();
       this.refreshOpenDialog();
     }
 
-    onWsSend(message) {
+    onWsSend(message, now = Date.now()) {
       if (!message || typeof message !== 'object') return;
       const records = this.getRecords();
-      const result = applyOutgoingMessage(records, message, Date.now(), {
+      const result = applyOutgoingMessage(records, message, now, {
         environment: this.environment,
         characterId: this.characterId,
         characterName: this.characterName,
@@ -27537,6 +28334,113 @@
       this.buttonAnchor = null;
     }
 
+    // ---- 物品掛牌頁速覽（掛牌按鈕上方的最近兩次成交） ----
+
+    // 進入物品掛牌頁（訂單簿檢視）時，在「+ 新出售掛牌 / + 新購買掛牌」按鈕那一行的兩端各顯示自己
+    // 最近兩次出售 / 收購的單價（第一次 / 第二次，按建立時間從舊到新）；提示條相對按鈕行絕對定位，
+    // 不參與按鈕行的 flex 佈局。物品與強化等級從 MarketplacePanel 的 React state 讀取；訂單簿容器
+    // 只在官方資料到達後才渲染（同時作為「當前是訂單簿檢視」的判據，物品摘要檢視也有按鈕行但不顯示），
+    // 所以由頁面觀察器反覆同步（節點被遊戲重渲染清掉後自動補回）。
+    syncListingHints() {
+      if (!this.ready) return;
+      const {DataHub, GameUiAdapter, i18n} = this.ctx;
+      const books = GameUiAdapter.query('marketOrderBooks');
+      const host = books ? GameUiAdapter.query('marketNewListingButtons') : null;
+      const state = books ? readMarketplacePanelState(DataHub.getReactFiber(books)) : null;
+      const itemHrid = state?.itemHrid;
+      if (!books || !host || !itemHrid) {
+        this.teardownListingHints();
+        return;
+      }
+      const level = Math.max(0, Math.floor(Number(state.enhancementLevel) || 0));
+      const recent = findRecentTradedRecords(this.getRecords(), itemHrid, level);
+      const sides = [
+        'sell', 'buy'
+      ];
+      const signature =
+        itemHrid +
+        '|' +
+        level +
+        '|' +
+        i18n.locale +
+        '|' +
+        sides
+          .map((side) =>
+            recent[side]
+              .map((record) => String(record.key || '') + ':' + Number(record.price) + ':' + (record.updatedAt || 0))
+              .join(',')
+          )
+          .join('|');
+      if (signature === this.listingHintSignature && this.listingHintsConnected()) return;
+      this.removeListingHintNodes();
+      this.listingHintSignature = signature;
+      sides.forEach((side) => {
+        if (!recent[side].length) return;
+        const hint = this.buildListingHint(side, recent[side]);
+        host.appendChild(hint);
+        this.listingHintNodes[side] = hint;
+      });
+    }
+
+    // 簽名沒變但遊戲重渲染把節點清掉時同樣要重建：只要掛上的節點有斷開的就不算完整。
+    listingHintsConnected() {
+      return [
+        'sell', 'buy'
+      ].every((side) => {
+        const node = this.listingHintNodes[side];
+        return node == null || node.isConnected;
+      });
+    }
+
+    // 一側的提示條：只顯示單價、沒有文字標籤，懸浮給出該條的完整明細。兩條按時間從新到舊排
+    // （最近的一條在前，第二條是緊挨著的一條）；價格用遊戲市場的寫法（與訂單簿裡的價格一致）。
+    buildListingHint(side, records) {
+      const {utils} = this.ctx;
+      const hint = document.createElement('div');
+      hint.className = 'mst-market-history-listing-hint mst-market-history-listing-hint-' + side;
+      records.forEach((record) => {
+        const item = document.createElement('span');
+        item.className = 'mst-market-history-listing-hint-item';
+        item.title = this.listingHintTitle(record);
+        item.textContent = utils.formatMarketplacePrice(record.price);
+        hint.append(item);
+      });
+      return hint;
+    }
+
+    // 懸浮明細：型別 + 單價 × 成交數量 + 金額（精確值）+ 建立時間；未確認 / 推斷時間等備註照常帶上。
+    listingHintTitle(record) {
+      const {i18n} = this.ctx;
+      const lines = [
+        i18n.t(
+          'marketHistoryListingHintTitle',
+          i18n.t(this.typeLabelKey(getRecordType(record))),
+          this.rawValueText(record.price),
+          this.rawValueText(record.filledQuantity),
+          this.rawValueText(getRecordAmount(record)),
+          this.formatTime(record.createdAt)
+        )
+      ];
+      const note = this.recordNote(record);
+      if (note) lines.push(note);
+      return lines.join('\n');
+    }
+
+    // 離開訂單簿檢視（或換物品）時清掉節點；簽名一併失效，回來時重建。
+    teardownListingHints() {
+      this.removeListingHintNodes();
+      this.listingHintSignature = '';
+    }
+
+    removeListingHintNodes() {
+      [
+        'sell', 'buy'
+      ].forEach((side) => {
+        this.listingHintNodes[side]?.remove();
+        this.listingHintNodes[side] = null;
+      });
+    }
+
     handleLanguageChange() {
       const {i18n} = this.ctx;
       this.updateButtonLabel();
@@ -27586,17 +28490,7 @@
 
     resolveFilters() {
       const filters = {...this.dialogState.filters};
-      const now = Date.now();
-      if (filters.timePreset === 'today') filters.timeFrom = startOfToday(now);
-      else if (filters.timePreset === '7d') filters.timeFrom = now - 7 * DAY_MS;
-      else if (filters.timePreset === '30d') filters.timeFrom = now - 30 * DAY_MS;
-      else if (filters.timePreset === 'custom') {
-        filters.timeFrom = parseDateInput(filters.timeFrom, false);
-        filters.timeTo = parseDateInput(filters.timeTo, true);
-      } else {
-        filters.timeFrom = null;
-        filters.timeTo = null;
-      }
+      applyTimePreset(filters, Date.now());
       return filters;
     }
 
@@ -27626,21 +28520,11 @@
       return sorted;
     }
 
-    // 統計頁的篩選條件（與列表篩選完全獨立）：時間範圍按「建立時間」算（介面標註同名），
+    // 統計頁的篩選條件（與列表篩選完全獨立）：時間範圍按「建立時間」算（與記錄頁籤同一套選項），
     // 另加方向 / 分類 / 關鍵詞。
     resolveStatsFilters() {
       const filters = {...this.dialogState.stats.filters};
-      const now = Date.now();
-      if (filters.timePreset === '7d') filters.timeFrom = now - 7 * DAY_MS;
-      else if (filters.timePreset === '30d') filters.timeFrom = now - 30 * DAY_MS;
-      else if (filters.timePreset === '90d') filters.timeFrom = now - 90 * DAY_MS;
-      else if (filters.timePreset === 'custom') {
-        filters.timeFrom = parseDateInput(filters.timeFrom, false);
-        filters.timeTo = parseDateInput(filters.timeTo, true);
-      } else {
-        filters.timeFrom = null;
-        filters.timeTo = null;
-      }
+      applyTimePreset(filters, Date.now());
       filters.sides = filters.side && filters.side !== 'all' ? [
               filters.side
             ] : [];
@@ -27677,6 +28561,11 @@
 
     formatMoney(value) {
       return this.ctx.utils.formatCompactNumber(Number(value) || 0, 2);
+    }
+
+    // 單價列按遊戲市場的價格寫法展示（與訂單簿、掛牌頁速覽一致）：10 萬以下整數、10 萬起 K / M / B / T。
+    formatUnitPrice(value) {
+      return this.ctx.utils.formatMarketplacePrice(value);
     }
 
     formatTime(value) {
@@ -27740,8 +28629,11 @@
             : `${Number(record.collectedItemCount) || 0}`)
       );
       lines.push(i18n.t('marketHistoryRawValue') + '：' + this.rawValueText(collected));
-      if (record.collectedEstimated) {
-        // 購買不扣稅，不寫「（1 − 0% 稅率）」。
+      // 官方稅費與掛牌價不符的記錄（價格隨行情移動、或以更優價成交）：金額來自官方稅費允許的
+      // 區間下限，懸浮給出區間與稅率，列表裡的「金額」列按掛牌價計算、只作參考。
+      const derived = taxDerivedAmountOf(record);
+      if (record.collectedEstimated && !derived) {
+        // 購買不扣稅，不寫「（1 − 0% 稅率）」；區間價記錄的倒算口徑由下面一行說明。
         const rate = Number(record.collectedTaxRate) || 0;
         lines.push(
           rate > 0
@@ -27754,13 +28646,17 @@
           i18n.t('marketHistoryTaxTaken') + '：' + this.formatMoney(record.taxTaken) + ' ' + i18n.t('marketHistoryCoin')
         );
       }
-      lines.push(
-        i18n.t('marketHistoryPending') +
-          '：' +
-          (record.side === 'sell'
-            ? this.formatMoney(record.unclaimedCoinCount) + ' ' + i18n.t('marketHistoryCoin')
-            : `${Number(record.unclaimedItemCount) || 0}`)
-      );
+      if (derived) {
+        lines.push(
+          i18n.t(
+            'marketHistoryTaxDerived',
+            this.rawValueText(derived.grossLow),
+            this.rawValueText(derived.grossHigh),
+            String(Math.round(derived.rate * 100))
+          )
+        );
+      }
+      // 待領取只是臨時中間狀態，金額在成交完成時就已計入，不在這裡展示。
       (record.claims || []).forEach((claim) => {
         lines.push(
           this.formatTime(claim.at) +
@@ -27773,7 +28669,7 @@
 
     recordNote(record) {
       const {i18n} = this.ctx;
-      if (record.kind === 'instant' && record.listingId == null) return i18n.t('marketHistoryInstantFallback');
+      if (isUnconfirmedInstant(record)) return i18n.t('marketHistoryInstantFallback');
       if (record.endedUnobserved) return i18n.t('marketHistoryUnobservedNote');
       if (record.inferredTime) return i18n.t('marketHistoryInferredTime');
       return '';
@@ -27786,6 +28682,10 @@
       this.dialogState.page = 1;
       this.dialogState.openFilterPanel = null;
       this.dialogState.selected = new Set();
+      // 匯入內容（可能是整份匯出檔案的大文本）不跨次保留：避免下次開啟時渲染大文本造成卡頓，
+      // 也避免誤把上次的內容當成這次要匯入的資料。
+      this.resetImportState();
+      this.resetRepairState();
       return Notifier.html({
         title: i18n.t('marketHistoryTitle'),
         width: 'min(76rem, calc(100vw - 1rem))',
@@ -27802,9 +28702,29 @@
           this.toolbarRoot = null;
           this.contentRoot = null;
           this.pendingDeleteKey = null;
+          // 關閉即釋放匯入文本與預覽結果，不留大字串在記憶體裡；資料修復的勾選與報告同樣清空。
+          this.resetImportState();
+          this.resetRepairState();
           this.unbindPopoverDismiss();
         }
       });
+    }
+
+    // 重置「管理」頁籤的匯入狀態（文本、模式、覆蓋確認、預覽報告與錯誤提示）。
+    resetImportState() {
+      const panel = this.dialogState.panel;
+      panel.importText = '';
+      panel.importMode = 'merge';
+      panel.importOverwriteConfirmed = false;
+      panel.importReport = null;
+      panel.importError = '';
+    }
+
+    // 重置「管理」頁籤的資料修復狀態（勾選型別與上次修復報告）。
+    resetRepairState() {
+      const panel = this.dialogState.panel;
+      panel.repairSelected = new Set();
+      panel.repairReport = null;
     }
 
     // 彈窗內所有區域都「每次新建容器再渲染」：本模組模板結構會隨狀態變化（工具欄按頁籤顯隱、
@@ -27822,6 +28742,8 @@
     // 資料變化時重新整理已開啟的彈窗：內容區總是重建，工具欄只在 forceToolbar 時重建，
     // 避免鍵盤輸入（關鍵詞 / 區間數字）在即時訊息到達時被整塊重建打斷。
     refreshOpenDialog({forceToolbar = false} = {}) {
+      // 記錄變化 / 語言切換 / 其他標籤頁合併都可能改變掛牌頁速覽（與彈窗是否開啟無關）。
+      this.syncListingHints();
       if (!this.root?.isConnected) return;
       if (forceToolbar) this.renderToolbar();
       this.renderContent();
@@ -28397,6 +29319,20 @@
       const statusLabel = i18n.t(this.statusLabelKey(status));
       const itemLabel = this.itemLabel(record);
       const endTime = record.filledAt || record.cancelledAt || record.expiredAt;
+      // 官方稅費與掛牌價不符的記錄（價格隨行情移動、或以更優價成交）：「金額」列（單價 × 數量）
+      // 與真實成交額有出入——給一個星號標記，懸浮裡給出官方稅費允許的成交額區間。
+      const derived = taxDerivedAmountOf(record);
+      const amountMark = derived
+        ? TemplateRenderer.html`<span
+            class="mst-market-history-price-mark"
+            title=${i18n.t(
+              'marketHistoryTaxDerived',
+              this.rawValueText(derived.grossLow),
+              this.rawValueText(derived.grossHigh),
+              String(Math.round(derived.rate * 100))
+            )}
+          >*</span>`
+        : null;
       // 零值 / 空值弱化，避免「0」「—」與真實數值搶注意力。
       const muted = (text) => TemplateRenderer.html`<span class="mst-market-history-muted">${text}</span>`;
       const money = (value) => (Number(value) ? this.formatMoney(value) : muted('0'));
@@ -28435,11 +29371,12 @@
       </div>
     </td>
     <td class="mst-market-history-number-cell">${progress}</td>
-    <td class="mst-market-history-number-cell" title=${this.rawValueText(record.price)}>${money(record.price)}</td>
-    <td class="mst-market-history-number-cell" title=${this.rawValueText(amount)}>${money(amount)}</td>
+    <td class="mst-market-history-number-cell" title=${this.rawValueText(record.price)}>${
+      Number(record.price) ? this.formatUnitPrice(record.price) : muted('0')
+    }</td>
+    <td class="mst-market-history-number-cell" title=${this.rawValueText(amount)}>${money(amount)}${amountMark}</td>
     <td class=${'mst-market-history-number-cell' + collectedTone} title=${this.collectedHint(record)}>
       ${money(collected)}
-      ${this.formatPendingSuffix(record)}
     </td>
     <td>${timeCell(record.createdAt)}</td>
     <td>${timeCell(endTime)}</td>
@@ -28453,14 +29390,6 @@
       >&times;</button>
     </td>
   </tr>`;
-    }
-
-    formatPendingSuffix(record) {
-      const pending = getPendingCount(record);
-      if (!pending) return null;
-      const {TemplateRenderer, i18n} = this.ctx;
-      // 列寬有限，行內只給增量數字，「待領取」的名稱放在 title 與合計口徑裡。
-      return TemplateRenderer.html`<span class="mst-market-history-pending" title=${i18n.t('marketHistoryPending')}>+${this.formatMoney(pending)}</span>`;
     }
 
     // 底欄合計分組：一個範圍（本頁合計 / 篩選總計）內的「標籤 + 數值」，不含條數；
@@ -28520,8 +29449,8 @@
     statsFilterBarTemplate() {
       const {TemplateRenderer, i18n} = this.ctx;
       const filters = this.dialogState.stats.filters;
-      const timeOptions = STATS_TIME_PRESETS.map(
-        (key) => TemplateRenderer.html`<option value=${key}>${i18n.t(STATS_TIME_LABEL_KEYS[key])}</option>`
+      const timeOptions = TIME_PRESETS.map(
+        (key) => TemplateRenderer.html`<option value=${key}>${i18n.t(TIME_PRESET_LABEL_KEYS[key])}</option>`
       );
       const sideOptions = [
         'all', 'sell', 'buy'
@@ -28535,17 +29464,14 @@
       };
       return TemplateRenderer.html`
     <div class="mst-market-history-stats-filters">
-      <label class="mst-market-history-inline">
-        <span>${i18n.t('marketHistoryStatsTimeField')}</span>
-        <select
-          class="mst-market-history-select"
-          .value=${filters.timePreset}
-          @change=${(event) =>
-            apply(() => {
-              filters.timePreset = event.target.value;
-            })}
-        >${timeOptions}</select>
-      </label>
+      <select
+        class="mst-market-history-select"
+        .value=${filters.timePreset}
+        @change=${(event) =>
+          apply(() => {
+            filters.timePreset = event.target.value;
+          })}
+      >${timeOptions}</select>
       ${
         filters.timePreset === 'custom'
           ? TemplateRenderer.html`
@@ -29008,7 +29934,9 @@
       </td>
       <td class="mst-market-history-number-cell" title=${this.rawValueText(item.count)}>${String(item.count)}</td>
       <td class="mst-market-history-number-cell" title=${this.rawValueText(item.filledQuantity)}>${utils.formatCompactNumber(item.filledQuantity, 0)}</td>
-      <td class="mst-market-history-number-cell" title=${this.rawValueText(item.weightedPrice)}>${this.formatMoney(item.weightedPrice)}</td>
+      <td class="mst-market-history-number-cell" title=${this.rawValueText(item.weightedPrice)}>${this.formatUnitPrice(
+        item.weightedPrice
+      )}</td>
       <td class="mst-market-history-number-cell" title=${this.rawValueText(item.sellAmount)}>${this.formatMoney(item.sellAmount)}</td>
       <td class="mst-market-history-number-cell" title=${this.rawValueText(item.buyAmount)}>${this.formatMoney(item.buyAmount)}</td>
       <td class="mst-market-history-number-cell mst-market-history-income-cell" title=${this.rawValueText(item.income)}>${this.formatMoney(item.income)}</td>
@@ -29174,7 +30102,7 @@
       this.refreshOpenDialog({forceToolbar: true});
     }
 
-    // 管理頁籤：匯入與匯出兩塊（原工具欄按鈕），各自獨立成區。
+    // 管理頁籤：匯入、匯出與資料修復三塊（原工具欄按鈕），各自獨立成區。
     manageTemplate() {
       const {TemplateRenderer, i18n} = this.ctx;
       return TemplateRenderer.html`
@@ -29191,6 +30119,7 @@
       </div>
       ${this.exportFormTemplate()}
     </section>
+    ${this.repairFormTemplate()}
   </div>`;
     }
 
@@ -29344,7 +30273,7 @@
         ), i18n.t('marketHistoryColumnType'), i18n.t('marketHistoryColumnItem'), i18n.t('marketHistoryColumnProgress'), i18n.t('marketHistoryColumnPrice'),
         i18n.t(
           'marketHistoryColumnNominal'
-        ), i18n.t('marketHistoryColumnCollected'), i18n.t('marketHistoryTotalsPending'), i18n.t('marketHistoryColumnCreatedAt'), i18n.t('marketHistoryColumnFilledAt')
+        ), i18n.t('marketHistoryColumnCollected'), i18n.t('marketHistoryColumnCreatedAt'), i18n.t('marketHistoryColumnFilledAt')
       ];
       const rows = records.map((record) => [
         i18n.t(
@@ -29352,7 +30281,7 @@
         ), i18n.t(this.typeLabelKey(getRecordType(record))), this.itemLabel(record), `${record.filledQuantity} / ${record.orderQuantity}`, record.price,
         getRecordAmount(
           record
-        ), getCollectedCount(record), getPendingCount(record), this.formatTime(record.createdAt), this.formatTime(getSortTimestamp(record, 'filledAt'))
+        ), getCollectedCount(record), this.formatTime(record.createdAt), this.formatTime(getSortTimestamp(record, 'filledAt'))
       ]);
       const csv =
         '\ufeff' +
@@ -29472,10 +30401,11 @@
       if (!file) return;
       const reader = new FileReader();
       reader.onload = () => {
-        if (this.dialogState.view !== 'manage') return;
+        // 彈窗已關閉（root 置空）或已離開「管理」頁籤：丟棄讀取結果，
+        // 否則關閉後非同步回撥仍會把大文本寫回記憶體、下次開啟又重新顯示。
+        if (!this.root || this.dialogState.view !== 'manage') return;
         const panel = this.dialogState.panel;
         panel.importText = String(reader.result || '');
-        panel.importFileName = file.name;
         panel.importReport = null;
         panel.importError = '';
         this.refreshOpenDialog({forceToolbar: true});
@@ -29532,6 +30462,100 @@
       if (reason === 'no-records') return i18n.t('marketHistoryImportErrorEmpty');
       return i18n.t('marketHistoryImportErrorFormat');
     }
+
+    // ---- 資料修復（「管理」頁籤的第三塊）----
+
+    // 資料修復區：掃描全部角色與環境的記錄，按型別勾選後一次性修復；修復前可先在匯出區備份。
+    // 條數來自只讀掃描（store.js 的 scanStoreRepairs），沒問題的型別核取方塊置灰不可勾選。
+    repairFormTemplate() {
+      const {TemplateRenderer, i18n} = this.ctx;
+      const panel = this.dialogState.panel;
+      const counts = this.repairCounts();
+      const total = REPAIR_TYPE_KEYS.reduce((sum, type) => sum + (counts[type] || 0), 0);
+      const options = REPAIR_TYPE_KEYS.map((type) => {
+        const count = counts[type] || 0;
+        return TemplateRenderer.html`
+    <label class="mst-market-history-checkbox">
+      <input
+        type="checkbox"
+        .checked=${count > 0 && panel.repairSelected.has(type)}
+        ?disabled=${count === 0}
+        @change=${(event) => {
+          if (event.target.checked) panel.repairSelected.add(type);
+          else panel.repairSelected.delete(type);
+          this.refreshOpenDialog();
+        }}
+      />
+      <span>${i18n.t(REPAIR_LABEL_KEYS[type], count)}</span>
+    </label>`;
+      });
+      const report = panel.repairReport;
+      const reportLines = report
+        ? REPAIR_TYPE_KEYS.filter((type) => report[type] > 0).map(
+            (type) => TemplateRenderer.html`
+    <div class="mst-market-history-aux-hint">${i18n.t(REPAIR_RESULT_KEYS[type], report[type])}</div>`
+          )
+        : [];
+      const selectedCount = REPAIR_TYPE_KEYS.filter(
+        (type) => (counts[type] || 0) > 0 && panel.repairSelected.has(type)
+      ).length;
+      return TemplateRenderer.html`
+    <section class="mst-market-history-manage-section">
+      <div class="mst-market-history-aux-head">
+        <span class="mst-market-history-aux-title">${i18n.t('marketHistoryRepairTitle')}</span>
+      </div>
+      <div class="mst-market-history-aux-hint">${i18n.t('marketHistoryRepairHint')}</div>
+      ${
+        total > 0
+          ? TemplateRenderer.html`
+    <div class="mst-market-history-aux-group">${options}</div>`
+          : TemplateRenderer.html`
+    <div class="mst-market-history-aux-hint">${i18n.t('marketHistoryRepairNothing')}</div>`
+      }
+      ${reportLines}
+      <div class="mst-market-history-aux-actions">
+        <button
+          type="button"
+          class="mst-market-history-button"
+          ?disabled=${selectedCount === 0}
+          @click=${() => this.applyRepair()}
+        >${i18n.t('marketHistoryRepairApply')}</button>
+      </div>
+    </section>`;
+    }
+
+    // 資料修復的掃描結果（只讀）：全部角色與環境分桶的問題條數合計；
+    // 「進行中但已不在掛單列表」按本會話拿到的登入快照判斷，沒有快照的分桶這一類恆為 0。
+    repairCounts() {
+      return scanStoreRepairs(this.store, {snapshots: this.listingSnapshots});
+    }
+
+    // 應用資料修復：只處理本次勾選且確實有問題的型別，逐桶修復後整體儲存，並按型別給出改動條數。
+    applyRepair() {
+      const {i18n, Notifier} = this.ctx;
+      const panel = this.dialogState.panel;
+      const counts = this.repairCounts();
+      const selected = REPAIR_TYPE_KEYS.filter((type) => (counts[type] || 0) > 0 && panel.repairSelected.has(type));
+      if (!selected.length) return;
+      const now = Date.now();
+      const report = createRepairReport();
+      Object.keys(this.store.buckets || {}).forEach((bucket) => {
+        const result = repairRecords(this.store.buckets[bucket], selected, {
+          now,
+          snapshot: this.listingSnapshots[bucket] || null
+        });
+        if (result.records.length) this.store.buckets[bucket] = result.records;
+        else delete this.store.buckets[bucket];
+        REPAIR_TYPE_KEYS.forEach((type) => {
+          report[type] += result.report[type];
+        });
+      });
+      panel.repairReport = report;
+      panel.repairSelected = new Set();
+      this.scheduleSave();
+      this.refreshOpenDialog();
+      Notifier?.toast(i18n.t('marketHistoryRepairDone'), 'success');
+    }
   }
 
   var MST_MARKETPLACE_CART_CSS = String.raw`.mst-marketplace-cart{display:inline-flex}
@@ -29540,30 +30564,6 @@
 
   // 市場加購固定數量：把“市場當前物品”加入購物車 1 個。
   const MARKETPLACE_CART_QUANTITY = 1;
-
-  // marketplace-cart-state
-  // 從錨點 DOM 的 React fiber 鏈向上找 MarketplacePanel 類元件例項並返回其 state；
-  // 遊戲原始碼（MarketplacePanel 元件）該 state 同時含 marketListingsView/itemHrid/enhancementLevel，
-  // 訂單簿檢視下 enhancementLevel 就是當前檢視的強化等級，可增強物品據此保留等級。
-  function readMarketplacePanelState(fiber) {
-    let current = fiber;
-    while (current) {
-      const instance = current.stateNode;
-      const state = instance?.state;
-      if (
-        state &&
-        typeof state === 'object' &&
-        'marketListingsView' in state &&
-        'itemHrid' in state &&
-        'enhancementLevel' in state &&
-        typeof instance.handleRefresh === 'function'
-      ) {
-        return state;
-      }
-      current = current.return;
-    }
-    return null;
-  }
 
   // marketplace-cart-feature
   class MarketplaceCartFeature {
