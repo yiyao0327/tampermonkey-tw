@@ -2,14 +2,21 @@
 // @name         公會助手
 // @name:en      Milky Way Idle Guild Assistant
 // @namespace    https://www.milkywayidle.com/
-// @version      1.2.63
+// @version      1.2.64
 // @author       柆雨
 // @license      MIT
 // @homepageURL  https://github.com/LaYuDr/milky-way-idle-guild-credit-optimizer
-// @description  銀河奶牛公會助手：比較信用點兌換成本、規劃神龕升級與公會建設、儲存歷史試煉統計；不會自動交易、兌換或升級，不會上傳賬號資料。
-// @description:en Read-only guild assistant for credit exchange comparisons, shrine and construction planning, and trial history; does not automate buying, selling, exchanging, or upgrading, and does not upload account data.
+// @description  銀河奶牛公會助手：比較信用點兌換成本、規劃神龕升級與公會建設、儲存歷史試煉統計。
+// @description:en Read-only guild assistant for credit exchange comparisons, shrine and construction planning, and trial history.
 // @match        https://www.milkywayidle.com/*
 // @match        https://www.milkywayidlecn.com/*
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_addValueChangeListener
+// @grant        GM_removeValueChangeListener
+// @grant        GM_xmlhttpRequest
+// @connect      ukpyedhl.cn-hk1.rainapp.top
+// @antifeature  tracking Installation and daily activity statistics; see the script's settings and privacy details.
 // @grant        GM_addElement
 // @grant        unsafeWindow
 // @sandbox      raw
@@ -18,8 +25,498 @@
 // @updateURL https://raw.githubusercontent.com/yiyao0327/tampermonkey-tw/main/dist/Milky Way Idle Guild Assistant.user.js
 // ==/UserScript==
 
+
+// LAYU_USAGE_START mwi_guild
+/* Usage reporting policies are explicit per plugin; never loads remote code. */
+(function () {
+  "use strict";
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+  function createUsageClient({
+    pluginId,
+    version,
+    endpoint,
+    defaultEnabled = false,
+    reportOptOut = false,
+    getValue,
+    setValue,
+    request,
+    crypto = globalThis.crypto,
+    now = Date.now,
+    locks = globalThis.navigator?.locks
+  }) {
+    const url = new URL(endpoint);
+    if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash || url.pathname !== "/")
+      throw new Error("HTTPS origin required");
+    if (!/^[a-z][a-z0-9_]{0,47}$/.test(pluginId) || !/^[a-zA-Z0-9._+-]{1,32}$/.test(version))
+      throw new Error("Invalid plugin metadata");
+    const key = `layu_usage_v1_${pluginId}`;
+    let busy = false,
+      nextTry = 0,
+      failures = 0,
+      generation = 0,
+      stopped = false;
+    let settingsQueue = Promise.resolve();
+    const day = () => new Date(now() + 8 * 3600000).toISOString().slice(0, 10);
+    async function enabled() {
+      return !stopped && (await getValue(`${key}_consent`, defaultEnabled)) === true;
+    }
+    async function sendReport() {
+      if (stopped || busy || now() < nextTry) return false;
+      busy = true;
+      const ticket = generation;
+      try {
+        if (!(await enabled()) || (await getValue(`${key}_day`, "")) === day()) return false;
+        // Default-on policies may create an ID, but must never overwrite saved opt-outs.
+        let id = await getValue(`${key}_id`, "");
+        if (!UUID.test(id) && defaultEnabled && ticket === generation && (await enabled())) {
+          await ensureIdentity();
+          id = await getValue(`${key}_id`, "");
+        }
+        if (!UUID.test(id)) return false;
+        const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${pluginId}\0${id}`));
+        if (ticket !== generation || !(await enabled())) return false;
+        const sentDay = day();
+        const installationHash = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+        const response = await request({
+          method: "POST",
+          url: new URL("/v1/heartbeat", url).href,
+          headers: { "Content-Type": "application/json" },
+          data: JSON.stringify({
+            plugin_id: pluginId,
+            installation_hash: installationHash,
+            version
+          }),
+          anonymous: true,
+          redirect: "error",
+          timeout: 10000
+        });
+        if (
+          response.status !== 200 ||
+          (response.finalUrl && response.finalUrl !== new URL("/v1/heartbeat", url).href) ||
+          JSON.parse(response.responseText).ok !== true
+        )
+          throw new Error("Usage request failed");
+        if (ticket === generation && (await enabled())) await setValue(`${key}_day`, sentDay);
+        failures = 0;
+        nextTry = now() + 60000;
+        return true;
+      } catch (_) {
+        failures += 1;
+        nextTry = now() + Math.min(6 * 3600000, 60000 * 2 ** Math.min(failures, 9));
+        return false;
+      } finally {
+        busy = false;
+      }
+    }
+    function invalidate() {
+      generation += 1;
+    }
+    async function ensureIdentity() {
+      if (!UUID.test(await getValue(`${key}_id`, ""))) await setValue(`${key}_id`, crypto.randomUUID());
+      if (!UUID.test(await getValue(`${key}_id`, ""))) throw new Error("Identity was not saved");
+    }
+    async function sendOptOut() {
+      // One attempt per actual off transition; no identity, queue, retry or heartbeat accounting.
+      try {
+        await request({
+          method: "POST",
+          url: new URL("/v1/opt-out", url).href,
+          headers: { "Content-Type": "application/json" },
+          data: JSON.stringify({ plugin_id: pluginId, version }),
+          anonymous: true,
+          redirect: "error",
+          timeout: 10000
+        });
+      } catch (_) {
+        /* Disabling is saved locally even when the one-time event cannot be delivered. */
+      }
+    }
+    function setEnabled(value) {
+      invalidate();
+      settingsQueue = settingsQueue
+        .catch(() => {})
+        .then(async () => {
+          const wasEnabled = await enabled();
+          if (value === true) {
+            await ensureIdentity();
+          }
+          await setValue(`${key}_consent`, value === true);
+          if (value !== true && wasEnabled && reportOptOut) void sendOptOut();
+        });
+      return settingsQueue;
+    }
+    async function report() {
+      try {
+        return locks ? await locks.request(key, sendReport) : await sendReport();
+      } catch (_) {
+        return false;
+      }
+    }
+    return {
+      report,
+      setEnabled,
+      enabled,
+      invalidate,
+      key,
+      stop() {
+        stopped = true;
+        invalidate();
+      }
+    };
+  }
+
+  function boot(config, gm, env = globalThis) {
+    // The loader and page runtime are intentionally excluded from production counting.
+    if (
+      config.development ||
+      env.top !== env.self ||
+      !/^https:\/\/(www\.)?milkywayidle(cn)?\.com$/.test(env.location?.origin || "")
+    )
+      return null;
+    if (![gm.getValue, gm.setValue, gm.request, gm.listen, gm.unlisten].every((f) => typeof f === "function"))
+      return null;
+    const guard = `__layuUsage_${config.pluginId}`;
+    if (env[guard]) return null;
+    env[guard] = true;
+    let disposed = false,
+      suspended = false,
+      timer = null,
+      listenerId = null;
+    let commandBusy = false;
+    const pending = new Set();
+    const optOutPending = new Set();
+    const settings = new Map();
+    const selector = `[data-layu-usage-settings="${config.pluginId}"]`;
+    let settingsError = false;
+    let observer = null;
+    const client = createUsageClient({
+      ...config,
+      crypto: env.crypto,
+      locks: env.navigator?.locks,
+      getValue: gm.getValue,
+      setValue: gm.setValue,
+      request(details) {
+        return new Promise((resolve, reject) => {
+          const requests = new URL(details.url).pathname === "/v1/opt-out" ? optOutPending : pending;
+          let handle,
+            finished = false;
+          const complete = (error, response) => {
+            if (finished) return;
+            finished = true;
+            env.clearTimeout(deadline);
+            requests.delete(cancel);
+            if (error) reject(new Error("Usage request failed"));
+            else resolve(response);
+          };
+          const cancel = () => {
+            complete(true);
+            try {
+              handle?.abort();
+            } catch (_) {
+              /* Best effort. */
+            }
+          };
+          const deadline = env.setTimeout(cancel, 12000);
+          requests.add(cancel);
+          try {
+            handle = gm.request({
+              ...details,
+              onload: (r) => complete(false, r),
+              onerror: () => complete(true),
+              ontimeout: () => complete(true),
+              onabort: () => complete(true)
+            });
+          } catch (_) {
+            complete(true);
+          }
+        });
+      }
+    });
+    const cancelPending = () => {
+      client.invalidate();
+      for (const cancel of [...pending]) cancel();
+    };
+    const report = () => {
+      if (!disposed && !suspended) void client.report();
+    };
+    function mountSettings(host) {
+      if (settings.has(host) || typeof host.attachShadow !== "function") return;
+      const zh = /^zh/i.test(host.getAttribute("lang") || env.navigator?.language || "zh");
+      const words = zh
+        ? {
+            title: "使用量統計",
+            off: "已關閉",
+            on: "已開啟",
+            enable: "開啟",
+            disable: "關閉",
+            cancel: "取消",
+            confirm: "確認開啟",
+            summary: "僅傳送隨機安裝摘要、外掛和版本，用於安裝及日活統計。",
+            more: "資料範圍",
+            details: `接收方：柆雨的雨雲服務（${new URL(config.endpoint).hostname}）。每天最多一次，不傳遊戲資料或 Cookie。伺服器暫存後同步到開發者電腦，歷史永久保留；網路服務可見 IP。關閉只停止後續上報，不刪除歷史。`,
+            question: "確認向柆雨的統計服務傳送這些資料？",
+            failed: "設定未儲存，請重試。",
+            unavailable: "統計設定暫不可用。"
+          }
+        : {
+            title: "Usage statistics",
+            off: "Off",
+            on: "On",
+            enable: "Enable",
+            disable: "Turn off",
+            cancel: "Cancel",
+            confirm: "Confirm enable",
+            summary: "Sends a random installation hash, plugin ID and version to count installs and daily activity.",
+            more: "Data details",
+            details: `Recipient: LaYu's Rainyun service (${new URL(config.endpoint).hostname}). At most once daily; no game data or cookies. Reports are transferred to the developer's computer and retained indefinitely. The network service sees your IP. Turning off stops future reports; existing history remains.`,
+            question: "Send these data to LaYu’s statistics service?",
+            failed: "Settings were not saved. Please retry.",
+            unavailable: "Usage settings are unavailable."
+          };
+      if (config.defaultEnabled) {
+        Object.assign(
+          words,
+          zh
+            ? {
+                title: "安裝與活躍統計",
+                summary: "預設開啟，可隨時關閉，不影響外掛功能。統計安裝數和每日活躍安裝數，不統計遊戲內操作。",
+                more: "隱私與資料說明",
+                details: `開啟時，僅向柆雨的統計服務（${new URL(config.endpoint).hostname}）傳送外掛標識、版本和隨機安裝標識的 SHA-256 摘要。標識僅儲存在該指令碼的 Tampermonkey 儲存中，不使用硬體指紋，不傳送賬號、角色、聊天、資產、交易或 Cookie。摘要用於識別同一安裝，不代表完全匿名；網路服務可見來源 IP。資料通過 HTTPS 傳送，按北京時間每日去重，失敗時可能重試。伺服器暫存後同步到開發者電腦，歷史及備份不設自動刪除期限。安裝數不等於裝置數或人數。`,
+                question: "開啟後將傳送上述安裝與活躍統計，是否繼續？"
+              }
+            : {
+                title: "Installation and activity statistics",
+                summary:
+                  "On by default. Turn off at any time without affecting plugin features. Counts installations and daily active installations, not in-game actions.",
+                more: "Privacy and data details",
+                details: `While on, sends only the plugin ID, version and SHA-256 hash of a random installation ID to LaYu's statistics service (${new URL(config.endpoint).hostname}). The ID stays in this script's Tampermonkey storage. No hardware fingerprint, account, character, chat, asset, trade data or cookies are sent. The hash recognises the same installation, so this is not fully anonymous; the network service sees the source IP. Sent over HTTPS, deduplicated by Beijing calendar day; failures may be retried. Reports are transferred from the server to the developer's computer. History and backups have no automatic deletion deadline. Installation counts are not device or person counts.`,
+                question: "Enable the installation and activity reports described above?"
+              }
+        );
+      }
+      if (config.reportOptOut) {
+        words.summary += zh
+          ? "關閉時仍會嘗試傳送一次僅含外掛標識和版本的關閉事件，失敗不重試，之後不再上報；已有歷史保留。"
+          : " Turning off still attempts one opt-out report containing only the plugin ID and version, with no retry or further reports. Existing history remains.";
+      }
+      const root = host.shadowRoot || host.attachShadow({ mode: "open" });
+      root.innerHTML = `<style>
+        :host { display:block; margin-block:12px; color:inherit; font:inherit; min-width:0; }
+        *,*::before,*::after { box-sizing:border-box; }
+        .row,.actions { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+        .row { justify-content:space-between; } strong { font-size:14px; }
+        p,details { margin:6px 0 0; font-size:13px; line-height:1.5; overflow-wrap:anywhere; }
+        button { font:inherit; font-size:13px; color:inherit; background:#34394f; border:1px solid #626b86; border-radius:4px; padding:5px 10px; min-height:32px; cursor:pointer; }
+        button:hover { background:#454e68; } button:disabled { opacity:.55; cursor:default; }
+        button:focus-visible,summary:focus-visible { outline:2px solid #91dfcb; outline-offset:2px; }
+        summary { cursor:pointer; width:fit-content; } .confirm { margin-top:8px; } .actions { margin-top:6px; }
+        [hidden] { display:none!important; } .status { min-height:0; }
+      </style><section><div class="row"><strong></strong><button type="button" data-action="toggle" aria-pressed="false" aria-expanded="false"></button></div>
+      <p class="summary"></p><details><summary></summary><p class="details"></p></details>
+      <div class="confirm" role="group" hidden><p class="question"></p><div class="actions"><button type="button" data-action="confirm"></button><button type="button" data-action="cancel"></button></div></div>
+      <p class="status" role="status" aria-live="polite"></p></section>`;
+      const toggle = root.querySelector('[data-action="toggle"]');
+      const confirmation = root.querySelector(".confirm");
+      const confirm = root.querySelector('[data-action="confirm"]');
+      const cancel = root.querySelector('[data-action="cancel"]');
+      root.querySelector("strong").textContent = words.title;
+      root.querySelector(".summary").textContent = words.summary;
+      root.querySelector("summary").textContent = words.more;
+      root.querySelector(".details").textContent = words.details;
+      root.querySelector(".question").textContent = words.question;
+      confirmation.setAttribute("aria-label", words.question);
+      confirmation.id = `${config.pluginId}-usage-confirm`;
+      toggle.setAttribute("aria-controls", confirmation.id);
+      confirm.textContent = words.confirm;
+      cancel.textContent = words.cancel;
+      const binding = {
+        pending: false,
+        render(on, unavailable = false) {
+          if (on || unavailable) binding.pending = false;
+          toggle.textContent = on ? words.disable : words.enable;
+          toggle.setAttribute("aria-label", `${words.title}: ${on ? words.disable : words.enable}`);
+          toggle.setAttribute("aria-pressed", String(on));
+          toggle.setAttribute("aria-expanded", String(binding.pending));
+          toggle.disabled = commandBusy || unavailable;
+          confirm.disabled = cancel.disabled = commandBusy;
+          confirmation.hidden = !binding.pending;
+          root.querySelector(".status").textContent = unavailable
+            ? words.unavailable
+            : settingsError
+              ? words.failed
+              : on
+                ? words.on
+                : words.off;
+        },
+        dispose() {
+          root.removeEventListener("click", click);
+          root.replaceChildren();
+        }
+      };
+      async function click(event) {
+        // Page scripts must not opt in by dispatching synthetic clicks.
+        if (event.isTrusted !== true || commandBusy || disposed) return;
+        const action = event.target.closest?.("button[data-action]")?.dataset.action;
+        if (!action) return;
+        event.preventDefault();
+        event.stopPropagation();
+        let active;
+        try {
+          active = await client.enabled();
+        } catch (_) {
+          settingsError = true;
+          update();
+          return;
+        }
+        if (action === "cancel") {
+          binding.pending = false;
+          update();
+          toggle.focus();
+          return;
+        }
+        if (action === "toggle" && !active) {
+          binding.pending = !binding.pending;
+          if (binding.pending) root.querySelector("details").open = true;
+          settingsError = false;
+          update();
+          if (binding.pending) confirm.focus();
+          return;
+        }
+        if (action !== "toggle" && (action !== "confirm" || !binding.pending || active)) return;
+        commandBusy = true;
+        settingsError = false;
+        binding.pending = false;
+        cancelPending();
+        update();
+        try {
+          await client.setEnabled(!active);
+          if (!active) report();
+        } catch (_) {
+          settingsError = true;
+        } finally {
+          commandBusy = false;
+          update();
+          if (host.isConnected) toggle.focus();
+        }
+      }
+      root.addEventListener("click", click);
+      settings.set(host, binding);
+    }
+    function discover(nodes) {
+      if (disposed) return;
+      for (const [host, binding] of settings) {
+        if (!host.isConnected) {
+          binding.dispose();
+          settings.delete(host);
+        }
+      }
+      for (const node of nodes) {
+        if (node.matches?.(selector)) mountSettings(node);
+        for (const host of node.querySelectorAll?.(selector) || []) mountSettings(host);
+      }
+      update();
+    }
+    function update() {
+      if (disposed) return;
+      try {
+        const on = gm.getValue(`${client.key}_consent`, config.defaultEnabled === true) === true;
+        for (const binding of settings.values()) binding.render(on);
+        if (timer !== null) {
+          env.clearInterval(timer);
+          timer = null;
+        }
+        if (on && !suspended) timer = env.setInterval(report, 15 * 60000);
+        if (!on) cancelPending();
+      } catch (_) {
+        cancelPending();
+        if (timer !== null) {
+          env.clearInterval(timer);
+          timer = null;
+        }
+        for (const binding of settings.values()) binding.render(false, true);
+      }
+    }
+    function changed() {
+      cancelPending();
+      update();
+      report();
+    }
+    function visible() {
+      if (env.document.visibilityState === "visible") report();
+    }
+    function pagehide(event) {
+      suspended = true;
+      cancelPending();
+      for (const cancel of [...optOutPending]) cancel();
+      if (timer !== null) {
+        env.clearInterval(timer);
+        timer = null;
+      }
+      if (!event.persisted) dispose();
+    }
+    function pageshow() {
+      if (!disposed) {
+        suspended = false;
+        update();
+        report();
+      }
+    }
+    function dispose() {
+      if (disposed) return;
+      disposed = true;
+      client.stop();
+      cancelPending();
+      for (const cancel of [...optOutPending]) cancel();
+      if (timer !== null) env.clearInterval(timer);
+      observer?.disconnect();
+      for (const binding of settings.values()) binding.dispose();
+      settings.clear();
+      try {
+        if (listenerId !== null) gm.unlisten(listenerId);
+      } catch (_) {
+        /* Page closing. */
+      }
+      env.removeEventListener("online", report);
+      env.removeEventListener("pagehide", pagehide);
+      env.removeEventListener("pageshow", pageshow);
+      env.document.removeEventListener("visibilitychange", visible);
+      delete env[guard];
+    }
+    try {
+      listenerId = gm.listen(`${client.key}_consent`, changed);
+      env.addEventListener("online", report);
+      env.addEventListener("pagehide", pagehide);
+      env.addEventListener("pageshow", pageshow);
+      env.document.addEventListener("visibilitychange", visible);
+      if (typeof env.MutationObserver === "function" && typeof env.document.querySelectorAll === "function") {
+        observer = new env.MutationObserver((records) => {
+          const added = records.flatMap((record) => Array.from(record.addedNodes || []));
+          if (added.length || records.some((record) => record.removedNodes?.length)) discover(added);
+        });
+        observer.observe(env.document, {
+          childList: true,
+          subtree: true
+        });
+      }
+      discover([env.document]);
+      report();
+    } catch (_) {
+      dispose();
+    }
+    return { dispose, report, client };
+  }
+  if (typeof module !== "undefined" && module.exports) module.exports = { createUsageClient, boot };
+  try { boot({"pluginId":"mwi_guild","name":"公會助手","version":"1.2.64","endpoint":"https://ukpyedhl.cn-hk1.rainapp.top","development":false,"defaultEnabled":true,"reportOptOut":true}, {getValue: typeof GM_getValue === "function" ? GM_getValue : null,
+setValue: typeof GM_setValue === "function" ? GM_setValue : null,
+listen: typeof GM_addValueChangeListener === "function" ? GM_addValueChangeListener : null,
+unlisten: typeof GM_removeValueChangeListener === "function" ? GM_removeValueChangeListener : null,
+request: typeof GM_xmlhttpRequest === "function" ? GM_xmlhttpRequest : null}); } catch (_) { /* Telemetry is optional. */ }
+})();
+
+// LAYU_USAGE_END mwi_guild
 // MWI_GUILD_CREDIT_RUNTIME
-window.MwiGuildCreditVersion = "1.2.63";
+window.MwiGuildCreditVersion = "1.2.64";
 
 // SOURCE: src/market-data.js
 (function (root, factory) {
@@ -16605,7 +17102,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       <section class="mwi-settings-block" aria-labelledby="mwi-settings-interface-heading"><div class="mwi-settings-block-heading"><h4 id="mwi-settings-interface-heading">${escapeHtml(t("interfaceVisibility"))}</h4></div>
       <form class="mwi-settings-name" data-role="settings-sidebar-name-form"><label for="mwi-settings-sidebar-name">${escapeHtml(t("sidebarDisplayName"))}</label><div class="mwi-settings-name-controls"><input id="mwi-settings-sidebar-name" data-role="settings-sidebar-name" type="text" value="${escapeHtml(state.sidebarDisplayName || "")}" placeholder="${escapeHtml(t("sidebarCredit"))}" autocomplete="off"><button id="mwi-settings-sidebar-name-save" type="submit">${escapeHtml(t("sidebarNameSave"))}</button><button id="mwi-settings-sidebar-name-reset" type="button">${escapeHtml(t("sidebarNameReset"))}</button></div></form>
       <label class="mwi-settings-switch"><span class="mwi-settings-switch-copy"><strong>${escapeHtml(t("showConstructionView"))}</strong></span><input id="mwi-settings-show-construction" class="mwi-settings-switch-input" data-role="settings-show-construction" type="checkbox" role="switch"></label>
-      <label class="mwi-settings-switch"><span class="mwi-settings-switch-copy"><strong>${escapeHtml(t("showTrialHistoryView"))}</strong></span><input id="mwi-settings-show-trials" class="mwi-settings-switch-input" data-role="settings-show-trials" type="checkbox" role="switch"></label></section>${renderHelp()}`;
+      <label class="mwi-settings-switch"><span class="mwi-settings-switch-copy"><strong>${escapeHtml(t("showTrialHistoryView"))}</strong></span><input id="mwi-settings-show-trials" class="mwi-settings-switch-input" data-role="settings-show-trials" type="checkbox" role="switch"></label></section><div data-layu-usage-settings="mwi_guild" lang="${escapeHtml(ui().locale)}"></div>${renderHelp()}`;
     }
 
     function renderSettingsMarkup() {
@@ -16635,7 +17132,11 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       const focusedId = focused && content.contains(focused) ? focused.id : "";
       const selection = focused === nameInput ? [nameInput.selectionStart, nameInput.selectionEnd] : null;
       const openHelpTopics = new Set(state.openHelpTopics || []);
+      const usageHost = content?.querySelector?.('[data-layu-usage-settings="mwi_guild"]');
       updateRenderedMarkup(content, renderSettingsContent(snapshot));
+      const nextUsageHost = content?.querySelector?.('[data-layu-usage-settings="mwi_guild"]');
+      if (usageHost && nextUsageHost && usageHost !== nextUsageHost && usageHost.lang === nextUsageHost.lang)
+        nextUsageHost.replaceWith(usageHost);
       for (const topic of content?.querySelectorAll("[data-settings-help-topic]") || [])
         topic.open = openHelpTopics.has(topic.dataset.settingsHelpTopic);
       const updatedNameInput = settingsPanel.querySelector('[data-role="settings-sidebar-name"]');
