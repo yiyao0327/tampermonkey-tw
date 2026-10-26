@@ -3,7 +3,7 @@
 // @name:zh      MWI Combat Simulator 主站一鍵匯入
 // @name:zh-CN   MWI Combat Simulator 主站一鍵匯入
 // @namespace    https://azhu949.github.io/MWICombatSimulator
-// @version      0.1.49
+// @version      0.1.51
 // @license      ISC
 // @description  Import the current Milky Way Idle character or cached team into the combat simulator, enhancement simulator, or skilling planner.
 // @description:zh      將 Milky Way Idle 主站當前角色或快取隊伍匯入戰鬥模擬器、強化模擬器或生活技能規劃器。
@@ -20,8 +20,13 @@
 // @grant        GM_setValue
 // @grant        GM_addValueChangeListener
 // @grant        GM_removeValueChangeListener
+// @grant        GM_info
 // @grant        unsafeWindow
 // @run-at       document-start
+// 刻意不寫 @updateURL / @downloadURL：Tampermonkey 在缺少更新指令時會把「安裝來源 URL」
+// 記錄為更新源。從站點映象安裝的使用者自動從該映象檢查更新（國內可達，userscript/ 不快取），
+// 從 GreasyFork 安裝的使用者自動從 GreasyFork 更新——兩條渠道的自動更新都成立，且不依賴
+// 寫死的單一地址（站點有 GitHub Pages / Cloudflare Pages 雙映象，寫死任一處都會讓另一處失效）。
 // @downloadURL https://raw.githubusercontent.com/yiyao0327/tampermonkey-tw/main/dist/MWI Combat Simulator.user.js
 // @updateURL https://raw.githubusercontent.com/yiyao0327/tampermonkey-tw/main/dist/MWI Combat Simulator.user.js
 // ==/UserScript==
@@ -200,6 +205,17 @@
     'actionTypeDrinkSlotsMap',
     'consumableCombatTriggersMap',
     'abilityCombatTriggersMap',
+    // 遊戲內配裝（Loadout）：官方 init_character_data 內嵌 characterLoadoutMap（含
+    // wearableMap/abilityMap/foodItemHrids/drinkItemHrids/觸發器），配裝增刪改走
+    // loadouts_updated 增量訊息（載荷同為 { characterLoadoutMap } 整包）。快照攜帶後
+    // 隨匯入載荷透傳給模擬器（模擬器側解析為玩家 loadouts 快照列表，支援配裝切換）。
+    'characterLoadoutMap',
+    // 全量已學技能等級欄位：官方 init_character_data 頂層的 characterAbilities 是
+    // 「全量已學技能等級」陣列（【實測確認 2026-10-26】模擬器匯入日誌「imported 34
+    // ability levels from characterAbilities:34」），透傳給模擬器（模擬器側
+    // extractShareableAbilityLevels 提取，併入 abilityLevels 權威表，解決「切到含
+    // 未裝備技能的配裝時等級回落 1 級」）。欄位不存在時不攜帶，零副作用。
+    'characterAbilities',
   ];
   const REQUIRED_CURRENT_CHARACTER_SNAPSHOT_KEYS = ['character', 'characterSkills', 'characterItems', 'combatUnit'];
 
@@ -1666,6 +1682,62 @@
       origin === 'http://localhost:5173' ||
       origin === 'http://127.0.0.1:5173'
     );
+  }
+
+  // 安裝標記：模擬器側欄（AppSidebar 的匯入指令碼狀態行）需要判斷「指令碼裝沒裝 / 是不是
+  // 最新版」，但網頁側拿不到 GM_* API，只能讀指令碼寫在 <html> 上的屬性。寫入時機必須在
+  // 應用掛載前（@run-at document-start），側欄首幀即可讀到；若不寫，側欄會一直顯示未安裝。
+  // 任何 @match 頁面都寫（而非僅模擬器域名）：模擬器可能部署在自定義域名，按 origin 白名單
+  // 判斷會漏寫，而該屬性在主站頁無任何副作用。
+  const IMPORT_SCRIPT_MARKER_ATTRIBUTE = 'data-mwi-tm-import-script';
+  const IMPORT_SCRIPT_VERSION_ATTRIBUTE = 'data-mwi-tm-import-script-version';
+  const IMPORT_SCRIPT_VERSION = (() => {
+    try {
+      return String(GM_info?.script?.version || '').trim();
+    } catch (_error) {
+      // 非使用者指令碼環境（如直接以普通指令碼載入）沒有 GM_info：只寫安裝標記、不寫版本，
+      // 側欄據此降級為「已安裝，版本未知」而不是誤報未安裝。
+      return '';
+    }
+  })();
+
+  function markImportScriptInstalled() {
+    // 全路徑容錯：@run-at document-start 時 <html> 可能還沒解析出來，需要排到之後重試；
+    // 而測試沙箱裡的 document 是極簡樁（無 setAttribute / 無 window.setTimeout），
+    // 任何一步都不得丟擲——否則整個指令碼初始化會被打斷。
+    function writeMarker() {
+      try {
+        const root = document?.documentElement;
+        if (!root || typeof root.setAttribute !== 'function') {
+          return false;
+        }
+
+        root.setAttribute(IMPORT_SCRIPT_MARKER_ATTRIBUTE, '1');
+        if (IMPORT_SCRIPT_VERSION) {
+          root.setAttribute(IMPORT_SCRIPT_VERSION_ATTRIBUTE, IMPORT_SCRIPT_VERSION);
+        }
+        return true;
+      } catch (_error) {
+        return false;
+      }
+    }
+
+    if (writeMarker()) {
+      return;
+    }
+
+    try {
+      if (typeof document?.addEventListener === 'function') {
+        document.addEventListener('DOMContentLoaded', writeMarker, { once: true });
+        return;
+      }
+    } catch (_error) {}
+
+    try {
+      if (typeof setTimeout === 'function') {
+        setTimeout(writeMarker, 0);
+      }
+    } catch (_error) {}
   }
 
   function normalizeUiLanguage(value) {
@@ -3285,6 +3357,15 @@
 
     if (type === 'combat_triggers_updated') {
       updateCombatTriggerMap(message);
+      return;
+    }
+
+    // 配裝增刪改的增量訊息（載荷 { characterLoadoutMap } 整包）：直接覆蓋快照欄位，
+    // 下次匯入載荷即攜帶最新配裝。舊快照無該欄位時（指令碼升級後首次收到）同樣新建。
+    if (type === 'loadouts_updated') {
+      if (message.characterLoadoutMap && typeof message.characterLoadoutMap === 'object') {
+        updateCurrentCharacterSnapshot({ characterLoadoutMap: message.characterLoadoutMap });
+      }
     }
   }
 
@@ -4743,6 +4824,9 @@
   }
 
   installDebugInterface();
+
+  // 先寫安裝標記再初始化任何 UI：側欄狀態行依賴它，且必須早於應用掛載完成。
+  markImportScriptInstalled();
 
   if (isMainSitePage()) {
     initMainSiteBridge();

@@ -2,7 +2,7 @@
 // @name         公會助手
 // @name:en      Milky Way Idle Guild Assistant
 // @namespace    https://www.milkywayidle.com/
-// @version      1.2.65
+// @version      1.2.71
 // @author       柆雨
 // @license      MIT
 // @homepageURL  https://github.com/LaYuDr/milky-way-idle-guild-credit-optimizer
@@ -507,7 +507,7 @@
     return { dispose, report, client };
   }
   if (typeof module !== "undefined" && module.exports) module.exports = { createUsageClient, boot };
-  try { boot({"pluginId":"mwi_guild","name":"公會助手","version":"1.2.65","endpoint":"https://ukpyedhl.cn-hk1.rainapp.top","development":false,"defaultEnabled":true,"reportOptOut":true}, {getValue: typeof GM_getValue === "function" ? GM_getValue : null,
+  try { boot({"pluginId":"mwi_guild","name":"公會助手","version":"1.2.71","endpoint":"https://ukpyedhl.cn-hk1.rainapp.top","development":false,"defaultEnabled":true,"reportOptOut":true}, {getValue: typeof GM_getValue === "function" ? GM_getValue : null,
 setValue: typeof GM_setValue === "function" ? GM_setValue : null,
 listen: typeof GM_addValueChangeListener === "function" ? GM_addValueChangeListener : null,
 unlisten: typeof GM_removeValueChangeListener === "function" ? GM_removeValueChangeListener : null,
@@ -516,7 +516,430 @@ request: typeof GM_xmlhttpRequest === "function" ? GM_xmlhttpRequest : null}); }
 
 // LAYU_USAGE_END mwi_guild
 // MWI_GUILD_CREDIT_RUNTIME
-window.MwiGuildCreditVersion = "1.2.65";
+window.MwiGuildCreditVersion = "1.2.71";
+
+// SOURCE: src/vendor/lz-string.js
+/*
+ * lz-string 1.5.0, UTF-16 codec subset. Copyright (c) 2013 pieroxy.
+ * MIT license: docs/THIRD_PARTY_NOTICES.md.
+ * Adapted with a decoded-length limit and an isolated project export.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+(function (root, factory) {
+  const api = factory();
+  if (typeof module !== "undefined" && module.exports) module.exports = api;
+  root.MwiGuildStorageLZ = api;
+})(typeof globalThis !== "undefined" ? globalThis : this, function () {
+  "use strict";
+  const r = String.fromCharCode;
+  const i = {
+    compressToUTF16: function (o) {
+      return null == o
+        ? ""
+        : i._compress(o, 15, function (o) {
+            return r(o + 32);
+          }) + " ";
+    },
+    _compress: function (r, o, n) {
+      if (null == r) return "";
+      var e,
+        t,
+        i,
+        s = {},
+        u = {},
+        a = "",
+        p = "",
+        c = "",
+        l = 2,
+        f = 3,
+        h = 2,
+        d = [],
+        m = 0,
+        v = 0;
+      for (i = 0; i < r.length; i += 1)
+        if (
+          ((a = r.charAt(i)),
+          Object.prototype.hasOwnProperty.call(s, a) || ((s[a] = f++), (u[a] = !0)),
+          (p = c + a),
+          Object.prototype.hasOwnProperty.call(s, p))
+        )
+          c = p;
+        else {
+          if (Object.prototype.hasOwnProperty.call(u, c)) {
+            if (c.charCodeAt(0) < 256) {
+              for (e = 0; e < h; e++) ((m <<= 1), v == o - 1 ? ((v = 0), d.push(n(m)), (m = 0)) : v++);
+              for (t = c.charCodeAt(0), e = 0; e < 8; e++)
+                ((m = (m << 1) | (1 & t)), v == o - 1 ? ((v = 0), d.push(n(m)), (m = 0)) : v++, (t >>= 1));
+            } else {
+              for (t = 1, e = 0; e < h; e++)
+                ((m = (m << 1) | t), v == o - 1 ? ((v = 0), d.push(n(m)), (m = 0)) : v++, (t = 0));
+              for (t = c.charCodeAt(0), e = 0; e < 16; e++)
+                ((m = (m << 1) | (1 & t)), v == o - 1 ? ((v = 0), d.push(n(m)), (m = 0)) : v++, (t >>= 1));
+            }
+            (0 == --l && ((l = Math.pow(2, h)), h++), delete u[c]);
+          } else
+            for (t = s[c], e = 0; e < h; e++)
+              ((m = (m << 1) | (1 & t)), v == o - 1 ? ((v = 0), d.push(n(m)), (m = 0)) : v++, (t >>= 1));
+          (0 == --l && ((l = Math.pow(2, h)), h++), (s[p] = f++), (c = String(a)));
+        }
+      if ("" !== c) {
+        if (Object.prototype.hasOwnProperty.call(u, c)) {
+          if (c.charCodeAt(0) < 256) {
+            for (e = 0; e < h; e++) ((m <<= 1), v == o - 1 ? ((v = 0), d.push(n(m)), (m = 0)) : v++);
+            for (t = c.charCodeAt(0), e = 0; e < 8; e++)
+              ((m = (m << 1) | (1 & t)), v == o - 1 ? ((v = 0), d.push(n(m)), (m = 0)) : v++, (t >>= 1));
+          } else {
+            for (t = 1, e = 0; e < h; e++)
+              ((m = (m << 1) | t), v == o - 1 ? ((v = 0), d.push(n(m)), (m = 0)) : v++, (t = 0));
+            for (t = c.charCodeAt(0), e = 0; e < 16; e++)
+              ((m = (m << 1) | (1 & t)), v == o - 1 ? ((v = 0), d.push(n(m)), (m = 0)) : v++, (t >>= 1));
+          }
+          (0 == --l && ((l = Math.pow(2, h)), h++), delete u[c]);
+        } else
+          for (t = s[c], e = 0; e < h; e++)
+            ((m = (m << 1) | (1 & t)), v == o - 1 ? ((v = 0), d.push(n(m)), (m = 0)) : v++, (t >>= 1));
+        0 == --l && ((l = Math.pow(2, h)), h++);
+      }
+      for (t = 2, e = 0; e < h; e++)
+        ((m = (m << 1) | (1 & t)), v == o - 1 ? ((v = 0), d.push(n(m)), (m = 0)) : v++, (t >>= 1));
+      for (;;) {
+        if (((m <<= 1), v == o - 1)) {
+          d.push(n(m));
+          break;
+        }
+        v++;
+      }
+      return d.join("");
+    },
+    _decompress: function (o, n, e, maxLength) {
+      let outputLength = 1;
+      var t,
+        i,
+        s,
+        u,
+        a,
+        p,
+        c,
+        l = [],
+        f = 4,
+        h = 4,
+        d = 3,
+        m = "",
+        v = [],
+        g = { val: e(0), position: n, index: 1 };
+      for (t = 0; t < 3; t += 1) l[t] = t;
+      for (s = 0, a = Math.pow(2, 2), p = 1; p != a;)
+        ((u = g.val & g.position),
+          (g.position >>= 1),
+          0 == g.position && ((g.position = n), (g.val = e(g.index++))),
+          (s |= (u > 0 ? 1 : 0) * p),
+          (p <<= 1));
+      switch (s) {
+        case 0:
+          for (s = 0, a = Math.pow(2, 8), p = 1; p != a;)
+            ((u = g.val & g.position),
+              (g.position >>= 1),
+              0 == g.position && ((g.position = n), (g.val = e(g.index++))),
+              (s |= (u > 0 ? 1 : 0) * p),
+              (p <<= 1));
+          c = r(s);
+          break;
+        case 1:
+          for (s = 0, a = Math.pow(2, 16), p = 1; p != a;)
+            ((u = g.val & g.position),
+              (g.position >>= 1),
+              0 == g.position && ((g.position = n), (g.val = e(g.index++))),
+              (s |= (u > 0 ? 1 : 0) * p),
+              (p <<= 1));
+          c = r(s);
+          break;
+        case 2:
+          return "";
+      }
+      for (l[3] = c, i = c, v.push(c); ;) {
+        if (g.index > o) return "";
+        for (s = 0, a = Math.pow(2, d), p = 1; p != a;)
+          ((u = g.val & g.position),
+            (g.position >>= 1),
+            0 == g.position && ((g.position = n), (g.val = e(g.index++))),
+            (s |= (u > 0 ? 1 : 0) * p),
+            (p <<= 1));
+        switch ((c = s)) {
+          case 0:
+            for (s = 0, a = Math.pow(2, 8), p = 1; p != a;)
+              ((u = g.val & g.position),
+                (g.position >>= 1),
+                0 == g.position && ((g.position = n), (g.val = e(g.index++))),
+                (s |= (u > 0 ? 1 : 0) * p),
+                (p <<= 1));
+            ((l[h++] = r(s)), (c = h - 1), f--);
+            break;
+          case 1:
+            for (s = 0, a = Math.pow(2, 16), p = 1; p != a;)
+              ((u = g.val & g.position),
+                (g.position >>= 1),
+                0 == g.position && ((g.position = n), (g.val = e(g.index++))),
+                (s |= (u > 0 ? 1 : 0) * p),
+                (p <<= 1));
+            ((l[h++] = r(s)), (c = h - 1), f--);
+            break;
+          case 2:
+            return v.join("");
+        }
+        if ((0 == f && ((f = Math.pow(2, d)), d++), l[c])) m = l[c];
+        else {
+          if (c !== h) return null;
+          m = i + i.charAt(0);
+        }
+        outputLength += m.length;
+        if (outputLength > maxLength) throw new Error("Decompressed storage exceeds its declared length");
+        (v.push(m), (l[h++] = i + m.charAt(0)), (i = m), 0 == --f && ((f = Math.pow(2, d)), d++));
+      }
+    }
+  };
+  return {
+    compressToUTF16: i.compressToUTF16,
+    decompressFromUTF16(value, maxLength) {
+      if (typeof value !== "string" || !value.length) return null;
+      return i._decompress(value.length, 16384, (index) => value.charCodeAt(index) - 32, maxLength);
+    }
+  };
+});
+
+
+// SOURCE: src/runtime/storage-codec.js
+(function (root, factory) {
+  const api = factory(
+    typeof module !== "undefined" && module.exports ? require("../vendor/lz-string.js") : root.MwiGuildStorageLZ
+  );
+  if (typeof module !== "undefined" && module.exports) module.exports = api;
+  root.MwiGuildStorageCodec = api;
+})(typeof globalThis !== "undefined" ? globalThis : this, function (lz) {
+  "use strict";
+
+  const MARKER = "MWIGC:";
+  const PREFIX = `${MARKER}1:`;
+  const MIN_LENGTH = 4096;
+  const MAX_LENGTH = 16 * 1024 * 1024;
+  const CACHE_CHARACTERS = 2 * 1024 * 1024;
+  const LARGE_CACHE_KEYS = new Set([
+    "mwi-guild-credit-live-market-v1",
+    "mwi-guild-credit-market-snapshot-v1",
+    "mwi-official-item-name-catalog-v1"
+  ]);
+
+  function eligible(key) {
+    return LARGE_CACHE_KEYS.has(key) || key.startsWith("mwi-guild-trial-history-v1:mwi-guild-building-planner-v1:");
+  }
+
+  // Integrity check for accidental corruption, not an authentication mechanism.
+  function checksum(text) {
+    let hash = 2166136261;
+    for (let index = 0; index < text.length; index += 1) {
+      hash = Math.imul(hash ^ text.charCodeAt(index), 16777619);
+    }
+    return (hash >>> 0).toString(16).padStart(8, "0");
+  }
+
+  function decode(value) {
+    if (value === null || !value.startsWith(MARKER)) return value;
+    if (!value.startsWith(PREFIX)) throw new Error("Unsupported compressed storage version");
+    const lengthEnd = value.indexOf(":", PREFIX.length);
+    const checksumEnd = value.indexOf(":", lengthEnd + 1);
+    const lengthText = value.slice(PREFIX.length, lengthEnd);
+    const length = Number(lengthText);
+    const expectedChecksum = value.slice(lengthEnd + 1, checksumEnd);
+    const data = value.slice(checksumEnd + 1);
+    if (
+      lengthEnd < 0 ||
+      checksumEnd < 0 ||
+      !/^[1-9][0-9]*$/.test(lengthText) ||
+      !Number.isSafeInteger(length) ||
+      length > MAX_LENGTH ||
+      !/^[a-f0-9]{8}$/.test(expectedChecksum) ||
+      data.length > MAX_LENGTH ||
+      !data.length
+    )
+      throw new Error("Invalid compressed storage header");
+    const text = lz.decompressFromUTF16(data, length);
+    if (typeof text !== "string" || text.length !== length || checksum(text) !== expectedChecksum)
+      throw new Error("Compressed storage integrity check failed");
+    return text;
+  }
+
+  function encode(text) {
+    if (text.length < MIN_LENGTH || text.length > MAX_LENGTH) return text;
+    try {
+      // Never migrate malformed JSON or non-JSON values merely by reading them.
+      JSON.parse(text);
+      const encoded = `${PREFIX}${text.length}:${checksum(text)}:${lz.compressToUTF16(text)}`;
+      if (encoded.length > text.length * 0.9) return text;
+      // Verify the entire original string, including unknown fields and precision,
+      // before replacing an existing value with the smaller representation.
+      return decode(encoded) === text ? encoded : text;
+    } catch (_) {
+      return text;
+    }
+  }
+
+  const GENERATION_KEY = "mwi-guild-storage-generation-v1";
+  const guards = new WeakMap();
+  const pauses = new WeakMap();
+
+  // Old pages must not repopulate cleared data or overwrite an imported backup.
+  // This guards only plugin-owned wrappers, never the game's native Storage.
+  function guardStorage(storage) {
+    if (!storage) return storage;
+    if (guards.has(storage)) return guards.get(storage);
+    const pause = { count: 0 };
+    let generation;
+    try {
+      generation = storage.getItem(GENERATION_KEY);
+    } catch (_) {
+      // Preserve the existing graceful startup when storage access is denied.
+    }
+    function assertWritable() {
+      if (pause.count) throw new Error("Plugin backup is pending; finish or cancel it before saving");
+      const current = storage.getItem(GENERATION_KEY);
+      if (generation === undefined) generation = current;
+      if (generation !== current) throw new Error("Plugin data changed; reload this page before saving");
+    }
+    const guarded = {
+      get length() {
+        return storage.length;
+      },
+      key: (index) => storage.key(index),
+      getItem: (key) => storage.getItem(key),
+      setItem(key, value) {
+        assertWritable();
+        storage.setItem(key, value);
+      },
+      removeItem(key) {
+        assertWritable();
+        storage.removeItem(key);
+      }
+    };
+    pauses.set(storage, pause);
+    pauses.set(guarded, pause);
+    guards.set(storage, guarded);
+    guards.set(guarded, guarded);
+    return guarded;
+  }
+
+  function pauseStorage(storage) {
+    guardStorage(storage);
+    const pause = pauses.get(storage);
+    pause.count += 1;
+    let active = true;
+    return () => {
+      if (active) pause.count -= 1;
+      active = false;
+    };
+  }
+
+  function createStorage(storage) {
+    if (!storage) return storage;
+    storage = guardStorage(storage);
+    const cache = new Map();
+    let cachedCharacters = 0;
+    function remember(key, raw, text) {
+      const previous = cache.get(key);
+      if (previous) cachedCharacters -= previous.raw.length + previous.text.length;
+      cache.delete(key);
+      if (
+        (raw !== text || (eligible(key) && text.length >= MIN_LENGTH)) &&
+        raw.length + text.length <= CACHE_CHARACTERS
+      ) {
+        cache.set(key, { raw, text });
+        cachedCharacters += raw.length + text.length;
+      }
+      while (cache.size > 64 || cachedCharacters > CACHE_CHARACTERS) {
+        const oldest = cache.keys().next().value;
+        const value = cache.get(oldest);
+        cachedCharacters -= value.raw.length + value.text.length;
+        cache.delete(oldest);
+      }
+    }
+    return {
+      get length() {
+        return storage.length;
+      },
+      key(index) {
+        return storage.key(index);
+      },
+      getItem(key, canMigrate = () => true) {
+        const raw = storage.getItem(key);
+        if (raw === null || !eligible(key)) return raw;
+        const cached = cache.get(key);
+        if (cached && cached.raw === raw) {
+          cache.delete(key);
+          cache.set(key, cached);
+          return cached.text;
+        }
+        const text = decode(raw);
+        let saved = raw;
+        if (raw === text && canMigrate(text)) {
+          const encoded = encode(text);
+          if (encoded !== raw) {
+            try {
+              // LocalStorage replaces one key atomically; no shared references,
+              // deletion, extra backup quota or cross-character scan is needed.
+              if (storage.getItem(key) === raw) {
+                storage.setItem(key, encoded);
+                saved = encoded;
+              }
+            } catch (_) {
+              // Readable legacy data stays usable even when migration is blocked.
+            }
+          }
+        }
+        remember(key, saved, text);
+        return text;
+      },
+      setItem(key, value) {
+        const text = String(value);
+        const encoded = eligible(key) ? encode(text) : text;
+        // Propagate quota/access failures to the existing save/rollback handling.
+        storage.setItem(key, encoded);
+        remember(key, encoded, text);
+      },
+      removeItem(key) {
+        storage.removeItem(key);
+        remember(key, "", "");
+      }
+    };
+  }
+
+  return {
+    createStorage,
+    guardStorage,
+    pauseStorage,
+    encode,
+    decode,
+    eligible,
+    MIN_LENGTH,
+    MAX_LENGTH,
+    GENERATION_KEY
+  };
+});
+
 
 // SOURCE: src/market-data.js
 (function (root, factory) {
@@ -1417,9 +1840,15 @@ window.MwiGuildCreditVersion = "1.2.65";
     return isMetric(level) ? level : null;
   }
 
+  // Provenance belongs to each record, not to the act of importing a file or
+  // the export envelope's version. Export/reimport keeps v1 captures eligible.
+  function isGameCapture(record) {
+    return record?.schemaVersion === 1 && record.source !== "manual";
+  }
+
   function withMemberLevels(record, context = {}) {
     if (
-      record.schemaVersion !== 1 ||
+      !isGameCapture(record) ||
       String(context.guild?.id) !== record.guildId ||
       timestamp(context.guild?.currentWeekStartAt) !== record.weekStartAt
     )
@@ -1450,8 +1879,7 @@ window.MwiGuildCreditVersion = "1.2.65";
   }
 
   function withMembershipEvidence(record, context = {}) {
-    if (record.schemaVersion !== 1 || record.source === "manual" || record.guildId !== String(context.guild?.id))
-      return record;
+    if (!isGameCapture(record) || record.guildId !== String(context.guild?.id)) return record;
     const evidence = mergeMembershipEvidence(record.membershipEvidence || [], context.membershipEvidence || []);
     const trials = objectData(context.guild?.currentTrialsData);
     const weekTrials =
@@ -2026,8 +2454,7 @@ window.MwiGuildCreditVersion = "1.2.65";
     const latest = new Map();
     for (const record of records) {
       if (
-        record.schemaVersion !== 1 ||
-        record.source === "manual" ||
+        !isGameCapture(record) ||
         record.kind !== "skilling" ||
         record.guildId !== String(context.guild.id) ||
         record.trialHrid !== trialHrid ||
@@ -2077,7 +2504,7 @@ window.MwiGuildCreditVersion = "1.2.65";
       target.average = target.average === null ? value : target.average + (value - target.average) / target.count;
     };
     for (const record of records) {
-      if (record.schemaVersion !== 1 || record.source === "manual") continue;
+      if (!isGameCapture(record)) continue;
       if (seenRecords.has(record.key)) continue;
       seenRecords.add(record.key);
       const fields =
@@ -2136,13 +2563,7 @@ window.MwiGuildCreditVersion = "1.2.65";
   // A guild week is one denominator unit per category, regardless of project count.
   // Absence requires both membership evidence and a completely captured category.
   function playerRankings(records) {
-    const captured = [
-      ...new Map(
-        records
-          .filter((record) => record.schemaVersion === 1 && record.source !== "manual")
-          .map((record) => [record.key, record])
-      ).values()
-    ];
+    const captured = [...new Map(records.filter(isGameCapture).map((record) => [record.key, record])).values()];
     const players = new Map(participationRankings(captured).map((player) => [player.key, player]));
     const guilds = new Map();
     const weeks = new Map();
@@ -2273,7 +2694,7 @@ window.MwiGuildCreditVersion = "1.2.65";
   }
 
   function playerProjectOverview(records, identity, details = {}) {
-    const captured = records.filter((record) => record.schemaVersion === 1 && record.source !== "manual");
+    const captured = records.filter(isGameCapture);
     const catalog = new Map();
     for (const [kind, names] of [
       ["skilling", config.GUILD_TRIAL_SKILL_ORDER],
@@ -2441,6 +2862,7 @@ window.MwiGuildCreditVersion = "1.2.65";
     searchHistoryMembers,
     sameMember,
     memberLevel,
+    isGameCapture,
     currentMemberJoinedAt,
     currentMembershipRankings,
     withMemberLevels,
@@ -2899,7 +3321,7 @@ window.MwiGuildCreditVersion = "1.2.65";
     return roots;
   }
 
-  function findGameController(methodName) {
+  function findGameController(methodName, includeAlternates = true) {
     const pending = reactFiberRoots();
     const visited = new Set();
     let inspected = 0;
@@ -2913,7 +3335,7 @@ window.MwiGuildCreditVersion = "1.2.65";
       if (fiber.current) pending.push(fiber.current);
       if (fiber.child) pending.push(fiber.child);
       if (fiber.sibling) pending.push(fiber.sibling);
-      if (fiber.alternate) pending.push(fiber.alternate);
+      if (includeAlternates && fiber.alternate) pending.push(fiber.alternate);
     }
     return null;
   }
@@ -2929,6 +3351,75 @@ window.MwiGuildCreditVersion = "1.2.65";
       Number.isInteger(enhancementLevel) && enhancementLevel >= 0 ? enhancementLevel : 0;
     try {
       controller.handleGoToMarketplace(itemHrid, normalizedEnhancementLevel);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  };
+
+  let purchaseTimer = null;
+  function cancelOnPurchaseInput(event) {
+    if (event.target?.closest?.('[class*="MarketplacePanel_modalContent"]')) bridge.cancelPurchasePrefill();
+  }
+  bridge.cancelPurchasePrefill = function () {
+    if (purchaseTimer !== null) page.clearInterval(purchaseTimer);
+    purchaseTimer = null;
+    page.document?.removeEventListener?.("input", cancelOnPurchaseInput, true);
+  };
+  bridge.armPurchasePrefill = function (itemHrid, quantity) {
+    bridge.cancelPurchasePrefill();
+    if (!/^\/items\/[a-z0-9_]+$/.test(itemHrid) || !Number.isSafeInteger(quantity) || quantity <= 0) return false;
+    const controller = findGameController("handleGoToMarketplace", false);
+    if (!controller) return false;
+    const characterId = controller.state?.character?.id;
+    const expires = Date.now() + 120000;
+    let seenTarget = false;
+    let seenForm = false;
+    page.document?.addEventListener?.("input", cancelOnPurchaseInput, true);
+    purchaseTimer = page.setInterval(() => {
+      try {
+        if (Date.now() >= expires || controller.state?.character?.id !== characterId)
+          return bridge.cancelPurchasePrefill();
+        const panel = findGameController("handleQuantityInputChanged", false);
+        if (!panel) {
+          if (seenTarget) bridge.cancelPurchasePrefill();
+          return;
+        }
+        const state = panel.state;
+        if (state?.itemHrid !== itemHrid) {
+          if (seenTarget) bridge.cancelPurchasePrefill();
+          return;
+        }
+        seenTarget = true;
+        if (!state.showPostListing) {
+          if (seenForm) bridge.cancelPurchasePrefill();
+          return;
+        }
+        seenForm = true;
+        if (state.isSell !== false || Number(state.enhancementLevelInput) !== 0) return bridge.cancelPurchasePrefill();
+        const price = Number(state.priceInput);
+        if (!Number.isFinite(price) || price <= 0) return;
+        if (typeof panel.getMaxQuantity !== "function") return bridge.cancelPurchasePrefill();
+        const maximum = panel.getMaxQuantity(false, itemHrid, 0, price);
+        if (!Number.isFinite(maximum) || maximum <= 0) return bridge.cancelPurchasePrefill();
+        const amount = Math.min(quantity, Math.floor(maximum), 1e10);
+        bridge.cancelPurchasePrefill();
+        // Only update the native quantity input, once. Never submit an order.
+        if (amount > 0) panel.handleQuantityInputChanged({ target: { value: String(amount) } });
+      } catch (_) {
+        bridge.cancelPurchasePrefill();
+      }
+    }, 100);
+    return true;
+  };
+
+  bridge.openPlayerProfile = function (name) {
+    if (typeof name !== "string" || !name.trim() || name.trim().length > 64 || /[\u0000-\u001f\u007f]/.test(name))
+      return false;
+    const controller = findGameController("handleViewProfile");
+    if (!controller) return false;
+    try {
+      controller.handleViewProfile(name.trim());
       return true;
     } catch (_) {
       return false;
@@ -3514,10 +4005,12 @@ window.MwiGuildCreditVersion = "1.2.65";
 
 // SOURCE: src/item-name-catalog.js
 (function (root, factory) {
-  const api = factory();
+  const api = factory(
+    typeof module !== "undefined" && module.exports ? require("./runtime/storage-codec.js") : root.MwiGuildStorageCodec
+  );
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.MwiGuildCreditItemNameCatalog = api;
-})(typeof globalThis !== "undefined" ? globalThis : this, function () {
+})(typeof globalThis !== "undefined" ? globalThis : this, function (storageCodec) {
   "use strict";
 
   const STORAGE_KEY = "mwi-official-item-name-catalog-v1";
@@ -3913,7 +4406,7 @@ window.MwiGuildCreditVersion = "1.2.65";
   function createItemNameCatalog(options) {
     const pageWindow = options && options.pageWindow;
     const documentRef = options && options.document;
-    const storage = options && options.storage;
+    const storage = storageCodec.createStorage(options && options.storage);
     const version = (options && options.version) || null;
     let current = readCachedCatalog(storage) || {
       names: Object.create(null),
@@ -4294,6 +4787,47 @@ window.MwiGuildCreditVersion = "1.2.65";
     return BASE_LEVEL_COSTS.map((cost) => (cost === null ? null : { guildPointCost: Math.round(cost * factor) }));
   }
 
+  const LIFE_TRIAL_BUILDINGS = Object.freeze({
+    "/guild_skilling/milking": "/guild_buildings/dairy_barn",
+    "/guild_skilling/foraging": "/guild_buildings/garden",
+    "/guild_skilling/woodcutting": "/guild_buildings/log_shed",
+    "/guild_skilling/cheesesmithing": "/guild_buildings/forge",
+    "/guild_skilling/crafting": "/guild_buildings/workshop",
+    "/guild_skilling/tailoring": "/guild_buildings/sewing_parlor",
+    "/guild_skilling/cooking": "/guild_buildings/kitchen",
+    "/guild_skilling/brewing": "/guild_buildings/brewery",
+    "/guild_skilling/alchemy": "/guild_buildings/laboratory",
+    "/guild_skilling/enhancing": "/guild_buildings/observatory"
+  });
+
+  function currentLifeTrialBuildings(context, now = Date.now(), expectedGuildId = null) {
+    const guild = context?.guild;
+    const week =
+      typeof guild?.currentWeekStartAt === "number" ? guild.currentWeekStartAt : Date.parse(guild?.currentWeekStartAt);
+    if (
+      guild?.id == null ||
+      !String(guild.id) ||
+      (expectedGuildId != null && String(expectedGuildId) !== String(guild.id)) ||
+      !Number.isSafeInteger(week) ||
+      week <= 0 ||
+      !Number.isFinite(now) ||
+      now < week ||
+      now >= week + 7 * 86400000
+    )
+      return new Set();
+    const parties = guild.currentTrialsData?.skilling?.parties;
+    const hrids = Array.isArray(context.weeklyTrialSet?.skillHrids)
+      ? context.weeklyTrialSet.skillHrids
+      : parties && typeof parties === "object" && !Array.isArray(parties)
+        ? Object.keys(parties)
+        : [];
+    return new Set(
+      hrids
+        .filter((hrid) => typeof hrid === "string" && Object.hasOwn(LIFE_TRIAL_BUILDINGS, hrid))
+        .map((hrid) => LIFE_TRIAL_BUILDINGS[hrid])
+    );
+  }
+
   function definitions() {
     return BUILDINGS.map((building) => ({
       ...building,
@@ -4305,6 +4839,7 @@ window.MwiGuildCreditVersion = "1.2.65";
   }
 
   return {
+    currentLifeTrialBuildings,
     RULES_VERSION,
     MAX_LEVEL,
     BASE_LEVEL_COSTS,
@@ -4332,7 +4867,7 @@ window.MwiGuildCreditVersion = "1.2.65";
       helpRankingOrder: "榜單順序",
       helpSettingsAndMarket: "設定與市場參考",
       helpForecastEvidence:
-        "預測僅使用回看範圍內的已確認記錄和非零遊戲追蹤值。自動估算不參與，追蹤零值需手動確認後參與。",
+        "預測僅使用起始周之後（含起始周）的已確認記錄和非零遊戲追蹤值。自動估算不參與，追蹤零值需手動確認後參與。",
       helpForecastBacktest: "歷史回測用於檢視線性迴歸在已有記錄上的表現，不改變當前預測方法。",
       helpConstructionEta: "按計劃缺少的點數估算等待時間：先計本週預計剩餘，再按下週預測點數估算後續各周。",
       helpTrialCoverage: "部分成員數值未知時，彙總僅包含該指標的已知值。",
@@ -4497,6 +5032,7 @@ window.MwiGuildCreditVersion = "1.2.65";
       buildingCatalogPlannedLevel: "{current} → {target} 級 · 已加入",
       buildingCatalogUnknownLevel: "當前 {current} 級",
       buildingCatalogNextLevelCost: "升至 {level} 級：{points} 點",
+      buildingCatalogNextLevelCostCompact: "{level}級 · {points}點",
       buildingCatalogNextLevelCostUnavailable: "下一級點數未提供",
       guildPointPlanningHeading: "建設預算",
       guildPointStartingBalance: "自定起始點數",
@@ -4521,7 +5057,7 @@ window.MwiGuildCreditVersion = "1.2.65";
       trialHistoryPointEstimateCoverage: "最近記錄匹配 {matched} 項，平均值補齊 {missing} 項",
       guildPointHistoryUnavailable: "尚未讀取公會點數；開啟公會頁面後會自動建立本機基線。",
       guildPointHistoryBaseline: "已建立累計點數基線；下一次周獎勵到賬後將生成首條週記錄。",
-      guildPointForecastNeedsHistory: "回看範圍內需要至少 2 周有效點數才能做線性迴歸；不使用歷史均值補足。",
+      guildPointForecastNeedsHistory: "起始周之後（含起始周）需要至少 2 周有效點數才能做線性迴歸；不使用歷史均值補足。",
       guildPointForecastColdStart: "此前 {count} 周平均 {average} 點，本週已獲 {current} 點；均值僅供參考。",
       guildPointForecastMethod: "使用最近 {count} 周內的已核實記錄預測。",
       guildPointForecastEstimatedMethod: "依據累計點數提供歷史均值參考，自動補充記錄不參與趨勢擬合。",
@@ -4569,10 +5105,14 @@ window.MwiGuildCreditVersion = "1.2.65";
       trialHelpRankingPreview: "參試次數、人均倍數和入會時間各有獨立統計口徑。",
       trialHelpCounts: "參試次數如何計算",
       trialHelpRankingAverage: "人均倍數與樣本數",
-      guildPointForecastWeeks: "預測回看週數",
-      guildPointForecastWeeksHint: "本週已獲點數時包含本週，否則截至上週；自動估算不參與線性迴歸。",
-      increaseGuildPointForecastWeeks: "增加 1 周預測回看範圍",
-      decreaseGuildPointForecastWeeks: "減少 1 周預測回看範圍",
+      guildPointForecastStartWeek: "預測起始周",
+      guildPointForecastStartWeekHint:
+        "起始周固定不變，新周自動納入。本週已獲點數時包含本週，否則截至上週；自動估算不參與線性迴歸。",
+      guildPointForecastWeekInput: "第 {week} 周",
+      guildPointForecastStartInvalid: "請輸入 1～{max} 之間的整數週次；原起點未更改。",
+      guildPointForecastSaveFailed: "起點僅在本頁生效，儲存失敗；請重新設定以重試。",
+      increaseGuildPointForecastStartWeek: "將預測起點推後 1 周",
+      decreaseGuildPointForecastStartWeek: "將預測起點提前 1 周",
       guildPointPlanningWeeks: "規劃週數",
       guildPointPlanningOptions: "預測設定",
       guildPointPlanningWeeksHint:
@@ -4657,6 +5197,7 @@ window.MwiGuildCreditVersion = "1.2.65";
       constructionNoBudgetSummary: "未設定預算 · 共 {total} 次升級",
       constructionBudgetAllFit: "預算覆蓋全部 {total} 次升級。",
       constructionBudgetStopsBefore: "可完成 {affordable}/{total} 次；下一項 {building} {from}→{to} 還差 {count}",
+      buildingCurrentTrial: "本週生活試煉",
       buildingCatalog: "建築目錄",
       buildingCatalogHint: "選擇建築加入計劃；可連續新增多座。",
       addBuilding: "新增建築",
@@ -4982,9 +5523,65 @@ window.MwiGuildCreditVersion = "1.2.65";
       trialImportFile: "選擇試煉歷史 JSON 檔案",
       trialImportHint:
         "支援歷史匯出檔案和手動整理記錄（最大 10 MB）。先預覽再儲存；可補全未知日期及周次，重複或統計衝突記錄會跳過。",
+      cacheTitle: "本地資料備份與清空",
+      cachePaused: "預覽或校驗期間暫時暫停本頁儲存。請先完成或取消本次操作，再修改外掛其他設定。",
+      cacheScope: "範圍：當前網站內，本外掛所有角色的設定、神龕與建設計劃、試煉歷史、市場與名稱快取、恢復前原值備份。",
+      cacheBoundary:
+        "不處理遊戲賬號、其他外掛資料或指令碼管理器中的使用統計設定。請先關閉其他遊戲標籤頁；清空或匯入後重新整理頁面，當前遊戲資料可能重新生成部分快取。",
+      cacheExport: "只匯出全部資料",
+      cacheExportClear: "匯出並清空全部快取",
+      cacheImport: "匯入本外掛全部資料備份（JSON，最大 64 MB）",
+      cacheClearWarning:
+        "即將清空 {count} 項本地資料（約 {size}），包括歷史與計劃。先儲存下載檔案，再選擇該檔案校驗；校驗通過後才可確認清空。",
+      cacheReplaceWarning:
+        "覆蓋匯入前，已發起下載當前 {count} 項資料的備份（約 {size}）。先儲存並選擇該檔案校驗，再確認覆蓋。檔案外的現有資料會保留。",
+      cacheVerifyFile: "選擇剛下載的備份檔案進行校驗",
+      cacheConfirmClear: "備份已校驗，確認清空",
+      cacheConfirmReplace: "備份已校驗，確認覆蓋匯入",
+      cacheCancel: "取消，保留現有資料",
+      cacheReload: "重新整理頁面以應用更改",
+      cacheImportPreview: "本地資料匯入預覽",
+      cacheImportSummary: "新增 {added} 項 · 相同 {duplicates} 項 · 衝突 {conflicts} 項 · 約 {size}",
+      cacheImportHint:
+        "此處僅接受完整資料備份；試煉專用 JSON 請到歷史試煉頁匯入。預設僅匯入缺失項，保留衝突項。完整備份會保留遊戲採集與手動整理的原有來源；不會重新整理舊價格或補造歷史資訊。",
+      cacheOverwrite: "覆蓋現有衝突項（先匯出並校驗當前資料備份）",
+      cachePrepareReplace: "先備份當前資料，再覆蓋匯入",
+      cacheConfirmImport: "確認匯入缺失項",
+      cacheStatus_new: "缺失，可匯入",
+      cacheStatus_duplicate: "相同，跳過",
+      cacheStatus_conflict: "衝突，預設保留現有資料",
+      cacheEmpty: "當前沒有可清空的本外掛本地資料。",
+      cacheDownloadStarted: "已發起備份下載，請檢查瀏覽器的下載結果。本地資料未清空。",
+      cacheDownloadVerify: "請儲存下載檔案，並選擇該檔案校驗。尚未清空或覆蓋任何資料。",
+      cacheVerified: "備份內容校驗通過，請確認下方操作。",
+      cacheCancelled: "已取消，本地資料保留。",
+      cacheReading: "正在讀取並校驗檔案…",
+      cachePreviewReady: "檔案已驗證，請檢查匯入預覽。",
+      cacheInvalidBackup: "檔案不是有效的完整資料備份，或與剛匯出的內容不一致。請選擇正確的檔案；現有資料未更改。",
+      cacheWrongOrigin: "備份來自其他網站或遊戲區服，請在原網站匯入。現有資料未更改。",
+      cacheFileTooLarge: "備份檔案超出大小限制，請選擇較小的有效備份。現有資料未更改。",
+      cacheAccessFailed: "無法讀取儲存、檔案或啟動下載，現有資料未清空或覆蓋。請檢查瀏覽器許可權後重試。",
+      cacheDataChanged: "其他頁面或當前遊戲更新了本地資料，操作已停止。請重新整理頁面，重新匯出備份或預覽匯入。",
+      cacheCleared: "已清空 {count} 項資料，備份內容已校驗。請重新整理頁面；重新整理前暫停本頁寫入，避免舊資料寫回。",
+      cacheImported: "已匯入 {count} 項資料。請重新整理頁面應用備份；重新整理前暫停本頁寫入，避免舊資料覆蓋。",
+      cachePartial: "操作失敗，仍有 {count} 項未能恢復原值。請保留備份並重新整理頁面後檢查；不要刪除下載檔案。",
+      cacheSaveFailed: "操作失敗，本次資料更改已撤回。請保留備份，檢查儲存空間並重新整理後重試。",
       trialImportReading: "正在讀取檔案…",
       trialImportPreview: "匯入預覽",
-      trialImportSummary: "新增 {added} 項 · 補全周次 {dated} 項 · 重複 {duplicates} 項 · 衝突 {conflicts} 項",
+      trialImportSummary:
+        "新增 {added} 項 · 補全周次 {dated} 項 · 重複 {duplicates} 項 · 衝突 {conflicts} 項 · 可恢復 {recovered} 項",
+      trialImportSourceHint:
+        "遊戲採集記錄從備份恢復後，仍參與遊戲採集資料的排名、缺席等判斷；手動整理記錄仍按原規則處理。",
+      trialImportStatus_recoverable: "損壞殘留，可從備份恢復",
+      trialImportStatus_unavailable: "本地儲存暫不可讀取，請稍後重試",
+      trialRecoveryWarning:
+        "發現 {count} 項損壞殘留。確認後會先在當前瀏覽器儲存原值備份，再恢復這些專案；有效衝突記錄仍會保留。",
+      trialImportConfirmRecovery: "確認匯入並恢復 {count} 項",
+      trialRecoveryExport: "匯出恢復前原值備份",
+      trialRecoveryExportFailed: "無法匯出恢復前備份，原值仍保留在當前瀏覽器；請檢查儲存是否可讀取後重試。",
+      trialImportChanged: "本地記錄已變化，本次更改已撤回。請檢查更新後的預覽，再確認匯入。",
+      trialImportRecoveryComplete:
+        "已匯入 {added} 項，補全周次 {dated} 項，恢復 {recovered} 項；跳過 {duplicates} 項重複記錄和 {conflicts} 項衝突記錄。恢復前原值已在當前瀏覽器備份，可匯出儲存。",
       trialImportStatus_new: "新增",
       trialImportStatus_dated: "補全日期與周次",
       trialImportStatus_duplicate: "重複，跳過",
@@ -5001,7 +5598,8 @@ window.MwiGuildCreditVersion = "1.2.65";
       trialImportComplete:
         "已匯入 {added} 項，補全周次 {dated} 項，跳過 {duplicates} 項重複記錄和 {conflicts} 項衝突記錄。",
       trialImportSaveFailed: "儲存失敗，本次更改已撤回；請檢查瀏覽器儲存空間後重試。",
-      trialImportPartial: "儲存失敗，本次仍保留新增 {added} 項、補全周次 {dated} 項。重試會跳過已儲存項。",
+      trialImportPartial:
+        "儲存失敗，本次仍保留新增 {added} 項、補全周次 {dated} 項、恢復 {recovered} 項。重試會跳過已儲存項。",
       trialUnknownDate: "日期未註明",
       trialUnknownGuild: "公會未註明",
       trialManualSource: "手動整理",
@@ -5123,7 +5721,7 @@ window.MwiGuildCreditVersion = "1.2.65";
       helpRankingOrder: "Ranking order",
       helpSettingsAndMarket: "Settings and market reference",
       helpForecastEvidence:
-        "Forecasts use confirmed records and nonzero game-tracked values within the lookback window. Estimated records are excluded; tracked zeros require manual confirmation.",
+        "Forecasts use confirmed records and nonzero game-tracked values on or after the selected start week. Estimated records are excluded; tracked zeros require manual confirmation.",
       helpForecastBacktest:
         "Historical backtests show how linear regression performs on existing records without changing the forecast method.",
       helpConstructionEta:
@@ -5300,6 +5898,7 @@ window.MwiGuildCreditVersion = "1.2.65";
       buildingCatalogPlannedLevel: "Level {current} → {target} · In plan",
       buildingCatalogUnknownLevel: "Current level {current}",
       buildingCatalogNextLevelCost: "Level {level}: {points} points",
+      buildingCatalogNextLevelCostCompact: "L{level} · {points}pt",
       buildingCatalogNextLevelCostUnavailable: "Next-level cost unavailable",
       guildPointPlanningHeading: "Construction budget",
       guildPointStartingBalance: "Custom starting points",
@@ -5327,7 +5926,7 @@ window.MwiGuildCreditVersion = "1.2.65";
       guildPointHistoryBaseline:
         "The lifetime-point baseline is saved. The next weekly reward will create the first record.",
       guildPointForecastNeedsHistory:
-        "Linear regression needs at least two valid weeks within the lookback window. No historical-average fallback is used.",
+        "Linear regression needs at least two valid weeks on or after the selected start week. No historical-average fallback is used.",
       guildPointForecastColdStart:
         "The prior {count} weeks averaged {average} points; {current} earned this week. This average is a reference only.",
       guildPointForecastMethod: "Uses verified records within the latest {count} weeks.",
@@ -5349,7 +5948,7 @@ window.MwiGuildCreditVersion = "1.2.65";
       guildPointHelpEvaluated: "Using {method}, evaluated against {count} past weeks.",
       guildPointHelpDataTitle: "Which records are used",
       guildPointHelpData:
-        "Positive current-week points mark this week as finished and include it in the lookback window; otherwise the window ends last week. Confirmed records and positive game-tracked values are used. Estimates and missing values are excluded. Tracked zeros require manual confirmation.",
+        "Positive current-week points mark this week as finished and include it in the forecast range; otherwise the window ends last week. Confirmed records and positive game-tracked values are used. Estimates and missing values are excluded. Tracked zeros require manual confirmation.",
       guildPointHelpMethodTitle: "How the forecast is calculated",
       guildPointHelpMethod:
         "Least-squares linear regression fits earned points against actual week numbers and extrapolates the target week, rounded to a nonnegative integer. At least two valid weeks are required. Evaluation no longer switches the method to a mean.\nMissing weeks retain their time gaps. No zeros or older samples are filled in. Insufficient data is shown as —.",
@@ -5378,11 +5977,14 @@ window.MwiGuildCreditVersion = "1.2.65";
       trialHelpRankingPreview: "Participation, average multiples and joining times each use separate rules.",
       trialHelpCounts: "Participation counts",
       trialHelpRankingAverage: "Average multiples and sample counts",
-      guildPointForecastWeeks: "Forecast lookback",
-      guildPointForecastWeeksHint:
-        "Includes this week once points are earned; otherwise ends last week. Estimates are excluded from regression.",
-      increaseGuildPointForecastWeeks: "Increase the forecast lookback by 1 week",
-      decreaseGuildPointForecastWeeks: "Decrease the forecast lookback by 1 week",
+      guildPointForecastStartWeek: "Forecast start week",
+      guildPointForecastStartWeekHint:
+        "The start week stays fixed as new weeks are added. Includes this week once points are earned; otherwise ends last week. Estimates are excluded from regression.",
+      guildPointForecastWeekInput: "Week {week}",
+      guildPointForecastStartInvalid: "Enter a whole week number from 1 to {max}; the previous start is unchanged.",
+      guildPointForecastSaveFailed: "Start applies to this page only; saving failed. Set it again to retry.",
+      increaseGuildPointForecastStartWeek: "Move the forecast start forward by 1 week",
+      decreaseGuildPointForecastStartWeek: "Move the forecast start back by 1 week",
       guildPointPlanningWeeks: "Planning horizon",
       guildPointPlanningOptions: "Forecast settings",
       guildPointPlanningWeeksHint:
@@ -5474,6 +6076,7 @@ window.MwiGuildCreditVersion = "1.2.65";
       constructionNoBudgetSummary: "No budget set · {total} upgrades planned",
       constructionBudgetAllFit: "The budget covers all {total} upgrades.",
       constructionBudgetStopsBefore: "Covers {affordable}/{total}; {building} {from}→{to} needs {count} more",
+      buildingCurrentTrial: "This week’s skilling trial",
       buildingCatalog: "Building catalog",
       buildingCatalogHint: "Choose buildings to add; the picker stays open for batch planning.",
       addBuilding: "Add building",
@@ -5809,9 +6412,80 @@ window.MwiGuildCreditVersion = "1.2.65";
       trialImportFile: "Choose a trial history JSON file",
       trialImportHint:
         "Import exported history or manually transcribed records (up to 10 MB). Preview before saving. Missing dates and weeks can be filled in; duplicates and statistics conflicts are skipped.",
+      cacheTitle: "Local data backup and cleanup",
+      cachePaused:
+        "Saving on this page is paused during preview or verification. Finish or cancel this operation before changing other plugin settings.",
+      cacheScope:
+        "Scope: this plugin’s settings, shrine and construction plans, trial history, market and name caches, and pre-recovery backups for every character on this website.",
+      cacheBoundary:
+        "Game accounts, other plugins, and usage settings in the userscript manager are excluded. Close other game tabs first. Reload after clearing or importing; current game data may regenerate some caches.",
+      cacheExport: "Export all data only",
+      cacheExportClear: "Export and clear all local data",
+      cacheImport: "Import a full plugin backup (JSON, up to 64 MB)",
+      cacheClearWarning:
+        "This will clear {count} entries (about {size}), including history and plans. Save the download and select that file for verification before confirming deletion.",
+      cacheReplaceWarning:
+        "Before overwriting, a backup download of the current {count} entries (about {size}) has started. Save and select that file for verification. Existing entries outside the imported file will be kept.",
+      cacheVerifyFile: "Select the backup you just downloaded to verify it",
+      cacheConfirmClear: "Backup verified — clear data",
+      cacheConfirmReplace: "Backup verified — import and overwrite",
+      cacheCancel: "Cancel and keep existing data",
+      cacheReload: "Reload to apply changes",
+      cacheImportPreview: "Local data import preview",
+      cacheImportSummary: "{added} new · {duplicates} identical · {conflicts} conflicts · about {size}",
+      cacheImportHint:
+        "Only full plugin backups are accepted here; import trial-only JSON from Trial history. Import missing entries by default and keep conflicts. Full backups preserve game-capture and manual provenance. Old prices keep their original timestamps; missing historical information is not invented.",
+      cacheOverwrite: "Overwrite conflicts (export and verify a current backup first)",
+      cachePrepareReplace: "Back up current data before overwriting",
+      cacheConfirmImport: "Import missing entries",
+      cacheStatus_new: "Missing; ready to import",
+      cacheStatus_duplicate: "Identical; skipped",
+      cacheStatus_conflict: "Conflict; keep current data by default",
+      cacheEmpty: "There is no plugin data to clear.",
+      cacheDownloadStarted:
+        "Backup download started. Check your browser’s download result. Local data has not been cleared.",
+      cacheDownloadVerify:
+        "Save the download and select that file for verification. No data has been cleared or overwritten.",
+      cacheVerified: "Backup contents verified. Confirm the action below.",
+      cacheCancelled: "Cancelled. Existing data was kept.",
+      cacheReading: "Reading and verifying file…",
+      cachePreviewReady: "File validated. Review the import preview.",
+      cacheInvalidBackup:
+        "This is not a valid full backup, or it differs from the backup just exported. Select the correct file. Existing data is unchanged.",
+      cacheWrongOrigin:
+        "This backup belongs to another website or game region. Import it on the original website. Existing data is unchanged.",
+      cacheFileTooLarge:
+        "This backup exceeds the size limit. Select a smaller valid backup. Existing data is unchanged.",
+      cacheAccessFailed:
+        "Storage or file access failed, or the download could not start. Existing data was not cleared or overwritten. Check browser permissions and retry.",
+      cacheDataChanged:
+        "Another page or the game changed local data. The operation stopped. Reload and export a fresh backup or preview the import again.",
+      cacheCleared:
+        "Cleared {count} entries after verifying the backup. Reload this page. Writes are paused until reload so old in-memory data cannot return.",
+      cacheImported:
+        "Imported {count} entries. Reload to apply the backup. Writes are paused until reload so old in-memory data cannot overwrite it.",
+      cachePartial:
+        "The operation failed; {count} entries could not be restored to their original values. Keep the downloaded backup, reload, and check your data.",
+      cacheSaveFailed:
+        "The operation failed and its data changes were rolled back. Keep the backup, check storage space, and reload before retrying.",
       trialImportReading: "Reading file…",
       trialImportPreview: "Import preview",
-      trialImportSummary: "{added} new · {dated} dates filled · {duplicates} duplicates · {conflicts} conflicts",
+      trialImportSummary:
+        "{added} new · {dated} dates filled · {duplicates} duplicates · {conflicts} conflicts · {recovered} recoverable",
+      trialImportSourceHint:
+        "Game captures restored from backups still count in capture-based rankings, absence checks and other analysis. Manual transcripts retain their existing rules.",
+      trialImportStatus_recoverable: "Unreadable local record; recoverable from backup",
+      trialImportStatus_unavailable: "Local storage is unavailable; retry later",
+      trialRecoveryWarning:
+        "Found {count} unreadable local records. Confirming first saves their original values in this browser, then restores those projects. Valid conflicting records are kept.",
+      trialImportConfirmRecovery: "Import and recover {count} records",
+      trialRecoveryExport: "Export pre-recovery values",
+      trialRecoveryExportFailed:
+        "The pre-recovery backup could not be exported. Its original values remain in this browser. Check storage access and retry.",
+      trialImportChanged:
+        "Local records changed. This attempt was rolled back. Review the updated preview before confirming again.",
+      trialImportRecoveryComplete:
+        "Imported {added}; filled {dated} dates; recovered {recovered}; skipped {duplicates} duplicates and {conflicts} conflicts. Original values are backed up in this browser and can be exported.",
       trialImportStatus_new: "New",
       trialImportStatus_dated: "Fill in date and week",
       trialImportStatus_duplicate: "Duplicate, skipped",
@@ -5833,7 +6507,7 @@ window.MwiGuildCreditVersion = "1.2.65";
       trialImportSaveFailed:
         "Saving failed. Changes from this attempt were rolled back. Check browser storage space and retry.",
       trialImportPartial:
-        "Saving failed; {added} new records and {dated} date updates remain saved. Retrying skips saved records.",
+        "Saving failed; {added} new records, {dated} date updates and {recovered} recovered records remain saved. Retrying skips saved records.",
       trialUnknownDate: "Date unspecified",
       trialUnknownGuild: "Guild unspecified",
       trialManualSource: "Manual transcript",
@@ -6645,9 +7319,7 @@ window.MwiGuildCreditVersion = "1.2.65";
               : weekStartAt
       });
     }
-    return Array.from(byWeek.values())
-      .sort((left, right) => left.weekStartAt - right.weekStartAt)
-      .slice(-104);
+    return Array.from(byWeek.values()).sort((left, right) => left.weekStartAt - right.weekStartAt);
   }
 
   function normalizeManualGuildPointWeeks(value) {
@@ -6669,9 +7341,7 @@ window.MwiGuildCreditVersion = "1.2.65";
         observedAt: Number.isSafeInteger(observedAt) && observedAt > 0 ? observedAt : weekStartAt
       });
     }
-    return Array.from(byWeek.values())
-      .sort((left, right) => left.weekStartAt - right.weekStartAt)
-      .slice(-104);
+    return Array.from(byWeek.values()).sort((left, right) => left.weekStartAt - right.weekStartAt);
   }
 
   function normalizedGuildPointHistory(history) {
@@ -6872,6 +7542,7 @@ window.MwiGuildCreditVersion = "1.2.65";
     const currentWeekStartAt = firstTrial + pastWeekCount * GUILD_POINT_WEEK_MS;
     const forecast = summarizeGuildPointHistory(normalized, {
       forecastWeekCount: options.forecastWeekCount,
+      forecastStartAt: options.forecastStartAt,
       currentWeekStartAt,
       currentWeekPoints
     });
@@ -6973,6 +7644,8 @@ window.MwiGuildCreditVersion = "1.2.65";
   // Estimates and unverified zeros are excluded; positive tracked values retain their coverage.
   function backtestGuildPointForecast(history, options = {}) {
     const lookback = normalizeGuildPointForecastWeeks(options.forecastWeekCount);
+    const forecastStartAt =
+      Number.isSafeInteger(options.forecastStartAt) && options.forecastStartAt > 0 ? options.forecastStartAt : null;
     const records = normalizeGuildPointWeeks(history?.weeks).filter(isGuildPointForecastSample);
     const results = ["mean", "linear", "legacy"].map((method) => ({
       method,
@@ -6987,7 +7660,7 @@ window.MwiGuildCreditVersion = "1.2.65";
       const samples = records.filter(
         (record) =>
           record.weekStartAt < target.weekStartAt &&
-          record.weekStartAt >= target.weekStartAt - lookback * GUILD_POINT_WEEK_MS
+          record.weekStartAt >= (forecastStartAt ?? target.weekStartAt - lookback * GUILD_POINT_WEEK_MS)
       );
       const row = { weekStartAt: target.weekStartAt, actual: target.earnedPoints };
       const candidates = results.map((result) => guildPointModelPrediction(samples, target.weekStartAt, result.method));
@@ -7009,7 +7682,13 @@ window.MwiGuildCreditVersion = "1.2.65";
       meanAbsoluteError: result.count ? result.absoluteError / result.count : null,
       meanOverestimate: result.count ? result.overestimate / result.count : null
     }));
-    return { lookback, metrics, predictions, recommendedMethod: "linear" };
+    return {
+      lookback: forecastStartAt === null ? lookback : null,
+      forecastStartAt,
+      metrics,
+      predictions,
+      recommendedMethod: "linear"
+    };
   }
 
   function summarizeGuildPointHistory(history, options = {}) {
@@ -7050,13 +7729,15 @@ window.MwiGuildCreditVersion = "1.2.65";
         ? (latest.earnedPoints - previous.earnedPoints) / previous.earnedPoints
         : null;
     const forecastWeekCount = normalizeGuildPointForecastWeeks(options.forecastWeekCount);
-    const window = completedWeeks.filter(
-      (record) => record.weekStartAt >= forecastEndAt - forecastWeekCount * GUILD_POINT_WEEK_MS
-    );
+    const forecastStartAt =
+      Number.isSafeInteger(options.forecastStartAt) && options.forecastStartAt > 0
+        ? options.forecastStartAt
+        : forecastEndAt - forecastWeekCount * GUILD_POINT_WEEK_MS;
+    const window = completedWeeks.filter((record) => record.weekStartAt >= forecastStartAt);
     const samples = window.filter(isGuildPointForecastSample);
     const backtest = backtestGuildPointForecast(
       { weeks: window },
-      { forecastWeekCount, beforeWeekStartAt: forecastEndAt }
+      { forecastWeekCount, forecastStartAt: options.forecastStartAt, beforeWeekStartAt: forecastEndAt }
     );
     const forecastMethod = "linear";
     const forecastPoints = guildPointModelPrediction(samples, currentWeekStartAt, forecastMethod);
@@ -7078,14 +7759,14 @@ window.MwiGuildCreditVersion = "1.2.65";
       verifiedSampleCount: samples.filter(isReliableGuildPointWeek).length,
       forecastSamples: samples,
       currentWeekComplete,
-      forecastWeekCount,
+      forecastWeekCount: Math.max(0, Math.round((forecastEndAt - forecastStartAt) / GUILD_POINT_WEEK_MS)),
       estimatedSampleCount: window.filter((record) => record.source === "estimated").length,
       partialSampleCount: window.filter((record) => record.source !== "estimated" && !isReliableGuildPointWeek(record))
         .length,
       forecastMethod,
       backtest,
       currentWeekStartAt,
-      forecastStartAt: forecastEndAt - forecastWeekCount * GUILD_POINT_WEEK_MS,
+      forecastStartAt,
       forecastEndAt
     };
   }
@@ -7548,6 +8229,138 @@ window.MwiGuildCreditVersion = "1.2.65";
 });
 
 
+// SOURCE: src/runtime/upgrade-planning.js
+(function (root, factory) {
+  const api = factory();
+  if (typeof module !== "undefined" && module.exports) module.exports = api;
+  root.MwiGuildUpgradePlanning = api;
+})(typeof globalThis !== "undefined" ? globalThis : this, function () {
+  "use strict";
+  const requestEvent = "mwi:guild-upgrade-planning:request:v1";
+  const responseEvent = "mwi:guild-upgrade-planning:response:v1";
+  const allowed = /^\/guild_buffs\/(tempo|scholar)_(skilling|life)$/;
+  const clone = (value) => JSON.parse(JSON.stringify(value));
+  function create({ core, capture, owner, hostname, now = Date.now, version = "" }) {
+    let sequence = 0;
+    const snapshots = new Map();
+    const checkOwner = (id) => Number.isSafeInteger(id) && id > 0 && owner() === id;
+    async function take(characterId) {
+      const source = await capture();
+      if (!checkOwner(characterId)) throw Error("character_mismatch");
+      if (!source || !Array.isArray(source.shrines)) throw Error("rules_unavailable");
+      const id = `guild-plan-${now()}-${++sequence}`;
+      const snapshot = clone({
+        ...source,
+        id,
+        characterId,
+        host: hostname,
+        schemaVersion: 1,
+        providerVersion: version,
+        capturedAt: now()
+      });
+      snapshots.set(id, snapshot);
+      if (snapshots.size > 4) snapshots.delete(snapshots.keys().next().value);
+      return clone(snapshot);
+    }
+    function quote({ snapshotId, characterId, plans, inventory = {} }) {
+      const snapshot = snapshots.get(snapshotId);
+      if (!snapshot || !checkOwner(characterId) || snapshot.characterId !== characterId)
+        throw Error("snapshot_unavailable");
+      if (
+        !Array.isArray(plans) ||
+        plans.length < 1 ||
+        plans.length > 2 ||
+        new Set(plans.map((p) => p.hrid)).size !== plans.length
+      )
+        throw Error("invalid_plans");
+      const inputs = plans.map((p) => {
+        const shrine = snapshot.shrines.find((s) => s.hrid === p.hrid);
+        if (
+          !allowed.test(p.hrid) ||
+          !shrine ||
+          !Number.isInteger(p.start) ||
+          !Number.isInteger(p.target) ||
+          p.start < shrine.level ||
+          p.target > shrine.maxLevel ||
+          p.target <= p.start
+        )
+          throw Error("invalid_levels");
+        return {
+          guildBuffHrid: p.hrid,
+          startLevel: p.start,
+          targetLevel: p.target,
+          levelCosts: shrine.detail.levelCosts
+        };
+      });
+      if (
+        !inventory ||
+        typeof inventory !== "object" ||
+        Array.isArray(inventory) ||
+        Object.keys(inventory).length > 512 ||
+        Object.entries(inventory).some(
+          ([k, v]) => !/^\/items\/[a-z0-9_]+$/.test(k) || typeof v !== "number" || !Number.isFinite(v) || v < 0
+        )
+      )
+        throw Error("invalid_inventory");
+      const aggregate = core.aggregateGuildBuffPlans(inputs);
+      if (aggregate.status !== "ok") return { status: aggregate.status };
+      // A full-resource quote and an inventory-aware cash quote share the same
+      // core and selected conversion policy. Never derive total cost from a shortage.
+      const options = {
+        guildTokenCreditHrids: snapshot.policy.tokenCreditHrids,
+        guildTokenCreditConversions: snapshot.exchangeRules,
+        autoAllocateSurplusGuildTokens: false
+      };
+      const total = core.estimateGuildUpgradeCosts(aggregate.totals, snapshot.unitCosts, {}, options);
+      const cash = core.estimateGuildUpgradeCosts(aggregate.totals, snapshot.unitCosts, inventory, options);
+      return clone({
+        status: total.status,
+        total,
+        cash,
+        demands: aggregate.totals,
+        effects: inputs.map((p) =>
+          core.guildBuffUpgradePreview(
+            snapshot.shrines.find((s) => s.hrid === p.guildBuffHrid).detail,
+            p.startLevel,
+            p.targetLevel
+          )
+        )
+      });
+    }
+    return Object.freeze({ take, quote });
+  }
+  function install(target, provider) {
+    const reply = (id, result, error = null) =>
+      target.dispatchEvent(new target.CustomEvent(responseEvent, { detail: JSON.stringify({ id, result, error }) }));
+    const listener = (event) => {
+      let r;
+      try {
+        if (typeof event.detail !== "string" || event.detail.length > 100000) return;
+        r = JSON.parse(event.detail);
+      } catch (_) {
+        return;
+      }
+      if (!r || typeof r.id !== "string" || !/^[a-z0-9-]{1,100}$/.test(r.id)) return;
+      if (r.action === "capture")
+        provider.take(r.characterId).then(
+          (result) => reply(r.id, result),
+          (e) => reply(r.id, null, e.message)
+        );
+      else if (r.action === "quote") {
+        try {
+          reply(r.id, provider.quote(r));
+        } catch (e) {
+          reply(r.id, null, e.message);
+        }
+      }
+    };
+    target.addEventListener(requestEvent, listener);
+    return () => target.removeEventListener(requestEvent, listener);
+  }
+  return { create, install, requestEvent, responseEvent };
+});
+
+
 // SOURCE: src/shrine-guide.js
 (function (root, factory) {
   const api = factory();
@@ -7834,17 +8647,18 @@ window.MwiGuildCreditVersion = "1.2.65";
 // SOURCE: src/runtime/storage.js
 (function (root, factory) {
   const api = factory(
-    typeof module !== "undefined" && module.exports ? require("../trial-display.js") : root.MwiGuildTrialDisplay
+    typeof module !== "undefined" && module.exports ? require("../trial-display.js") : root.MwiGuildTrialDisplay,
+    typeof module !== "undefined" && module.exports ? require("./storage-codec.js") : root.MwiGuildStorageCodec
   );
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.MwiGuildCreditStorage = api;
-})(typeof globalThis !== "undefined" ? globalThis : this, function (displayApi) {
+})(typeof globalThis !== "undefined" ? globalThis : this, function (displayApi, storageCodec) {
   "use strict";
 
   const GUILD_BUFF_HRID_PATTERN = /^\/guild_buffs\/[A-Za-z0-9_./-]+$/;
   const GUILD_POINT_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
   const LEGACY_GUILD_TRIAL_FIRST_START_AT = Date.parse("2026-07-13T00:00:00Z");
-  const GUILD_BUILDING_PLANNER_SCHEMA_VERSION = 8;
+  const GUILD_BUILDING_PLANNER_SCHEMA_VERSION = 9;
 
   function normalizeGuildShrineAutofillExcludedBuffHrids(value) {
     const values =
@@ -7956,12 +8770,8 @@ window.MwiGuildCreditVersion = "1.2.65";
     return {
       guildId: String(source.guildId || "").slice(0, 160),
       lastObservation: normalizeObservation(source.lastObservation),
-      weeks: Array.from(byWeek.values())
-        .sort((left, right) => left.weekStartAt - right.weekStartAt)
-        .slice(-104),
-      manualWeeks: Array.from(manualByWeek.values())
-        .sort((left, right) => left.weekStartAt - right.weekStartAt)
-        .slice(-104)
+      weeks: Array.from(byWeek.values()).sort((left, right) => left.weekStartAt - right.weekStartAt),
+      manualWeeks: Array.from(manualByWeek.values()).sort((left, right) => left.weekStartAt - right.weekStartAt)
     };
   }
 
@@ -8101,7 +8911,9 @@ window.MwiGuildCreditVersion = "1.2.65";
   }
 
   function createPluginStorage(options) {
-    const { storage, location, config, buildingDataApi, marketDataApi, trialHistoryApi } = options;
+    const { location, config, buildingDataApi, marketDataApi, trialHistoryApi } = options;
+    const rawStorage = storageCodec.guardStorage(options.storage);
+    const storage = storageCodec.createStorage(rawStorage);
     const creditHrids = new Set(config.CREDIT_TYPES.map(([hrid]) => hrid));
 
     function guildBuildingPlannerStorageKey() {
@@ -8184,7 +8996,12 @@ window.MwiGuildCreditVersion = "1.2.65";
           const key = storage.key(index);
           if (!key || !key.startsWith(trialHistoryPrefix())) continue;
           try {
-            const record = trialHistoryApi.normalizeSnapshot(JSON.parse(storage.getItem(key)));
+            let record;
+            const text = storage.getItem(key, (value) => {
+              record = trialHistoryApi.normalizeSnapshot(JSON.parse(value));
+              return trialHistoryApi.validSnapshot(record);
+            });
+            record ??= trialHistoryApi.normalizeSnapshot(JSON.parse(text));
             if (trialHistoryApi.validSnapshot(record)) records.push(record);
             else failed = true;
           } catch (_) {
@@ -8200,58 +9017,173 @@ window.MwiGuildCreditVersion = "1.2.65";
       };
     }
 
-    function importTrialHistory(incoming) {
+    function trialRecoveryPrefix() {
+      return `mwi-guild-trial-recovery-v1:${guildBuildingPlannerStorageKey()}:`;
+    }
+
+    function inspectTrialImport(record) {
+      const key = trialHistoryPrefix() + encodeURIComponent(record.key);
+      const previousRaw = rawStorage.getItem(key);
+      if (previousRaw === null) return { record, status: "new", previousRaw };
+      let previous;
+      try {
+        previous = trialHistoryApi.normalizeSnapshot(JSON.parse(storageCodec.decode(previousRaw)));
+      } catch (_) {
+        return { record, status: "recoverable", previousRaw };
+      }
+      if (!trialHistoryApi.validSnapshot(previous)) return { record, status: "recoverable", previousRaw };
+      // A valid record under the wrong storage key is still user data, not damage
+      // that an import may silently replace.
+      if (previous.key !== record.key) return { record, status: "conflict", previousRaw };
+      return { ...trialHistoryApi.previewImport([record], [previous])[0], previousRaw };
+    }
+
+    function previewTrialImport(incoming, existing = []) {
+      const memory = new Map(existing.map((record) => [record.key, record]));
+      return incoming.map((record) => {
+        // Protect pending captures even when their storage write has failed.
+        if (memory.has(record.key)) return trialHistoryApi.previewImport([record], [memory.get(record.key)])[0];
+        try {
+          return inspectTrialImport(record);
+        } catch (_) {
+          return { record, status: "unavailable" };
+        }
+      });
+    }
+
+    function trialRecoveryBackupCount() {
+      let count = 0;
+      try {
+        for (let index = 0; index < rawStorage.length; index += 1)
+          if (rawStorage.key(index)?.startsWith(trialRecoveryPrefix())) count += 1;
+      } catch (_) {
+        // Counting is optional; failures must not interrupt history browsing.
+      }
+      return count;
+    }
+
+    function loadTrialRecoveryBackups() {
+      const backups = [];
+      for (let index = 0; index < rawStorage.length; index += 1) {
+        const key = rawStorage.key(index);
+        if (!key?.startsWith(trialRecoveryPrefix())) continue;
+        const backup = JSON.parse(storageCodec.decode(rawStorage.getItem(key)));
+        if (
+          backup?.schemaVersion !== 1 ||
+          typeof backup.recordKey !== "string" ||
+          backup.storageKey !== trialHistoryPrefix() + encodeURIComponent(backup.recordKey) ||
+          typeof backup.rawValue !== "string"
+        )
+          throw new Error("Invalid trial recovery backup");
+        backups.push(backup);
+      }
+      return backups;
+    }
+
+    function backupTrialValue(record, previousRaw) {
+      const prefix = trialRecoveryPrefix() + encodeURIComponent(record.key) + ":";
+      // Retrying a failed recovery must not accumulate identical backup copies.
+      for (let index = 0; index < rawStorage.length; index += 1) {
+        const key = rawStorage.key(index);
+        if (!key?.startsWith(prefix)) continue;
+        try {
+          const previous = JSON.parse(storageCodec.decode(rawStorage.getItem(key)));
+          if (
+            previous.schemaVersion === 1 &&
+            previous.recordKey === record.key &&
+            previous.storageKey === trialHistoryPrefix() + encodeURIComponent(record.key) &&
+            previous.rawValue === previousRaw
+          )
+            return;
+        } catch (_) {
+          // Preserve unreadable backups and create a separate verified copy.
+        }
+      }
+      const backup = {
+        schemaVersion: 1,
+        recordKey: record.key,
+        storageKey: trialHistoryPrefix() + encodeURIComponent(record.key),
+        rawValue: previousRaw,
+        savedAt: Date.now()
+      };
+      let key;
+      do {
+        key = prefix + (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`);
+      } while (rawStorage.getItem(key) !== null);
+      const text = storageCodec.encode(JSON.stringify(backup));
+      rawStorage.setItem(key, text);
+      if (rawStorage.getItem(key) !== text) throw new Error("Trial recovery backup was not saved");
+    }
+
+    function importTrialHistory(incoming, { recoveries = [] } = {}) {
       const written = [];
       let duplicates = 0;
       let conflicts = 0;
+      const approved = new Map(recoveries.map((entry) => [entry.key, entry.previousRaw]));
+      const totals = (entries) => {
+        const recovered = entries.filter((entry) => entry.mode === "recovered").length;
+        return {
+          added: entries.filter((entry) => entry.mode === "new").length,
+          dated: entries.filter((entry) => entry.mode === "dated").length,
+          ...(recovered ? { recovered } : {})
+        };
+      };
+      const changed = () => {
+        throw Object.assign(new Error("Local trial data changed"), { code: "trialImportChanged" });
+      };
       try {
         const validated = trialHistoryApi.parseImport(JSON.stringify({ schemaVersion: 2, records: incoming }));
         for (const record of validated) {
           const key = trialHistoryPrefix() + encodeURIComponent(record.key);
-          const previous = storage.getItem(key);
-          if (previous !== null) {
-            let existing;
-            try {
-              existing = JSON.parse(previous);
-            } catch (_) {
-              existing = { key: record.key };
-            }
-            const status = trialHistoryApi.previewImport([record], [existing || { key: record.key }])[0].status;
-            if (status === "duplicate") duplicates += 1;
-            else if (status !== "dated") conflicts += 1;
-            if (status !== "dated") continue;
+          const { status, previousRaw } = inspectTrialImport(record);
+          if (status === "duplicate") {
+            duplicates += 1;
+            continue;
           }
-          const text = JSON.stringify(record);
-          storage.setItem(key, text);
-          written.push({ key, text, previous });
+          if (status === "conflict" || (status === "recoverable" && !approved.has(record.key))) {
+            conflicts += 1;
+            continue;
+          }
+          const mode = status === "recoverable" ? "recovered" : status;
+          if (mode === "recovered") {
+            if (approved.get(record.key) !== previousRaw) changed();
+            backupTrialValue(record, previousRaw);
+          }
+          const text = storageCodec.encode(JSON.stringify(record));
+          if (rawStorage.getItem(key) !== previousRaw) changed();
+          rawStorage.setItem(key, text);
+          written.push({ key, text, previousRaw, mode });
         }
         return {
           status: "imported",
-          added: written.filter((entry) => entry.previous === null).length,
-          dated: written.filter((entry) => entry.previous !== null).length,
+          ...totals(written),
           duplicates,
           conflicts
         };
-      } catch (_) {
-        let added = 0;
-        let dated = 0;
+      } catch (error) {
+        const remaining = [];
         // Restore only our own writes, including the exact pre-import value
-        // when enriching a date. Do not overwrite another page's newer write.
-        for (const { key, text, previous } of written) {
+        // and damaged compressed bytes. Do not overwrite another page's write.
+        for (const entry of written) {
+          const { key, text, previousRaw } = entry;
           let retained = false;
           try {
-            if (storage.getItem(key) === text) {
-              if (previous === null) storage.removeItem(key);
-              else storage.setItem(key, previous);
+            if (rawStorage.getItem(key) === text) {
+              if (previousRaw === null) rawStorage.removeItem(key);
+              else rawStorage.setItem(key, previousRaw);
             }
-            retained = storage.getItem(key) !== previous;
+            retained = rawStorage.getItem(key) !== previousRaw;
           } catch (_) {
             retained = true;
           }
-          if (retained && previous === null) added += 1;
-          else if (retained) dated += 1;
+          if (retained) remaining.push(entry);
         }
-        return { status: added + dated ? "partial" : "failed", added, dated, duplicates, conflicts };
+        return {
+          status: remaining.length ? "partial" : error?.code === "trialImportChanged" ? "stale" : "failed",
+          ...totals(remaining),
+          duplicates,
+          conflicts
+        };
       }
     }
 
@@ -8401,7 +9333,10 @@ window.MwiGuildCreditVersion = "1.2.65";
       const fallback = {
         plans: [],
         manualGuildPoints: null,
-        guildPointSettings: { guildPointForecastWeeks: 6, guildPointPlanningWeeks: 0 },
+        guildPointSettings: {
+          guildPointForecastStartAt: config.GUILD_TRIAL_FIRST_START_AT,
+          guildPointPlanningWeeks: 0
+        },
         category: "all",
         search: "",
         constructionUi: normalizeConstructionUi(null),
@@ -8444,18 +9379,46 @@ window.MwiGuildCreditVersion = "1.2.65";
         const category = ["all", "core", "life", "combat", "shrine"].includes(stored.category)
           ? stored.category
           : "all";
-        const guildPointForecastWeeksValue = Number(stored.guildPointForecastWeeks);
+        const firstWeek = config.GUILD_TRIAL_FIRST_START_AT;
+        const currentWeek =
+          firstWeek + Math.max(0, Math.floor((Date.now() - firstWeek) / GUILD_POINT_WEEK_MS)) * GUILD_POINT_WEEK_MS;
+        const storedStart = Number(stored.guildPointForecastStartAt);
+        const validStart =
+          Number.isSafeInteger(storedStart) &&
+          storedStart >= firstWeek &&
+          storedStart <= currentWeek &&
+          (storedStart - firstWeek) % GUILD_POINT_WEEK_MS === 0;
+        const legacyWeeks = Number(stored.guildPointForecastWeeks);
+        const lookback = Number.isSafeInteger(legacyWeeks) && legacyWeeks >= 2 && legacyWeeks <= 12 ? legacyWeeks : 6;
+        const snapshot = normalizeGuildPointSnapshot(stored.guildPointSnapshot);
+        const includeCurrent =
+          Number(stored.schemaVersion) >= 7 &&
+          snapshot?.currentWeekPoints > 0 &&
+          Number.isSafeInteger(snapshot.weekStartAt) &&
+          Math.floor((snapshot.weekStartAt - firstWeek) / GUILD_POINT_WEEK_MS) ===
+            Math.floor((currentWeek - firstWeek) / GUILD_POINT_WEEK_MS);
+        const guildPointForecastStartAt = validStart
+          ? storedStart
+          : Math.max(
+              firstWeek,
+              currentWeek + (includeCurrent ? GUILD_POINT_WEEK_MS : 0) - lookback * GUILD_POINT_WEEK_MS
+            );
+        let forecastSaveFailed = false;
+        if (!validStart) {
+          // Freeze the migrated boundary once without rewriting unrelated planner data.
+          try {
+            storage.setItem(guildBuildingPlannerStorageKey(), JSON.stringify({ ...stored, guildPointForecastStartAt }));
+          } catch (_) {
+            forecastSaveFailed = true;
+          }
+        }
         const guildPointPlanningWeeksValue = Number(stored.guildPointPlanningWeeks);
         return {
           plans,
           manualGuildPoints,
           guildPointSettings: {
-            guildPointForecastWeeks:
-              Number.isSafeInteger(guildPointForecastWeeksValue) &&
-              guildPointForecastWeeksValue >= 2 &&
-              guildPointForecastWeeksValue <= 12
-                ? guildPointForecastWeeksValue
-                : 6,
+            guildPointForecastStartAt,
+            ...(forecastSaveFailed ? { guildPointForecastSaveFailed: true } : {}),
             guildPointPlanningWeeks:
               Number.isSafeInteger(guildPointPlanningWeeksValue) &&
               guildPointPlanningWeeksValue >= 0 &&
@@ -8486,6 +9449,7 @@ window.MwiGuildCreditVersion = "1.2.65";
 
     function persistGuildBuildingPlannerState(state) {
       try {
+        if (!storage || typeof storage.setItem !== "function") return false;
         storage &&
           storage.setItem(
             guildBuildingPlannerStorageKey(),
@@ -8493,7 +9457,7 @@ window.MwiGuildCreditVersion = "1.2.65";
               schemaVersion: GUILD_BUILDING_PLANNER_SCHEMA_VERSION,
               rulesVersion: buildingDataApi.RULES_VERSION,
               manualGuildPoints: state.manualGuildPoints,
-              guildPointForecastWeeks: state.guildPointForecastWeeks,
+              guildPointForecastStartAt: state.guildPointForecastStartAt,
               guildPointPlanningWeeks: state.guildPointPlanningWeeks,
               category: state.buildingCategory,
               search: shortText(state.buildingSearch),
@@ -8511,8 +9475,10 @@ window.MwiGuildCreditVersion = "1.2.65";
               }))
             })
           );
+        return true;
       } catch (_) {
         // Keep the current page state when browser storage is unavailable.
+        return false;
       }
     }
 
@@ -8707,6 +9673,9 @@ window.MwiGuildCreditVersion = "1.2.65";
       saveTrialRankingOrder,
       saveTrialSnapshot,
       importTrialHistory,
+      previewTrialImport,
+      trialRecoveryBackupCount,
+      loadTrialRecoveryBackups,
       loadSavedPluginUiState,
       loadSavedGuildBuildingPlannerState,
       persistGuildBuildingPlannerState,
@@ -8734,6 +9703,209 @@ window.MwiGuildCreditVersion = "1.2.65";
     normalizeGuildShrineAutofillExcludedBuffHrids,
     createPluginStorage
   };
+});
+
+
+// SOURCE: src/runtime/storage-transfer.js
+(function (root, factory) {
+  const api = factory(
+    typeof module !== "undefined" && module.exports ? require("./config.js") : root.MwiGuildCreditConfig,
+    typeof module !== "undefined" && module.exports ? require("./storage-codec.js") : root.MwiGuildStorageCodec
+  );
+  if (typeof module !== "undefined" && module.exports) module.exports = api;
+  root.MwiGuildStorageTransfer = api;
+})(typeof globalThis !== "undefined" ? globalThis : this, function (config, codec) {
+  "use strict";
+
+  const FORMAT = "mwi-guild-local-backup";
+  const MAX_TEXT = 32 * 1024 * 1024;
+  const MAX_FILE_BYTES = 64 * 1024 * 1024;
+  const EXACT_KEYS = new Set([
+    config.PRICE_REFERENCE_STORAGE_KEY,
+    config.UI_STATE_STORAGE_KEY,
+    config.MARKET_LIVE_STORAGE_KEY,
+    config.MARKETPLACE_SNAPSHOT_STORAGE_KEY,
+    config.MARKETPLACE_REQUEST_STATE_STORAGE_KEY,
+    "mwi-official-item-name-catalog-v1"
+  ]);
+  const planner = `${config.GUILD_BUILDING_PLAN_STORAGE_PREFIX}:[a-zA-Z0-9.-]+:[^:]+`;
+  const scoped = [
+    new RegExp(`^${planner}$`),
+    new RegExp(`^${config.TRIAL_DISPLAY_STORAGE_PREFIX}:${planner}(?::view|:ranking-order)?$`),
+    new RegExp(`^${config.TRIAL_HISTORY_STORAGE_PREFIX}:${planner}:[^:]+$`),
+    new RegExp(`^mwi-guild-trial-recovery-v1:${planner}:[^:]+:[^:]+$`)
+  ];
+  function ownsKey(key) {
+    return typeof key === "string" && (EXACT_KEYS.has(key) || scoped.some((pattern) => pattern.test(key)));
+  }
+  function sameEntries(left, right) {
+    return (
+      left.length === right.length &&
+      left.every((entry, index) => entry.key === right[index].key && entry.rawValue === right[index].rawValue)
+    );
+  }
+  function byteSize(entries) {
+    return entries.reduce((sum, entry) => sum + 2 * (entry.key.length + entry.rawValue.length), 0);
+  }
+  function fail(code) {
+    throw Object.assign(new Error(code), { code });
+  }
+
+  function create({ storage, origin, version, now = Date.now }) {
+    function keys() {
+      const result = [];
+      for (let index = 0; index < storage.length; index += 1) {
+        const key = storage.key(index);
+        if (ownsKey(key)) result.push(key);
+      }
+      return [...new Set(result)].sort();
+    }
+    function readEntries() {
+      return keys().map((key) => {
+        const rawValue = storage.getItem(key);
+        if (typeof rawValue !== "string") fail("cacheDataChanged");
+        return { key, rawValue };
+      });
+    }
+    function snapshot() {
+      const entries = readEntries();
+      if (!sameEntries(entries, readEntries())) fail("cacheDataChanged");
+      return { format: FORMAT, schemaVersion: 1, origin, pluginVersion: version, exportedAt: now(), entries };
+    }
+    function validate(backup) {
+      if (
+        backup?.format !== FORMAT ||
+        backup.schemaVersion !== 1 ||
+        !Array.isArray(backup.entries) ||
+        backup.entries.length > 20000 ||
+        !Number.isSafeInteger(backup.exportedAt) ||
+        backup.exportedAt <= 0 ||
+        typeof backup.pluginVersion !== "string" ||
+        !/^\d+\.\d+\.\d+$/.test(backup.pluginVersion)
+      )
+        fail("cacheInvalidBackup");
+      if (backup.origin !== origin) fail("cacheWrongOrigin");
+      const seen = new Set();
+      const entries = backup.entries.map((entry) => {
+        if (
+          !entry ||
+          !ownsKey(entry.key) ||
+          entry.key.length > 4096 ||
+          seen.has(entry.key) ||
+          typeof entry.rawValue !== "string" ||
+          entry.rawValue.length > MAX_TEXT
+        )
+          fail("cacheInvalidBackup");
+        seen.add(entry.key);
+        return { key: entry.key, rawValue: entry.rawValue };
+      });
+      return { ...backup, entries: entries.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0)) };
+    }
+    function parse(text) {
+      if (typeof text !== "string" || text.length > MAX_TEXT) fail("cacheFileTooLarge");
+      let value;
+      try {
+        value = JSON.parse(text);
+      } catch (_) {
+        fail("cacheInvalidBackup");
+      }
+      const backup = validate(value);
+      // Use the same code-unit order as Storage snapshots, regardless of locale.
+      backup.entries.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+      return backup;
+    }
+    function verifyFile(text, expected) {
+      return sameEntries(parse(text).entries, expected.entries);
+    }
+    function preview(backup) {
+      const incoming = validate(backup).entries;
+      const current = snapshot();
+      const existing = new Map(current.entries.map((entry) => [entry.key, entry.rawValue]));
+      return {
+        current,
+        entries: incoming.map((entry) => ({
+          ...entry,
+          status: !existing.has(entry.key)
+            ? "new"
+            : existing.get(entry.key) === entry.rawValue
+              ? "duplicate"
+              : "conflict"
+        }))
+      };
+    }
+
+    function mutate(expected, changes) {
+      let generation;
+      const written = [];
+      try {
+        if (!sameEntries(expected.entries, snapshot().entries)) fail("cacheDataChanged");
+        if (!changes.length) return { status: "applied", changed: 0, needsReload: false };
+        generation = globalThis.crypto?.randomUUID?.() || `${now()}-${Math.random()}`;
+        storage.setItem(codec.GENERATION_KEY, generation);
+        if (storage.getItem(codec.GENERATION_KEY) !== generation) fail("cacheSaveFailed");
+        for (const change of changes) {
+          if (storage.getItem(codec.GENERATION_KEY) !== generation) fail("cacheDataChanged");
+          if (storage.getItem(change.key) !== change.before) fail("cacheDataChanged");
+          if (change.after === null) storage.removeItem(change.key);
+          else storage.setItem(change.key, change.after);
+          // Log before verification, so even a silently ignored write is handled.
+          written.push(change);
+          if (storage.getItem(change.key) !== change.after) fail("cacheSaveFailed");
+        }
+        const desired = new Map(expected.entries.map((entry) => [entry.key, entry.rawValue]));
+        for (const { key, after } of changes) {
+          if (after === null) desired.delete(key);
+          else desired.set(key, after);
+        }
+        const actual = snapshot().entries;
+        const target = [...desired]
+          .map(([key, rawValue]) => ({ key, rawValue }))
+          .sort((a, b) => (a.key < b.key ? -1 : 1));
+        if (storage.getItem(codec.GENERATION_KEY) !== generation || !sameEntries(target, actual))
+          fail("cacheDataChanged");
+        return { status: "applied", changed: changes.length, needsReload: true };
+      } catch (error) {
+        let remaining = 0;
+        for (const { key, before, after } of written.reverse()) {
+          try {
+            // Never roll back another page's newer value.
+            if (storage.getItem(key) === after) {
+              if (before === null) storage.removeItem(key);
+              else storage.setItem(key, before);
+            }
+            if (storage.getItem(key) !== before) remaining += 1;
+          } catch (_) {
+            remaining += 1;
+          }
+        }
+        return {
+          status: remaining ? "partial" : error?.code === "cacheDataChanged" ? "stale" : "failed",
+          changed: remaining,
+          needsReload: generation !== undefined
+        };
+      }
+    }
+    function clear(backup) {
+      validate(backup);
+      return mutate(
+        backup,
+        backup.entries.map(({ key, rawValue }) => ({ key, before: rawValue, after: null }))
+      );
+    }
+    function restore(plan, overwrite = false) {
+      // Revalidate at the write boundary; never trust a caller-supplied status.
+      validate({ ...plan.current, entries: plan.entries });
+      const previous = new Map(plan.current.entries.map((entry) => [entry.key, entry.rawValue]));
+      const changes = plan.entries.flatMap(({ key, rawValue }) => {
+        const before = previous.get(key) ?? null;
+        return before === rawValue || (before !== null && !overwrite) ? [] : [{ key, before, after: rawValue }];
+      });
+      return mutate(plan.current, changes);
+    }
+    return { snapshot, parse, verifyFile, preview, clear, restore, pauseWrites: () => codec.pauseStorage(storage) };
+  }
+
+  return { create, ownsKey, sameEntries, byteSize, FORMAT, MAX_TEXT, MAX_FILE_BYTES };
 });
 
 
@@ -9340,8 +10512,9 @@ window.MwiGuildCreditVersion = "1.2.65";
       }
     }
 
-    function extractItemDetailsFromReact() {
+    function extractItemDetailsFromReact(force = false) {
       if (
+        !force &&
         state.itemDetails &&
         state.guildBuffDetails &&
         state.guildBuffLevels &&
@@ -9371,6 +10544,15 @@ window.MwiGuildCreditVersion = "1.2.65";
         visited.add(fiber);
         scanned += 1;
         const stateValue = fiber.stateNode && fiber.stateNode.state;
+        if (Number.isSafeInteger(stateValue?.character?.id) && stateValue.character.id > 0) {
+          if (state.planningCharacterId && state.planningCharacterId !== stateValue.character.id) {
+            state.guildBuffLevels = null;
+            state.guildShrineLevels = null;
+            state.guildBuildingLevels = null;
+            state.characterItems = null;
+          }
+          state.planningCharacterId = stateValue.character.id;
+        }
         const candidates = [fiber.memoizedProps, fiber.pendingProps, stateValue, fiber.memoizedState];
         for (const candidate of candidates) {
           if (!candidate || typeof candidate !== "object") continue;
@@ -9391,7 +10573,8 @@ window.MwiGuildCreditVersion = "1.2.65";
             state.guildBuildingLevels &&
             state.guildPointSummary &&
             state.guildWeekStartAt &&
-            state.characterItems
+            state.characterItems &&
+            (!force || state.planningCharacterId)
           )
             return true;
         }
@@ -10274,7 +11457,13 @@ window.MwiGuildCreditVersion = "1.2.65";
     }
 
     function captureSiblings(panelHost, tabBar) {
-      for (const node of panelHost.children) {
+      const siblings = new Set(panelHost.children);
+      for (const [node, record] of hiddenNodes) {
+        if (siblings.has(node)) continue;
+        restoreStyle(node, "display", record);
+        hiddenNodes.delete(node);
+      }
+      for (const node of siblings) {
         if (node === active.panel || hiddenNodes.has(node) || !node.style) continue;
         hiddenNodes.set(node, claimStyle(node, "display", "none", "important"));
       }
@@ -10296,7 +11485,6 @@ window.MwiGuildCreditVersion = "1.2.65";
         !active ||
         !panelHost ||
         !tabBar ||
-        active.panel.hidden ||
         active.tab.getAttribute("aria-selected") !== "true" ||
         !active.tab.classList.contains("Mui-selected") ||
         otherSelected(tabBar)
@@ -10305,7 +11493,17 @@ window.MwiGuildCreditVersion = "1.2.65";
       active.panelHost = panelHost;
       active.tabBar = tabBar;
       captureSiblings(panelHost, tabBar);
+      restoreVisibility();
       return true;
+    }
+
+    function restoreVisibility() {
+      // Delayed native/foreign renders can hide live nodes without changing
+      // selection. Repair only our panel and its host while we own the sidebar.
+      for (const node of [active.panelHost, active.panel]) {
+        if (node.hidden) node.hidden = false;
+        if (readStyle(node.style, "display").value === "none") writeStyle(node.style, "display", "");
+      }
     }
 
     function show(panelHost, tabBar) {
@@ -10318,7 +11516,7 @@ window.MwiGuildCreditVersion = "1.2.65";
       }
       active = { panel: state.panel, tab: state.creditTab, panelHost, tabBar };
       captureSiblings(panelHost, tabBar);
-      active.panel.hidden = false;
+      restoreVisibility();
       active.tab.classList.add("Mui-selected");
       active.tab.setAttribute("aria-selected", "true");
       active.tab.tabIndex = 0;
@@ -10378,7 +11576,8 @@ window.MwiGuildCreditVersion = "1.2.65";
 
   const SIDEBAR_REPLACEMENT_EVENT = "mwi:guild-sidebar-replacing";
   const OWNER = "mwi-guild-credit-optimizer";
-  const isSelected = (tab) => tab.getAttribute("aria-selected") === "true" || tab.classList.contains("Mui-selected");
+  const isSelected = (tab) =>
+    tab?.getAttribute?.("aria-selected") === "true" || tab?.classList?.contains("Mui-selected");
   const ownsSelection = (tab) => tab.getAttribute("aria-selected") === "true" && tab.classList.contains("Mui-selected");
   const isAvailable = (tab) =>
     tab.matches('button,[role="tab"]') &&
@@ -10482,6 +11681,7 @@ window.MwiGuildCreditVersion = "1.2.65";
           element === integration.panelHost ||
           element === integration.tabBar ||
           element === state.creditTab ||
+          element === state.panel ||
           (integration.tabBar.contains(element) && !state.creditTab.contains(element)) ||
           element?.contains(integration.tabBar)
         );
@@ -10554,11 +11754,11 @@ window.MwiGuildCreditVersion = "1.2.65";
       if (event.detail === OWNER) destroy();
     }
 
-    function show(panelHost, tabBar) {
+    function show(panelHost, tabBar, resume = false) {
       if (destroyed || !state.panel?.isConnected) return;
       coordinator.announce();
       selection.show(panelHost, tabBar);
-      options.onActivate?.(state.panel);
+      if (!resume) options.onActivate?.(state.panel);
     }
 
     function refresh() {
@@ -10575,6 +11775,9 @@ window.MwiGuildCreditVersion = "1.2.65";
       if (detectedLocale) options.onLocale?.(detectedLocale);
       const locale = getLocale();
       const staleSelected = dom.suppressStaleMounts(found, state.creditTab, state.panel) || resumeOpen;
+      const anotherSelected = Array.from(tabBar.children).some(
+        (tab) => tab !== state.creditTab && !tab.hidden && isSelected(tab)
+      );
       resumeOpen = false;
       const localeChanged = Boolean(state.panel && state.panelLocale && state.panelLocale !== locale);
       const currentIntegrationMatches = Boolean(
@@ -10586,14 +11789,18 @@ window.MwiGuildCreditVersion = "1.2.65";
       if (currentIntegrationMatches && !localeChanged) {
         const label = getLabel();
         if (state.creditTab.textContent !== label) state.creditTab.textContent = label;
-        if (staleSelected) show(panelHost, tabBar);
+        if (staleSelected && !anotherSelected) show(panelHost, tabBar);
         else if (selection.isActive() && !selection.sync(panelHost, tabBar)) selection.hide();
         if (contentChanged && !state.panel.hidden) options.onRefresh?.(state.panel);
         return true;
       }
 
+      const wasActive = selection.isActive();
       const keepPanelOpen =
-        staleSelected || Boolean(state.panel && !state.panel.hidden && state.creditTab && isSelected(state.creditTab));
+        !anotherSelected &&
+        (staleSelected ||
+          selection.isActive() ||
+          Boolean(state.panel && !state.panel.hidden && state.creditTab && isSelected(state.creditTab)));
       const tabHadFocus = state.creditTab === windowRef.document.activeElement;
       const reuseTab = Boolean(
         state.creditTab?.isConnected &&
@@ -10620,7 +11827,7 @@ window.MwiGuildCreditVersion = "1.2.65";
       state.creditTab = tab;
       state.panelLocale = locale;
       options.onMount?.(panel);
-      if (keepPanelOpen) show(panelHost, tabBar);
+      if (keepPanelOpen) show(panelHost, tabBar, wasActive && !replacement);
       if (tabHadFocus) tab.focus({ preventScroll: true });
       return true;
     }
@@ -10645,6 +11852,8 @@ window.MwiGuildCreditVersion = "1.2.65";
       documentRef.dispatchEvent(new windowRef.CustomEvent(SIDEBAR_REPLACEMENT_EVENT, { detail: OWNER }));
       documentRef.addEventListener(SIDEBAR_REPLACEMENT_EVENT, replacementRequested);
       interval = windowRef.setInterval(refresh, 3000);
+      documentRef.addEventListener("visibilitychange", schedule);
+      windowRef.addEventListener("pageshow", schedule);
       windowRef.addEventListener("resize", schedule, { passive: true });
       windowRef.addEventListener("orientationchange", schedule, { passive: true });
       refresh();
@@ -10658,6 +11867,8 @@ window.MwiGuildCreditVersion = "1.2.65";
       lifecycle.destroy();
       coordinator.destroy();
       windowRef.document.removeEventListener(SIDEBAR_REPLACEMENT_EVENT, replacementRequested);
+      windowRef.document.removeEventListener("visibilitychange", schedule);
+      windowRef.removeEventListener("pageshow", schedule);
       windowRef.removeEventListener("resize", schedule);
       windowRef.removeEventListener("orientationchange", schedule);
       pending = null;
@@ -10950,12 +12161,11 @@ window.MwiGuildCreditVersion = "1.2.65";
         #mwi-credit-optimizer [data-role="trials-view"] :focus-visible{outline:2px solid #77e1cb;outline-offset:2px}
         #mwi-credit-optimizer .mwi-view-tabs-shell{position:sticky;z-index:20;top:-12px;display:flex;align-items:stretch;gap:0;margin:0 -12px 12px;padding:8px 12px 0;border-bottom:1px solid #383b53;background:#202139}#mwi-credit-optimizer .mwi-view-tabs{display:flex;flex:0 1 auto;min-width:0;overflow-x:auto;scrollbar-width:thin}#mwi-credit-optimizer .mwi-view-tab-item{position:relative;display:block;flex:0 0 auto;touch-action:pan-y;cursor:grab}#mwi-credit-optimizer .mwi-view-tab-item[hidden]{display:none!important}#mwi-credit-optimizer .mwi-view-tab-item:active{cursor:grabbing}#mwi-credit-optimizer :is(.mwi-view-tab,.mwi-settings-trigger){min-height:40px!important;border-radius:0!important;background:transparent!important;color:#c9cbeb!important;padding:6px 10px!important;touch-action:pan-y}#mwi-credit-optimizer .mwi-view-tab-active{border-bottom:2px solid #77e1cb!important;background:transparent!important;color:#a3f0df!important}#mwi-credit-optimizer .mwi-icon-button{position:relative;width:32px;min-width:32px;min-height:32px;padding:0!important;border:1px solid #555875!important;background:#343650!important;color:#fff!important}#mwi-credit-optimizer .mwi-icon-button:before{position:absolute;top:50%;left:50%;width:7px;height:7px;border-top:2px solid currentColor;border-left:2px solid currentColor;content:""}#mwi-credit-optimizer .mwi-icon-up:before{transform:translate(-50%,-35%) rotate(45deg)}#mwi-credit-optimizer .mwi-icon-down:before{transform:translate(-50%,-65%) rotate(225deg)}
 
-        #mwi-credit-optimizer .mwi-settings-panel{min-width:0;margin:-2px 0 10px;border:1px solid #4b5777;border-radius:8px;background:linear-gradient(145deg,#232a43,#25263f);box-shadow:0 8px 20px #0c0d173d;color:#f4f5ff}#mwi-credit-optimizer .mwi-settings-panel[hidden]{display:none!important}#mwi-credit-optimizer .mwi-settings-header{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:9px 10px;border-bottom:1px solid #3f4969;background:#212941}#mwi-credit-optimizer .mwi-settings-header>span{display:grid;gap:2px;min-width:0}#mwi-credit-optimizer .mwi-settings-header h3{margin:0;color:#f3fff9;font-size:14px}#mwi-credit-optimizer .mwi-settings-header p{margin:0;color:#aebbd4;font-size:10px;line-height:1.35;overflow-wrap:anywhere}#mwi-credit-optimizer .mwi-settings-close{flex:0 0 auto;width:28px;min-width:28px;min-height:28px!important;padding:0!important;border:1px solid #59607e!important;background:#343650!important;color:#e8e9f8!important;font-size:18px;line-height:1}#mwi-credit-optimizer .mwi-settings-content{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;padding:9px 10px}#mwi-credit-optimizer .mwi-settings-block{min-width:0;padding:8px 0}#mwi-credit-optimizer .mwi-settings-block+.mwi-settings-block{border-top:1px solid #424866}#mwi-credit-optimizer .mwi-settings-block-heading{display:grid;gap:2px;margin:0 0 7px}#mwi-credit-optimizer .mwi-settings-block-heading h4{margin:0;color:#f2f4ff;font-size:12px}#mwi-credit-optimizer .mwi-settings-block-heading p{margin:0;color:#aeb1cf;font-size:10px;line-height:1.4;overflow-wrap:anywhere}#mwi-credit-optimizer .mwi-settings-domains{display:grid;grid-template-columns:minmax(0,1fr);gap:7px}#mwi-credit-optimizer .mwi-settings-domain{min-width:0;margin:0;padding:6px;border:1px solid #3f4665;border-radius:5px;background:#23253d}#mwi-credit-optimizer .mwi-settings-domain legend{padding:0 4px;color:#77f3d0;font-size:10px;font-weight:700}#mwi-credit-optimizer .mwi-settings-domain[data-domain="combat"] legend{color:#8cb9ff}#mwi-credit-optimizer .mwi-settings-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:4px}#mwi-credit-optimizer label.mwi-settings-option{display:flex;align-items:center;gap:6px;min-width:0;min-height:30px;padding:4px 6px;border:1px solid transparent;border-radius:4px;background:#2b2d49;color:#e8eafa;font-size:10px;line-height:1.25;cursor:pointer}#mwi-credit-optimizer label.mwi-settings-option:hover{border-color:#59607e;background:#313451}#mwi-credit-optimizer .mwi-settings-option span{min-width:0;overflow-wrap:anywhere}#mwi-credit-optimizer .mwi-settings-shrine-icon{display:flex;flex:0 0 30px;width:30px;height:30px}#mwi-credit-optimizer .mwi-settings-shrine-icon .mwi-building-icon{width:100%;height:100%;margin:0}#mwi-credit-optimizer .mwi-settings-shrine-copy{display:grid;gap:3px;flex:1;min-width:0;text-align:left}#mwi-credit-optimizer .mwi-settings-shrine-name{font-size:11px;line-height:1.35}#mwi-credit-optimizer .mwi-settings-shrine-effects{color:#bfc9df;font-size:10px;line-height:1.4}#mwi-credit-optimizer label.mwi-settings-option:focus-within{outline:2px solid #77f3d0;outline-offset:1px}#mwi-credit-optimizer .mwi-settings-option input[type="checkbox"]{flex:0 0 15px;width:15px;min-width:15px;height:15px;min-height:15px;margin:0;padding:0;accent-color:#43c4ad}#mwi-credit-optimizer .mwi-settings-placeholder{margin:0;padding:7px;border:1px dashed #545a79;border-radius:4px;color:#c6c9df;font-size:10px;line-height:1.35}#mwi-credit-optimizer label.mwi-settings-switch{display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0;padding:6px;border-radius:5px;background:#23253d;cursor:pointer}#mwi-credit-optimizer label.mwi-settings-switch+.mwi-settings-switch{margin-top:6px}#mwi-credit-optimizer .mwi-settings-switch-copy{display:grid;gap:2px;min-width:0}#mwi-credit-optimizer .mwi-settings-switch-copy strong{color:#f2f4ff;font-size:11px;overflow-wrap:anywhere}#mwi-credit-optimizer .mwi-settings-switch-copy small{color:#aeb1cf;font-size:9px;line-height:1.35;overflow-wrap:anywhere}#mwi-credit-optimizer input.mwi-settings-switch-input{position:relative;flex:0 0 36px;width:36px;min-width:36px;height:20px;min-height:20px;margin:0;padding:2px;border:1px solid #626784;border-radius:999px;background:#383a54;appearance:none;cursor:pointer;transition:border-color .16s ease,background-color .16s ease}#mwi-credit-optimizer input.mwi-settings-switch-input:before{display:block;width:14px;height:14px;border-radius:50%;background:#c7cae0;box-shadow:0 1px 3px #090a12aa;content:"";transition:transform .16s ease,background-color .16s ease}#mwi-credit-optimizer input.mwi-settings-switch-input:checked{border-color:#77f3d0;background:#2c665d}#mwi-credit-optimizer input.mwi-settings-switch-input:checked:before{transform:translateX(16px);background:#edfffa}#mwi-credit-optimizer .mwi-settings-status{min-height:0;margin:0;padding:0 10px 8px;color:#a9e9dc;font-size:10px;line-height:1.35}#mwi-credit-optimizer .mwi-settings-status:empty{display:none}#mwi-credit-optimizer .mwi-settings-status[data-error="true"]{color:#ff9ca3}
+        #mwi-credit-optimizer .mwi-settings-panel{min-width:0;margin:-2px 0 10px;border:1px solid #4b5777;border-radius:8px;background:linear-gradient(145deg,#232a43,#25263f);box-shadow:0 8px 20px #0c0d173d;color:#f4f5ff}#mwi-credit-optimizer .mwi-settings-panel[hidden]{display:none!important}#mwi-credit-optimizer .mwi-settings-content{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;padding:9px 10px}#mwi-credit-optimizer .mwi-settings-block{min-width:0;padding:8px 0}#mwi-credit-optimizer .mwi-settings-block+.mwi-settings-block{border-top:1px solid #424866}#mwi-credit-optimizer .mwi-settings-block-heading{display:grid;gap:2px;margin:0 0 7px}#mwi-credit-optimizer .mwi-settings-block-heading h4{margin:0;color:#f2f4ff;font-size:12px}#mwi-credit-optimizer .mwi-settings-block-heading p{margin:0;color:#aeb1cf;font-size:10px;line-height:1.4;overflow-wrap:anywhere}#mwi-credit-optimizer .mwi-settings-domains{display:grid;grid-template-columns:minmax(0,1fr);gap:7px}#mwi-credit-optimizer .mwi-settings-domain{min-width:0;margin:0;padding:6px;border:1px solid #3f4665;border-radius:5px;background:#23253d}#mwi-credit-optimizer .mwi-settings-domain legend{padding:0 4px;color:#77f3d0;font-size:10px;font-weight:700}#mwi-credit-optimizer .mwi-settings-domain[data-domain="combat"] legend{color:#8cb9ff}#mwi-credit-optimizer .mwi-settings-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:4px}#mwi-credit-optimizer label.mwi-settings-option{display:flex;align-items:center;gap:6px;min-width:0;min-height:30px;padding:4px 6px;border:1px solid transparent;border-radius:4px;background:#2b2d49;color:#e8eafa;font-size:10px;line-height:1.25;cursor:pointer}#mwi-credit-optimizer label.mwi-settings-option:hover{border-color:#59607e;background:#313451}#mwi-credit-optimizer .mwi-settings-option span{min-width:0;overflow-wrap:anywhere}#mwi-credit-optimizer .mwi-settings-shrine-icon{display:flex;flex:0 0 30px;width:30px;height:30px}#mwi-credit-optimizer .mwi-settings-shrine-icon .mwi-building-icon{width:100%;height:100%;margin:0}#mwi-credit-optimizer .mwi-settings-shrine-copy{display:grid;gap:3px;flex:1;min-width:0;text-align:left}#mwi-credit-optimizer .mwi-settings-shrine-name{font-size:11px;line-height:1.35}#mwi-credit-optimizer .mwi-settings-shrine-effects{color:#bfc9df;font-size:10px;line-height:1.4}#mwi-credit-optimizer label.mwi-settings-option:focus-within{outline:2px solid #77f3d0;outline-offset:1px}#mwi-credit-optimizer .mwi-settings-option input[type="checkbox"]{flex:0 0 15px;width:15px;min-width:15px;height:15px;min-height:15px;margin:0;padding:0;accent-color:#43c4ad}#mwi-credit-optimizer .mwi-settings-placeholder{margin:0;padding:7px;border:1px dashed #545a79;border-radius:4px;color:#c6c9df;font-size:10px;line-height:1.35}#mwi-credit-optimizer label.mwi-settings-switch{display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0;padding:6px;border-radius:5px;background:#23253d;cursor:pointer}#mwi-credit-optimizer label.mwi-settings-switch+.mwi-settings-switch{margin-top:6px}#mwi-credit-optimizer .mwi-settings-switch-copy{display:grid;gap:2px;min-width:0}#mwi-credit-optimizer .mwi-settings-switch-copy strong{color:#f2f4ff;font-size:11px;overflow-wrap:anywhere}#mwi-credit-optimizer .mwi-settings-switch-copy small{color:#aeb1cf;font-size:9px;line-height:1.35;overflow-wrap:anywhere}#mwi-credit-optimizer input.mwi-settings-switch-input{position:relative;flex:0 0 36px;width:36px;min-width:36px;height:20px;min-height:20px;margin:0;padding:2px;border:1px solid #626784;border-radius:999px;background:#383a54;appearance:none;cursor:pointer;transition:border-color .16s ease,background-color .16s ease}#mwi-credit-optimizer input.mwi-settings-switch-input:before{display:block;width:14px;height:14px;border-radius:50%;background:#c7cae0;box-shadow:0 1px 3px #090a12aa;content:"";transition:transform .16s ease,background-color .16s ease}#mwi-credit-optimizer input.mwi-settings-switch-input:checked{border-color:#77f3d0;background:#2c665d}#mwi-credit-optimizer input.mwi-settings-switch-input:checked:before{transform:translateX(16px);background:#edfffa}#mwi-credit-optimizer .mwi-settings-status{min-height:0;margin:0;padding:0 10px 8px;color:#a9e9dc;font-size:10px;line-height:1.35}#mwi-credit-optimizer .mwi-settings-status:empty{display:none}#mwi-credit-optimizer .mwi-settings-status[data-error="true"]{color:#ff9ca3}
         #mwi-credit-optimizer[data-settings-open="true"] .mwi-settings-panel{margin:0;border:0;border-radius:0;box-shadow:none;background:transparent}
         #mwi-credit-optimizer .mwi-settings-trigger[aria-current="page"]{border-bottom:2px solid #77e1cb!important;color:#a3f0df!important}
-        #mwi-credit-optimizer .mwi-settings-close{width:auto;min-width:48px;padding:4px 10px!important;font-size:12px;line-height:1.4}
         #mwi-credit-optimizer .mwi-settings-name{margin:0 0 8px;min-width:0}#mwi-credit-optimizer .mwi-settings-name>label{display:block;margin-bottom:5px;font-size:11px;font-weight:700}#mwi-credit-optimizer .mwi-settings-name-controls{display:flex;flex-wrap:wrap;gap:6px;align-items:center}#mwi-credit-optimizer .mwi-settings-name-controls input{flex:1 1 160px;width:100%;min-width:0;max-width:100%;box-sizing:border-box}#mwi-credit-optimizer .mwi-settings-name-controls button{flex:0 0 auto}#mwi-credit-optimizer .mwi-settings-name p{margin:5px 0 0;color:#aeb1cf;font-size:10px;line-height:1.4;overflow-wrap:anywhere}
-        @container (min-width:600px){#mwi-credit-optimizer .mwi-settings-domains{grid-template-columns:repeat(2,minmax(0,1fr))}}@container (max-width:400px){#mwi-credit-optimizer .mwi-settings-content{padding:7px}#mwi-credit-optimizer .mwi-settings-header{padding:8px}#mwi-credit-optimizer label.mwi-settings-switch{align-items:flex-start}}
+        @container (min-width:600px){#mwi-credit-optimizer .mwi-settings-domains{grid-template-columns:repeat(2,minmax(0,1fr))}}@container (max-width:400px){#mwi-credit-optimizer .mwi-settings-content{padding:7px}#mwi-credit-optimizer label.mwi-settings-switch{align-items:flex-start}}
         @media (prefers-reduced-motion:reduce){#mwi-credit-optimizer input.mwi-settings-switch-input,#mwi-credit-optimizer input.mwi-settings-switch-input:before{transition:none}}
         #mwi-credit-optimizer .mwi-controls{display:flex;gap:8px;align-items:end;flex-wrap:wrap}#mwi-credit-optimizer label{display:grid;gap:4px;color:#d8d8e8}#mwi-credit-optimizer .mwi-number-field{display:grid;gap:4px;min-width:0}#mwi-credit-optimizer .mwi-number-field>label{display:block}#mwi-credit-optimizer .mwi-price-reference{display:flex;flex:0 0 auto;align-items:center;gap:0;height:40px;min-height:40px;border:1px solid #5b5d7b;border-radius:6px;overflow:hidden;background:#292a46}#mwi-credit-optimizer .mwi-price-reference-label{padding:0 7px;color:#c9cbeb;font-size:11px;white-space:nowrap}#mwi-credit-optimizer .mwi-price-reference button{height:38px;min-height:38px;border-radius:0;background:#353653;color:#c9cbeb;padding:0 9px;white-space:nowrap}#mwi-credit-optimizer .mwi-price-reference button+button{border-left:1px solid #5b5d7b}#mwi-credit-optimizer .mwi-price-reference button[data-active="true"]{background:#43c4ad;color:#10201f}#mwi-credit-optimizer .mwi-controls>[data-role="refresh"]{min-height:40px}
         #mwi-credit-optimizer .mwi-number-stepper{display:flex;align-items:stretch;height:40px;min-height:40px;overflow:hidden;border:1px solid #7778b4;border-radius:6px;background:#f4f5ff;box-shadow:inset 0 1px 2px #3e416433}#mwi-credit-optimizer .mwi-number-stepper:focus-within{border-color:#65e3ca;outline:2px solid #65e3ca;outline-offset:2px;box-shadow:0 0 0 4px #77f3d026,inset 0 1px 2px #3e416433}#mwi-credit-optimizer .mwi-number-stepper input{height:38px;min-height:38px;margin:0;border:0;border-radius:0;background:#f4f5ff;color:#1f2030;font-variant-numeric:tabular-nums}#mwi-credit-optimizer .mwi-number-stepper input:focus-visible{outline:0;box-shadow:none}#mwi-credit-optimizer .mwi-target-credit-stepper input{width:112px}#mwi-credit-optimizer .mwi-price-limit-stepper input{flex:0 0 68px;width:68px;min-width:68px;padding:4px 7px}#mwi-credit-optimizer .mwi-number-stepper input[type="number"]{-moz-appearance:textfield;appearance:textfield}#mwi-credit-optimizer .mwi-number-stepper input[type="number"]::-webkit-inner-spin-button,#mwi-credit-optimizer .mwi-number-stepper input[type="number"]::-webkit-outer-spin-button{margin:0;-webkit-appearance:none}#mwi-credit-optimizer .mwi-stepper-buttons{display:grid;flex:0 0 34px;width:34px;min-width:34px;grid-template-rows:repeat(2,minmax(0,1fr));border-left:1px solid #7778b4;background:#373a58}#mwi-credit-optimizer button.mwi-stepper-button{display:grid;place-items:center;width:100%;min-width:0;height:19px;min-height:19px!important;margin:0;padding:0!important;border:0!important;border-radius:0!important;background:#3b3e5e!important;color:#f4f5ff!important;line-height:1;touch-action:none;user-select:none}#mwi-credit-optimizer button.mwi-stepper-button+button{border-top:1px solid #62658a!important}#mwi-credit-optimizer button.mwi-stepper-button:hover{background:#4a4e71!important;color:#fff!important}#mwi-credit-optimizer button.mwi-stepper-button:active,#mwi-credit-optimizer button.mwi-stepper-button[data-pressed="true"]{background:#245149!important;color:#bff8eb!important}#mwi-credit-optimizer button.mwi-stepper-button:focus-visible{z-index:5;outline:2px solid #77f3d0!important;outline-offset:-2px;box-shadow:none!important}#mwi-credit-optimizer .mwi-stepper-button svg{display:block;width:16px;height:10px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
@@ -10986,8 +12196,8 @@ window.MwiGuildCreditVersion = "1.2.65";
         #mwi-credit-optimizer .mwi-guild-point-history{border-top:1px solid #38635d;color:#c5d9d5;font-size:12px}
         #mwi-credit-optimizer .mwi-guild-point-history>summary{padding:6px 9px;cursor:pointer;user-select:none}
         #mwi-credit-optimizer .mwi-guild-point-manual-form{border-top:1px solid #38635d;background:#203330}
-        #mwi-credit-optimizer .mwi-guild-point-table-scroll{overflow:auto;overscroll-behavior:contain}
-        #mwi-credit-optimizer .mwi-guild-point-history table{width:100%;min-width:430px;border-collapse:collapse;table-layout:fixed;font-variant-numeric:tabular-nums}
+        #mwi-credit-optimizer .mwi-guild-point-table-scroll{overflow:visible}
+        #mwi-credit-optimizer .mwi-guild-point-history table{width:100%;min-width:0;border-collapse:collapse;table-layout:fixed;font-variant-numeric:tabular-nums}
         #mwi-credit-optimizer .mwi-guild-point-history th,#mwi-credit-optimizer .mwi-guild-point-history td{box-sizing:border-box;padding:10px 12px;border-bottom:1px solid #36534f;text-align:left}
         #mwi-credit-optimizer .mwi-guild-point-history thead th{position:sticky;top:0;z-index:1;background:#29443f;color:#abd5cd;font-weight:600}
         #mwi-credit-optimizer .mwi-guild-point-history th:first-child{width:31%}
@@ -11408,6 +12618,10 @@ window.MwiGuildCreditVersion = "1.2.65";
         #mwi-credit-optimizer .mwi-construction-planning-help{padding:8px 0 0;border-top:1px solid var(--build-line)}
         #mwi-credit-optimizer .mwi-construction-planning-help p{margin:0 0 4px;font-size:12px;color:var(--build-muted)}
         #mwi-credit-optimizer .mwi-guild-point-planning-options>label{display:grid;grid-template-columns:minmax(0,1fr) 96px;align-items:center;gap:6px;padding:8px 0}
+        #mwi-credit-optimizer .mwi-guild-point-start-options>label{grid-template-columns:minmax(0,1fr) auto;font-size:14px}
+        #mwi-credit-optimizer .mwi-guild-point-start-input{display:flex;align-items:center;gap:6px}
+        #mwi-credit-optimizer .mwi-guild-point-start-input .mwi-guild-point-week-stepper{width:96px}
+        #mwi-credit-optimizer .mwi-guild-point-start-error{color:var(--build-danger);margin:4px 0;overflow-wrap:anywhere}
         #mwi-credit-optimizer .mwi-guild-point-planning-options label small{grid-column:1/-1;color:var(--build-muted);font-size:12px;line-height:1.4;overflow-wrap:anywhere}
         #mwi-credit-optimizer .mwi-guild-point-controls output{grid-column:1/-1;grid-row:2;min-width:0;color:var(--build-accent);font-size:14px;line-height:1.5;overflow-wrap:anywhere}
         #mwi-credit-optimizer .mwi-guild-point-controls output[data-state="warning"]{color:var(--build-warning)}
@@ -11507,12 +12721,14 @@ window.MwiGuildCreditVersion = "1.2.65";
         #mwi-credit-optimizer .mwi-building-tile{display:grid;grid-template-columns:30px minmax(0,1fr);align-items:center;gap:8px;min-width:0;min-height:56px;padding:6px!important;border:1px solid transparent;border-radius:4px;background:transparent;color:var(--build-text);text-align:left}
         #mwi-credit-optimizer .mwi-building-tile:hover{border-color:#626b86;background:#313a50}
         #mwi-credit-optimizer .mwi-building-tile[data-planned="true"]{background:#293f41;border-color:#527b73}
+        #mwi-credit-optimizer .mwi-building-tile[data-current-trial="true"]{box-shadow:inset 0 0 0 1px #72b8ff}
         #mwi-credit-optimizer .mwi-building-icon{display:block;width:30px;height:30px;flex:0 0 30px}
         #mwi-credit-optimizer .mwi-building-icon svg{display:block;width:100%;height:100%}
         #mwi-credit-optimizer .mwi-building-icon-fallback svg{padding:3px;fill:none;stroke:var(--build-muted);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
         #mwi-credit-optimizer .mwi-building-tile-copy{display:grid;gap:2px;min-width:0}
         #mwi-credit-optimizer .mwi-building-tile-name{font-size:14px;font-weight:500;line-height:1.4;overflow-wrap:anywhere}
         #mwi-credit-optimizer .mwi-building-tile-level,#mwi-credit-optimizer .mwi-building-tile-cost{font-size:12px;font-weight:400;line-height:1.4;color:var(--build-muted);overflow-wrap:anywhere}
+        #mwi-credit-optimizer .mwi-building-tile-cost[data-numeric-cost="true"]{white-space:nowrap;overflow-wrap:normal}
         #mwi-credit-optimizer .mwi-building-tile[data-planned="true"] .mwi-building-tile-level{color:var(--build-accent)}
         #mwi-credit-optimizer .mwi-guild-point-forecast{min-width:0;text-align:left;margin-top:20px;padding-top:14px;border-top:1px solid var(--build-line)}
         #mwi-credit-optimizer .mwi-guild-point-forecast-heading{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:4px 12px}
@@ -11554,8 +12770,7 @@ window.MwiGuildCreditVersion = "1.2.65";
         #mwi-credit-optimizer .mwi-guild-point-history>summary:focus-visible{outline:2px solid var(--build-accent);outline-offset:2px}
         #mwi-credit-optimizer .mwi-guild-point-history>summary .mwi-construction-icon{flex:0 0 16px}
         #mwi-credit-optimizer .mwi-guild-point-history[open]>summary .mwi-construction-icon{transform:rotate(180deg)}
-        #mwi-credit-optimizer .mwi-guild-point-table-scroll{scrollbar-width:thin;scrollbar-color:#66708b var(--build-surface)}
-        #mwi-credit-optimizer .mwi-guild-point-history :is(th,td){padding:8px 10px;border-bottom-color:var(--build-line)}
+        #mwi-credit-optimizer .mwi-guild-point-history :is(th,td){padding:8px 10px;border-bottom-color:var(--build-line);white-space:normal;overflow-wrap:anywhere}
         #mwi-credit-optimizer .mwi-guild-point-history thead th{background:#30364b;color:#cbd4e9}
         #mwi-credit-optimizer .mwi-guild-point-history tbody :is(th,td){background:transparent}
         #mwi-credit-optimizer .mwi-guild-point-history tbody tr:hover :is(th,td){background:#30394d}
@@ -11724,7 +12939,10 @@ window.MwiGuildCreditVersion = "1.2.65";
         #mwi-credit-optimizer .mwi-trial-table caption{text-align:left;padding:8px 0;color:var(--trial-muted);font-size:12px}
         #mwi-credit-optimizer .mwi-trial-table th,#mwi-credit-optimizer .mwi-trial-table td{padding:3px 4px;text-align:right;border-bottom:1px solid var(--trial-line);white-space:nowrap}
         #mwi-credit-optimizer .mwi-trial-table th:has([data-trial-sort="member"]),#mwi-credit-optimizer .mwi-trial-table th[scope="row"]{text-align:left;white-space:nowrap;min-width:0}
-        #mwi-credit-optimizer [data-mwi-trial-low-work="true"], [class*="GuildPanel_signupModal__"] [data-mwi-trial-low-work="true"]{color:#ffa7b5!important;text-decoration:underline dotted;text-underline-offset:3px}
+        #mwi-credit-optimizer .mwi-trial-table tbody tr:has([data-mwi-trial-low-work="true"]),[class*="GuildPanel_signupModal__"] [class*="GuildPanel_memberRow__"]:has([data-mwi-trial-low-work="true"]){background:#522d3d}
+        #mwi-credit-optimizer .mwi-trial-table tbody tr:has([data-mwi-trial-low-work="true"]):is(:hover,.mwi-trial-member-highlight,.mwi-trial-player-selected){background:#63384b;outline:1px solid var(--trial-accent);outline-offset:-1px}
+        #mwi-credit-optimizer [data-mwi-trial-low-work="true"], [class*="GuildPanel_signupModal__"] [data-mwi-trial-low-work="true"]{color:#ffa7b5!important;font-weight:600;text-decoration:none}
+        :is(#mwi-credit-optimizer,[class*="GuildPanel_signupModal__"]) [data-mwi-trial-low-work="true"]::before{content:"";display:inline-block;width:14px;height:14px;margin-right:4px;vertical-align:-2px;background:currentColor;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M7.1 2.5a1 1 0 0 1 1.8 0l5.5 10a1 1 0 0 1-.9 1.5h-11a1 1 0 0 1-.9-1.5Z' fill='none' stroke='black' stroke-width='1.4'/%3E%3Cpath d='M8 5.5v4M8 11v.5' stroke='black' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E") center/contain no-repeat;pointer-events:none}
         :is(#mwi-credit-optimizer,[class*="GuildPanel_signupModal__"]) [data-mwi-trial-low-work="true"] :is(.mwi-trial-name-text,[class*="CharacterName_name__"],.mwi-trial-name-text span,[class*="CharacterName_name__"] span){color:#ffa7b5!important;-webkit-text-fill-color:#ffa7b5!important;background-image:none!important;text-shadow:none!important;animation:none!important}
         :is(#mwi-credit-optimizer,[class*="GuildPanel_signupModal__"]) [data-mwi-trial-low-work="true"] :is(.mwi-trial-name-text,[class*="CharacterName_name__"])::before,:is(#mwi-credit-optimizer,[class*="GuildPanel_signupModal__"]) [data-mwi-trial-low-work="true"] :is(.mwi-trial-name-text,[class*="CharacterName_name__"])::after{display:none!important}
         #mwi-credit-optimizer .mwi-trial-member-absent{position:relative;display:inline-flex;vertical-align:middle;color:var(--trial-warning);cursor:default;line-height:1}
@@ -11984,7 +13202,8 @@ window.MwiGuildCreditVersion = "1.2.65";
       URL,
       Blob,
       guildTrialFirstStartAt,
-      getTrialPointEstimate = () => null
+      getTrialPointEstimate = () => null,
+      getTrialContext = () => null
     } = dependencies;
 
     const constructionUi = {
@@ -11998,9 +13217,54 @@ window.MwiGuildCreditVersion = "1.2.65";
     };
 
     state.constructionUi = constructionUi;
+    let trialWeekTimer = null;
+    let trialWeekExpiresAt = null;
 
-    function guildPointForecastWeekCount() {
-      return core.normalizeGuildPointForecastWeeks(state.guildPointForecastWeeks);
+    function currentTrialBuildings() {
+      const context = getTrialContext();
+      const now = Date.now();
+      const matching = buildingDataApi.currentLifeTrialBuildings(context, now, state.guildPointSummary?.guildId);
+      const week = context?.guild?.currentWeekStartAt;
+      const expiresAt = (typeof week === "number" ? week : Date.parse(week)) + 7 * 86400000;
+      const nextExpiry = matching.size ? expiresAt : null;
+      if (nextExpiry !== trialWeekExpiresAt) {
+        if (trialWeekTimer !== null) pageWindow.clearTimeout(trialWeekTimer);
+        trialWeekTimer = null;
+        trialWeekExpiresAt = nextExpiry;
+        if (nextExpiry !== null)
+          trialWeekTimer = pageWindow.setTimeout(
+            () => {
+              trialWeekTimer = null;
+              trialWeekExpiresAt = null;
+              if (state.panel?.isConnected) refreshGuildConstruction(state.panel);
+            },
+            Math.max(1, nextExpiry - now)
+          );
+      }
+      return matching;
+    }
+
+    const guildPointWeekMs = 7 * 24 * 60 * 60 * 1000;
+
+    function currentGuildPointWeekNumber() {
+      return Math.max(1, Math.floor((Date.now() - guildTrialFirstStartAt) / guildPointWeekMs) + 1);
+    }
+
+    function guildPointForecastStartAt() {
+      const start = state.guildPointForecastStartAt;
+      return Number.isSafeInteger(start) &&
+        start >= guildTrialFirstStartAt &&
+        (start - guildTrialFirstStartAt) % guildPointWeekMs === 0
+        ? start
+        : guildTrialFirstStartAt;
+    }
+
+    function setGuildPointForecastStartWeek(value) {
+      const week = Number(value);
+      if (!Number.isSafeInteger(week) || week < 1 || week > currentGuildPointWeekNumber()) return false;
+      state.guildPointForecastStartAt = guildTrialFirstStartAt + (week - 1) * guildPointWeekMs;
+      state.guildPointForecastSaveFailed = persistGuildBuildingPlannerState() === false;
+      return true;
     }
 
     function guildPointPlanningWeekCount() {
@@ -12157,7 +13421,7 @@ window.MwiGuildCreditVersion = "1.2.65";
         currentGuildWeekPoints(),
         Date.now(),
         guildTrialFirstStartAt,
-        { forecastWeekCount: guildPointForecastWeekCount() }
+        { forecastStartAt: guildPointForecastStartAt() }
       );
     }
 
@@ -12190,7 +13454,7 @@ window.MwiGuildCreditVersion = "1.2.65";
       const history = core.summarizeGuildPointHistory(
         { ...supplemented.history, weeks: [...weeksByStart.values()] },
         {
-          forecastWeekCount: guildPointForecastWeekCount(),
+          forecastStartAt: guildPointForecastStartAt(),
           currentWeekStartAt,
           currentWeekPoints: currentGuildWeekPoints()
         }
@@ -12404,11 +13668,20 @@ window.MwiGuildCreditVersion = "1.2.65";
       return `<svg class="mwi-construction-icon" viewBox="0 0 16 16" aria-hidden="true">${paths[name]}</svg>`;
     }
 
-    function renderGuildPointWeekStepper(role, value, minimum, maximum, labelKey, increaseKey, decreaseKey) {
+    function renderGuildPointWeekStepper(
+      role,
+      value,
+      minimum,
+      maximum,
+      labelKey,
+      increaseKey,
+      decreaseKey,
+      describedBy = ""
+    ) {
       const label = escapeHtml(t(labelKey));
       const increase = escapeHtml(t(increaseKey));
       const decrease = escapeHtml(t(decreaseKey));
-      return `<span class="mwi-number-stepper mwi-guild-point-week-stepper"><input data-role="${role}" type="number" min="${minimum}" max="${maximum}" step="1" inputmode="numeric" value="${value}" aria-label="${label}"><span class="mwi-stepper-buttons"><button class="mwi-stepper-button mwi-stepper-up" data-role="number-step" data-input-role="${role}" data-direction="1" type="button" aria-label="${increase}" title="${increase}"><svg viewBox="0 0 16 10" aria-hidden="true"><path d="M2 8 8 2l6 6"></path></svg></button><button class="mwi-stepper-button mwi-stepper-down" data-role="number-step" data-input-role="${role}" data-direction="-1" type="button" aria-label="${decrease}" title="${decrease}"><svg viewBox="0 0 16 10" aria-hidden="true"><path d="M2 2l6 6 6-6"></path></svg></button></span></span>`;
+      return `<span class="mwi-number-stepper mwi-guild-point-week-stepper"><input data-role="${role}" type="number" min="${minimum}" max="${maximum}" step="1" inputmode="numeric" value="${value}"${describedBy ? ` aria-describedby="${escapeHtml(describedBy)}"` : ""} aria-label="${label}"><span class="mwi-stepper-buttons"><button class="mwi-stepper-button mwi-stepper-up" data-role="number-step" data-input-role="${role}" data-direction="1" type="button" aria-label="${increase}" title="${increase}"><svg viewBox="0 0 16 10" aria-hidden="true"><path d="M2 8 8 2l6 6"></path></svg></button><button class="mwi-stepper-button mwi-stepper-down" data-role="number-step" data-input-role="${role}" data-direction="-1" type="button" aria-label="${decrease}" title="${decrease}"><svg viewBox="0 0 16 10" aria-hidden="true"><path d="M2 2l6 6 6-6"></path></svg></button></span></span>`;
     }
 
     function guildPointPlanningSummary(planning) {
@@ -12428,17 +13701,22 @@ window.MwiGuildCreditVersion = "1.2.65";
     }
 
     function renderGuildPointForecastSettings() {
-      const forecastWeeks = guildPointForecastWeekCount();
+      const startAt = guildPointForecastStartAt();
+      const startWeek = (startAt - guildTrialFirstStartAt) / guildPointWeekMs + 1;
+      const maximum = currentGuildPointWeekNumber();
       const forecastStepper = renderGuildPointWeekStepper(
-        "guild-point-forecast-weeks",
-        forecastWeeks,
-        2,
-        12,
-        "guildPointForecastWeeks",
-        "increaseGuildPointForecastWeeks",
-        "decreaseGuildPointForecastWeeks"
+        "guild-point-forecast-start-week",
+        startWeek,
+        1,
+        maximum,
+        "guildPointForecastStartWeek",
+        "increaseGuildPointForecastStartWeek",
+        "decreaseGuildPointForecastStartWeek",
+        "mwi-guild-point-start-save-error mwi-guild-point-start-error"
       );
-      return `<section class="mwi-guild-point-planning-options" aria-label="${escapeHtml(t("guildPointPlanningOptions"))}"><label><span>${escapeHtml(t("guildPointForecastWeeks"))}</span>${forecastStepper}</label></section>`;
+      const [weekPrefix, weekSuffix = ""] = t("guildPointForecastWeekInput").split("{week}");
+      const saveError = state.guildPointForecastSaveFailed ? t("guildPointForecastSaveFailed") : "";
+      return `<section class="mwi-guild-point-planning-options mwi-guild-point-start-options" aria-label="${escapeHtml(t("guildPointPlanningOptions"))}"><label><span>${escapeHtml(t("guildPointForecastStartWeek"))}</span><span class="mwi-guild-point-start-input"><span>${escapeHtml(weekPrefix)}</span>${forecastStepper}<span>${escapeHtml(weekSuffix)}</span></span></label><p id="mwi-guild-point-start-save-error" class="mwi-guild-point-start-error" role="status"${saveError ? "" : " hidden"}>${escapeHtml(saveError)}</p><p id="mwi-guild-point-start-error" class="mwi-guild-point-start-error" role="alert" hidden>${escapeHtml(t("guildPointForecastStartInvalid", { max: formatNumber(maximum) }))}</p></section>`;
     }
 
     function renderGuildPointForecastControls(plan) {
@@ -12714,7 +13992,8 @@ window.MwiGuildCreditVersion = "1.2.65";
       </section>`;
     }
 
-    function renderGuildBuildingTile(definition, plan, liveLevel, levelKnown, spriteBaseHref) {
+    function renderGuildBuildingTile(definition, plan, liveLevel, levelKnown, spriteBaseHref, currentTrial) {
+      const trialLabel = currentTrial ? t("buildingCurrentTrial") : "";
       const currentLabel = formatNumber(liveLevel);
       const label = guildBuildingLabel(definition);
       const searchText =
@@ -12735,11 +14014,21 @@ window.MwiGuildCreditVersion = "1.2.65";
                 points: formatNumber(nextLevelCost.totalCost)
               })
             : t("buildingCatalogNextLevelCostUnavailable");
+      const numericCost = liveLevel < definition.maxLevel && nextLevelCost.status === "ok";
+      const visibleCostLabel = numericCost
+        ? t("buildingCatalogNextLevelCostCompact", {
+            level: formatNumber(liveLevel + 1),
+            points: formatNumber(nextLevelCost.totalCost)
+          })
+        : costLabel;
       const costId = `mwi-building-next-cost-${definition.iconSymbolId}`;
-      return `<button class="mwi-building-tile" data-role="building-tile" data-building-hrid="${escapeHtml(definition.hrid)}" data-category="${definition.category}" data-planned="${String(Boolean(plan))}" data-level-known="${String(levelKnown)}" data-current-level="${liveLevel}" data-building-search="${escapeHtml(searchText)}" aria-label="${escapeHtml(atMaxLevel ? t("buildingTileMaxLabel", { building: label }) : accessibleLabel)}" aria-describedby="${escapeHtml(costId)}" title="${escapeHtml(atMaxLevel ? t("buildingTileMaxLabel", { building: label }) : accessibleLabel)}" type="button"${atMaxLevel ? " disabled" : ""}>${guildBuildingIconMarkup(definition, spriteBaseHref)}<span class="mwi-building-tile-copy"><span class="mwi-building-tile-name">${escapeHtml(label)}</span><span class="mwi-building-tile-level">${escapeHtml(t(plan ? (levelKnown ? "buildingCatalogPlannedLevel" : "buildingCatalogUnknownPlannedLevel") : levelKnown ? "buildingCatalogCurrentLevel" : "buildingCatalogUnknownLevel", { current: currentLabel, target: plan ? formatNumber(plan.targetLevel) : "" }))}</span><span class="mwi-building-tile-cost" id="${escapeHtml(costId)}">${escapeHtml(costLabel)}</span></span></button>`;
+      const actionLabel = atMaxLevel ? t("buildingTileMaxLabel", { building: label }) : accessibleLabel;
+      const tileLabel = currentTrial ? `${actionLabel} · ${trialLabel}` : actionLabel;
+      return `<button class="mwi-building-tile" data-role="building-tile" data-building-hrid="${escapeHtml(definition.hrid)}" data-category="${definition.category}" data-planned="${String(Boolean(plan))}" data-current-trial="${String(Boolean(currentTrial))}" data-level-known="${String(levelKnown)}" data-current-level="${liveLevel}" data-building-search="${escapeHtml(searchText)}" aria-label="${escapeHtml(tileLabel)}" aria-describedby="${escapeHtml(costId)}" title="${escapeHtml(tileLabel)}" type="button"${atMaxLevel ? " disabled" : ""}>${guildBuildingIconMarkup(definition, spriteBaseHref)}<span class="mwi-building-tile-copy"><span class="mwi-building-tile-name">${escapeHtml(label)}</span><span class="mwi-building-tile-level">${escapeHtml(t(plan ? (levelKnown ? "buildingCatalogPlannedLevel" : "buildingCatalogUnknownPlannedLevel") : levelKnown ? "buildingCatalogCurrentLevel" : "buildingCatalogUnknownLevel", { current: currentLabel, target: plan ? formatNumber(plan.targetLevel) : "" }))}</span><span class="mwi-building-tile-cost" data-numeric-cost="${String(numericCost)}" title="${escapeHtml(costLabel)}" id="${escapeHtml(costId)}">${escapeHtml(visibleCostLabel)}</span></span></button>`;
     }
 
     function renderGuildBuildingPicker(definitions, levels, plansByHrid, spriteBaseHref) {
+      const weeklyBuildings = currentTrialBuildings();
       const categories = ["all", "core", "life", "combat", "shrine"]
         .map(
           (category) =>
@@ -12754,7 +14043,8 @@ window.MwiGuildCreditVersion = "1.2.65";
             plansByHrid.get(definition.hrid),
             levels.levels.get(definition.hrid),
             levels.knownHrids.has(definition.hrid),
-            spriteBaseHref
+            spriteBaseHref,
+            definition.category === "life" && weeklyBuildings.has(definition.hrid)
           )
         )
         .join("");
@@ -13143,6 +14433,9 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     }
 
     function dispose() {
+      if (trialWeekTimer !== null) pageWindow.clearTimeout(trialWeekTimer);
+      trialWeekTimer = null;
+      trialWeekExpiresAt = null;
       discardGuildBuildingClearUndo();
     }
 
@@ -13165,6 +14458,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       hasGuildBuildingClearUndo,
       applyGuildBuildingFilters,
       guildPointHistorySummary,
+      setGuildPointForecastStartWeek,
       guildPointPlanningBudget,
       guildPointEta,
       renderGuildPointForecast,
@@ -13674,7 +14968,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
     function render({ member, weeks, projects = [], profileState, profileSectionsOpen = {} }) {
       tooltipRecords.clear();
-      return `<div class="mwi-trial-player-toolbar"><button type="button" data-trial-player-back>${e(t("trialPlayerBack"))}</button><h3 tabindex="-1" data-trial-player-title>${renderMemberName(member)} · ${e(t("trialPlayerHistory"))}</h3></div><div class="mwi-trial-player-layout"><aside class="mwi-trial-player-profile" aria-label="${e(t("trialPlayerProfile"))}"><header><h3>${e(t("trialPlayerProfile"))}</h3><button type="button" data-trial-profile-refresh ${profileState.status === "loading" ? "disabled" : ""}>${e(t("trialProfileRefresh"))}</button></header><div data-trial-profile-content>${profileMarkup(profileState, profileSectionsOpen, projects, member)}</div></aside><div class="mwi-trial-player-history">${historyMarkup(weeks)}</div></div>`;
+      return `<div class="mwi-trial-player-toolbar"><button type="button" data-trial-player-back>${e(t("trialPlayerBack"))}</button><h3 tabindex="-1" data-trial-player-title>${renderMemberName(member)} · ${e(t("trialPlayerHistory"))}</h3></div><div class="mwi-trial-player-layout"><aside class="mwi-trial-player-profile" aria-label="${e(t("trialPlayerProfile"))}"><header><h3><button type="button" data-trial-open-profile>${e(t("trialPlayerProfile"))}</button></h3><button type="button" data-trial-profile-refresh ${profileState.status === "loading" ? "disabled" : ""}>${e(t("trialProfileRefresh"))}</button></header><div data-trial-profile-content>${profileMarkup(profileState, profileSectionsOpen, projects, member)}</div></aside><div class="mwi-trial-player-history">${historyMarkup(weeks)}</div></div>`;
     }
     return { render, renderRankings, tooltipData: (key) => tooltipRecords.get(key) };
   }
@@ -14536,17 +15830,22 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     }
 
     function renderImport() {
-      const preview = importPreview ? trialHistoryApi.previewImport(importPreview.records, records) : [];
+      const preview = importPreview
+        ? pluginStorage.previewTrialImport?.(importPreview.records, records) ||
+          trialHistoryApi.previewImport(importPreview.records, records)
+        : [];
+      if (importPreview) importPreview.plan = preview;
       const count = (status) => preview.filter((entry) => entry.status === status).length;
       const summary = {
         added: count("new"),
         dated: count("dated"),
+        recovered: count("recoverable"),
         duplicates: count("duplicate"),
         conflicts: count("conflict")
       };
       let markup = `<div class="mwi-trial-fullscreen-bar"><strong>${escapeHtml(t("trialHistory"))}</strong><button type="button" data-trial-fullscreen aria-pressed="${isFullscreen()}"${fullscreenBusy ? " disabled" : ""}>${escapeHtml(t("trialFullscreenExit"))}</button></div><section class="mwi-trial-import" aria-label="${escapeHtml(t("trialDataTransfer"))}" aria-busy="${importBusy}">
         <header class="mwi-trial-toolbar"><div class="mwi-trial-heading"><h2>${escapeHtml(t("trialHistory"))}</h2><p class="mwi-trial-notice" data-state="${unsaved.size || loadFailed ? "warning" : "saved"}" role="status" aria-live="polite">${escapeHtml(t(unsaved.size ? "trialSaveFailed" : loadFailed ? "trialLoadFailed" : "trialSavedCount", { count: records.length }))}</p></div><div class="mwi-trial-controls"><button type="button" data-trial-fullscreen aria-pressed="${isFullscreen()}"${fullscreenBusy ? " disabled" : ""}>${escapeHtml(t(isFullscreen() ? "trialFullscreenExit" : "trialFullscreenEnter"))}</button><button type="button" data-trial-simple-names aria-pressed="${simpleNames}">${escapeHtml(t("trialSimpleNames"))}</button><button type="button" data-trial-screenshot-mode aria-pressed="${screenshotMode}">${escapeHtml(t(screenshotMode ? "trialScreenshotExit" : "trialScreenshotMode"))}</button><button type="button" data-trial-image="copy"${screenshotBusy || !records.length ? " disabled" : ""}>${escapeHtml(t("trialScreenshotCopy"))}</button><button type="button" data-trial-image="download"${screenshotBusy || !records.length ? " disabled" : ""}>${escapeHtml(t("trialScreenshotDownload"))}</button><button type="button" data-role="trial-import-open"${importBusy ? " disabled" : ""}>${escapeHtml(t("trialImport"))}</button>
-        <button type="button" data-role="trial-export"${records.length ? "" : ` disabled title="${escapeHtml(t("trialHistoryEmpty"))}"`}>${escapeHtml(t("trialExport"))}</button></div></header>
+        <button type="button" data-role="trial-export"${records.length ? "" : ` disabled title="${escapeHtml(t("trialHistoryEmpty"))}"`}>${escapeHtml(t("trialExport"))}</button>${pluginStorage.trialRecoveryBackupCount?.() ? `<button type="button" data-role="trial-recovery-export">${escapeHtml(t("trialRecoveryExport"))}</button>` : ""}</div></header>
 
         <p class="mwi-trial-help" data-trial-fullscreen-status role="status" aria-live="polite">${escapeHtml(fullscreenNotice ? t(fullscreenNotice) : "")}</p>
         <p class="mwi-trial-help" data-trial-image-status role="status" aria-live="polite">${escapeHtml(screenshotBusy ? t("trialScreenshotWorking") : screenshotNotice ? t(screenshotNotice) : "")}</p>
@@ -14556,8 +15855,10 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       if (importPreview) {
         markup += `<div class="mwi-trial-import-preview"><h3>${escapeHtml(t("trialImportPreview"))}</h3>
           <p class="mwi-trial-meta">${screenshotMode ? "" : `${escapeHtml(importPreview.name)}<br>`}${escapeHtml(t("trialImportSummary", summary))}</p>
+          <p class="mwi-trial-help">${escapeHtml(t("trialImportSourceHint"))}</p>
+          ${summary.recovered ? `<p class="mwi-trial-notice" data-role="trial-recovery-warning">${escapeHtml(t("trialRecoveryWarning", { count: summary.recovered }))}</p>` : ""}
           <ul class="mwi-trial-import-list" tabindex="0" aria-label="${escapeHtml(t("trialImportPreview"))}">${preview.map(({ record, status }) => `<li><strong>${escapeHtml(trialName(record))} · ${escapeHtml(t(`trialImportStatus_${status}`))}</strong><span>${escapeHtml(`${recordDate(record)} · ${record.guildName || t("trialUnknownGuild")}`)}</span><span>${escapeHtml(t("trialImportMemberCount", { count: record.rows.length }))} · ${escapeHtml(t(record.source === "manual" ? "trialManualSource" : "trialAutomaticSource"))}</span></li>`).join("")}</ul>
-          <div class="mwi-trial-controls"><button type="button" data-role="trial-import-confirm"${!(summary.added + summary.dated) || importBusy ? " disabled" : ""}>${escapeHtml(t("trialImportConfirm", { count: summary.added + summary.dated }))}</button>
+          <div class="mwi-trial-controls"><button type="button" data-role="trial-import-confirm"${!(summary.added + summary.dated + summary.recovered) || importBusy ? " disabled" : ""}>${escapeHtml(t(summary.recovered ? "trialImportConfirmRecovery" : "trialImportConfirm", { count: summary.added + summary.dated + summary.recovered }))}</button>
           <button type="button" data-role="trial-import-cancel">${escapeHtml(t("trialImportCancel"))}</button></div></div>`;
       }
       return markup + "</section>";
@@ -14598,18 +15899,40 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
     function confirmImport(panel) {
       if (!importPreview || importBusy) return;
+      const recoveries = (importPreview.plan || [])
+        .filter((entry) => entry.status === "recoverable")
+        .map((entry) => ({ key: entry.record.key, previousRaw: entry.previousRaw }));
       // Pending automatic captures also count as existing; never replace them
       // with an imported copy while browser storage is unavailable.
       capture();
-      const plan = trialHistoryApi.previewImport(importPreview.records, records);
-      const additions = plan.filter((entry) => ["new", "dated"].includes(entry.status)).map((entry) => entry.record);
+      const plan =
+        pluginStorage.previewTrialImport?.(importPreview.records, records) ||
+        trialHistoryApi.previewImport(importPreview.records, records);
+      if (
+        plan.some(
+          (entry) =>
+            entry.status === "recoverable" &&
+            !recoveries.some(
+              (approved) => approved.key === entry.record.key && approved.previousRaw === entry.previousRaw
+            )
+        ) ||
+        plan.some((entry) => entry.status === "unavailable")
+      ) {
+        importNotice = { key: "trialImportChanged", values: {} };
+        refresh(panel);
+        return;
+      }
+      const additions = plan
+        .filter((entry) => ["new", "dated", "recoverable"].includes(entry.status))
+        .map((entry) => entry.record);
       const result = additions.length
-        ? pluginStorage.importTrialHistory(additions)
+        ? pluginStorage.importTrialHistory(additions, { recoveries })
         : { status: "imported", added: 0, dated: 0, duplicates: 0, conflicts: 0 };
+      result.recovered = result.recovered || 0;
       result.duplicates += plan.filter((entry) => entry.status === "duplicate").length;
       result.conflicts += plan.filter((entry) => entry.status === "conflict").length;
       if (result.status === "imported") {
-        if (result.added + result.dated) {
+        if (result.added + result.dated + result.recovered) {
           selectedWeek = trialHistoryApi.historyWeeks([additions[0]])[0].key;
           selectedProject = trialHistoryApi.historyProjectKey(additions[0]);
           resetScroll = true;
@@ -14619,10 +15942,14 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       importNotice = {
         key:
           result.status === "imported"
-            ? "trialImportComplete"
+            ? result.recovered
+              ? "trialImportRecoveryComplete"
+              : "trialImportComplete"
             : result.status === "partial"
               ? "trialImportPartial"
-              : "trialImportSaveFailed",
+              : result.status === "stale"
+                ? "trialImportChanged"
+                : "trialImportSaveFailed",
         values: result
       };
       refresh(panel);
@@ -15161,18 +16488,38 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       updateScrollButtons(host);
     }
 
-    function exportHistory() {
-      capture();
+    function downloadHistoryJson(data, filename) {
       const url = pageWindow.URL.createObjectURL(
-        new pageWindow.Blob([JSON.stringify({ schemaVersion: 2, records }, null, 2)], { type: "application/json" })
+        new pageWindow.Blob([JSON.stringify(data, null, 2)], { type: "application/json" })
       );
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = "guild-trial-history.json";
+      anchor.download = filename;
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
       pageWindow.setTimeout(() => pageWindow.URL.revokeObjectURL(url), 0);
+    }
+
+    function exportHistory() {
+      capture();
+      downloadHistoryJson({ schemaVersion: 2, records }, "guild-trial-history.json");
+    }
+
+    function exportRecoveryBackups(panel) {
+      try {
+        downloadHistoryJson(
+          {
+            schemaVersion: 1,
+            format: "guild-trial-recovery-backup",
+            backups: pluginStorage.loadTrialRecoveryBackups()
+          },
+          "guild-trial-recovery-backup.json"
+        );
+      } catch (_) {
+        importNotice = { key: "trialRecoveryExportFailed", values: {} };
+        refresh(panel);
+      }
     }
 
     async function exportScreenshot(host, target) {
@@ -15466,6 +16813,16 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
           readPlayerProfile(panel, true);
           return;
         }
+        if (event.target.closest("[data-trial-open-profile]")) {
+          const memberName = selectedMember?.name;
+          const openProfile = () => getBridge()?.openPlayerProfile?.(memberName);
+          if (isFullscreen())
+            void toggleFullscreen(host).then(() => {
+              if (!disposed && host.isConnected && !isFullscreen()) openProfile();
+            });
+          else openProfile();
+          return;
+        }
         if (event.target.closest("[data-trial-player-back]")) {
           leavePlayer();
           mode = playerReturn?.mode || "week";
@@ -15566,6 +16923,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
           host.querySelector('[data-role="trial-import-open"]')?.focus();
         }
         if (event.target.closest('[data-role="trial-export"]')) exportHistory();
+        if (event.target.closest('[data-role="trial-recovery-export"]')) exportRecoveryBackups(panel);
       });
     }
     const onStats = () => {
@@ -16656,7 +18014,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     function renderOptimalMaterialPlan(plan, hasInventory, materialInventory) {
       if (!plan)
         return `<div class="mwi-material-plan-unavailable">${escapeHtml(t("optimalExchangeUnavailable"))}</div>`;
-      return `<div class="mwi-material-plan-item" data-guide-item-hrid="${escapeHtml(plan.itemHrid)}"><span class="mwi-material-plan-icon">${marketItemIconMarkup(plan.itemHrid, itemNameForMaterial(plan.itemHrid))}</span><span><b>${escapeHtml(itemNameForMaterial(plan.itemHrid))}</b><small>${escapeHtml(t("backpackInventory", { count: hasInventory ? formatNumber(Number(materialInventory && materialInventory[plan.itemHrid]) || 0) : t("notRead") }))}</small></span></div><div class="mwi-material-plan-need"><small>${escapeHtml(t("optimalExchangeNeeds"))}</small><strong>${formatNumber(plan.requiredItems)}</strong></div><span class="mwi-material-plan-rate">${escapeHtml(t("exchangeRate", { items: itemQuantity(plan.itemCount), credits: creditQuantity(plan.creditCount) }))}</span>`;
+      return `<div class="mwi-material-plan-item" data-guide-item-hrid="${escapeHtml(plan.itemHrid)}"><span class="mwi-material-plan-icon">${marketItemIconMarkup(plan.itemHrid, itemNameForMaterial(plan.itemHrid), "", hasInventory ? Math.max(0, plan.requiredItems - (Number(materialInventory?.[plan.itemHrid]) || 0)) : null)}</span><span><b>${escapeHtml(itemNameForMaterial(plan.itemHrid))}</b><small>${escapeHtml(t("backpackInventory", { count: hasInventory ? formatNumber(Number(materialInventory && materialInventory[plan.itemHrid]) || 0) : t("notRead") }))}</small></span></div><div class="mwi-material-plan-need"><small>${escapeHtml(t("optimalExchangeNeeds"))}</small><strong>${formatNumber(plan.requiredItems)}</strong></div><span class="mwi-material-plan-rate">${escapeHtml(t("exchangeRate", { items: itemQuantity(plan.itemCount), credits: creditQuantity(plan.creditCount) }))}</span>`;
     }
 
     function renderMaterialTotals(results, totals, estimate, hasInventory, creditMaterialPlans, materialInventory) {
@@ -16715,7 +18073,12 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
           const materialIcon =
             isGuildCredit || item.itemHrid === "/items/guild_token" || item.itemHrid === "/items/coin"
               ? iconMarkup(item.itemHrid, itemNameForMaterial(item.itemHrid))
-              : marketItemIconMarkup(item.itemHrid, itemNameForMaterial(item.itemHrid));
+              : marketItemIconMarkup(
+                  item.itemHrid,
+                  itemNameForMaterial(item.itemHrid),
+                  "",
+                  hasInventory ? row?.missing : null
+                );
           const guideMissing = row ? Math.max(0, Number(row.remainingMissing ?? row.missing) || 0) : 0;
           return `<article class="mwi-material-row${rowClass}" data-item-hrid="${escapeHtml(item.itemHrid)}" data-guide-missing="${escapeHtml(guideMissing)}" style="--mwi-material-accent:${accent}"><div class="mwi-material-credit">${materialIcon}<span class="mwi-material-copy"><span class="mwi-material-name">${escapeHtml(itemNameForMaterial(item.itemHrid))}</span><small>${hasInventory ? inventoryText : escapeHtml(t("inventoryNotRead"))}</small></span></div><div class="mwi-material-required"><small>${escapeHtml(t("requiredThisTime"))}</small><strong>${formatNumber(item.count)}</strong></div>${exchangeModeMarkup || '<span class="mwi-material-exchange-mode-spacer" aria-hidden="true"></span>'}<div class="mwi-material-plans">${conversionPlans.join("")}</div></article>`;
         })
@@ -16882,7 +18245,49 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       );
     }
 
+    async function captureUpgradePlanning() {
+      extractItemDetailsFromReact(true);
+      const entries = guildBuffEntries();
+      await loadSnapshot(false);
+      const ranked = bestCreditConversions(
+        Object.fromEntries(GUILD_TOKEN_CREDIT_CONVERSIONS.map((r) => [r.creditItemHrid, r.creditCount]))
+      );
+      const unitCosts = Object.fromEntries(
+        Object.entries(ranked).map(([hrid, row]) => [hrid, row?.costPerCredit ?? null])
+      );
+      const tokenValues = core.rankGuildTokenCreditValues(
+        GUILD_TOKEN_CREDIT_CONVERSIONS,
+        Object.fromEntries(Object.entries(ranked).map(([hrid, row]) => [hrid, row ? [row] : []]))
+      );
+      const valid = tokenValues.filter((v) => v.status === "ok" && Number.isFinite(v.goldValuePerToken));
+      return {
+        shrines: entries
+          .filter((e) => /^\/guild_buffs\/(tempo|scholar)_(skilling|life)$/.test(e.hrid))
+          .map((e) => ({
+            hrid: e.hrid,
+            level: state.guildBuffLevels == null ? null : currentGuildBuffLevel(e),
+            maxLevel:
+              guildShrineLevelByHrid(e.detail.shrineHrid) === null
+                ? currentGuildBuffLevel(e)
+                : Math.min(e.maxLevel, guildShrineLevelByHrid(e.detail.shrineHrid)),
+            capacityKnown: guildShrineLevelByHrid(e.detail.shrineHrid) !== null,
+            detail: JSON.parse(JSON.stringify(e.detail)),
+            effects: core.guildBuffLevelEffects(e.detail)
+          })),
+        inventoryKnown: Array.isArray(state.characterItems),
+        inventory: inventoryItemCounts(),
+        unitCosts,
+        exchangeRules: GUILD_TOKEN_CREDIT_CONVERSIONS,
+        tokenValues,
+        tokenValue: valid.length ? Math.max(...valid.map((v) => v.goldValuePerToken)) : null,
+        tokenValueComplete: valid.length === GUILD_TOKEN_CREDIT_CONVERSIONS.length,
+        marketAt: state.snapshotTimestamp || state.snapshotFetchedAt || null,
+        policy: { tokenCreditHrids: Array.from(state.guildTokenCreditHrids), autoTokenBudget: 0 }
+      };
+    }
+
     return {
+      captureUpgradePlanning,
       guildBuffEntries,
       guildBuffLabel,
       itemNameForMaterial,
@@ -16908,6 +18313,242 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 });
 
 
+// SOURCE: src/ui/storage-transfer-view.js
+(function (root, factory) {
+  const api = factory(
+    typeof module !== "undefined" && module.exports
+      ? require("../runtime/storage-transfer.js")
+      : root.MwiGuildStorageTransfer
+  );
+  if (typeof module !== "undefined" && module.exports) module.exports = api;
+  root.MwiGuildStorageTransferView = api;
+})(typeof globalThis !== "undefined" ? globalThis : this, function (transferApi) {
+  "use strict";
+
+  function create({ document, pageWindow, storage, version, t, escapeHtml, onFinished = () => {} }) {
+    const service = transferApi.create({ storage, origin: pageWindow.location.origin, version });
+    let phase = "idle";
+    let pending = null;
+    let imported = null;
+    let plan = null;
+    let verified = false;
+    let overwrite = false;
+    let busy = false;
+    let notice = { key: "", values: {} };
+    let revision = 0;
+    let resumeWrites = null;
+    function pauseWrites() {
+      resumeWrites ??= service.pauseWrites();
+    }
+    function resume() {
+      resumeWrites?.();
+      resumeWrites = null;
+    }
+    const label = (key, values) => escapeHtml(t(key, values));
+    const size = (entries) => `${(transferApi.byteSize(entries) / 1024).toFixed(1)} KiB`;
+    function render() {
+      let markup = `<section class="mwi-settings-block" data-cache-transfer aria-labelledby="mwi-cache-title" aria-busy="${busy}"><div class="mwi-settings-block-heading"><h4 id="mwi-cache-title">${label("cacheTitle")}</h4></div><p class="mwi-trial-help">${label("cacheScope")}</p><p class="mwi-trial-help">${label("cacheBoundary")}</p>`;
+      if (phase === "verify" || phase === "import") markup += `<p class="mwi-trial-notice">${label("cachePaused")}</p>`;
+      if (phase === "done") {
+        markup += `<button type="button" data-cache-action="reload">${label("cacheReload")}</button>`;
+      } else if (phase === "verify") {
+        markup += `<p class="mwi-trial-notice">${label(pending.kind === "clear" ? "cacheClearWarning" : "cacheReplaceWarning", { count: pending.backup.entries.length, size: size(pending.backup.entries) })}</p><label class="mwi-settings-switch-copy" for="mwi-cache-verify">${label("cacheVerifyFile")}</label><input id="mwi-cache-verify" data-cache-file="verify" type="file" style="width:100%;max-width:100%;min-width:0" accept=".json,application/json"${busy ? " disabled" : ""}><div class="mwi-trial-controls"><button type="button" data-cache-action="commit"${!verified || busy ? " disabled" : ""}>${label(pending.kind === "clear" ? "cacheConfirmClear" : "cacheConfirmReplace")}</button><button type="button" data-cache-action="cancel"${busy ? " disabled" : ""}>${label("cacheCancel")}</button></div>`;
+      } else {
+        markup += `<div class="mwi-trial-controls"><button type="button" data-cache-action="export"${busy ? " disabled" : ""}>${label("cacheExport")}</button><button type="button" data-cache-action="export-clear"${busy ? " disabled" : ""}>${label("cacheExportClear")}</button></div><label class="mwi-settings-switch-copy" for="mwi-cache-import">${label("cacheImport")}</label><input id="mwi-cache-import" data-cache-file="import" type="file" style="width:100%;max-width:100%;min-width:0" accept=".json,application/json"${busy ? " disabled" : ""}>`;
+        if (phase === "import") {
+          const count = (status) => plan.entries.filter((entry) => entry.status === status).length;
+          markup += `<div data-cache-preview><p class="mwi-trial-meta">${label("cacheImportSummary", { added: count("new"), duplicates: count("duplicate"), conflicts: count("conflict"), size: size(plan.entries) })}</p><p class="mwi-trial-help">${label("cacheImportHint")}</p><ul class="mwi-trial-import-list" tabindex="0" aria-label="${label("cacheImportPreview")}">${plan.entries.map((entry) => `<li><strong>${label(`cacheStatus_${entry.status}`)}</strong><span style="overflow-wrap:anywhere">${escapeHtml(entry.key)}</span></li>`).join("")}</ul>${count("conflict") ? `<label class="mwi-settings-switch"><span class="mwi-settings-switch-copy">${label("cacheOverwrite")}</span><input data-cache-overwrite type="checkbox"${overwrite ? " checked" : ""}${busy ? " disabled" : ""}></label>` : ""}<div class="mwi-trial-controls"><button type="button" data-cache-action="import"${busy || !(count("new") + (overwrite ? count("conflict") : 0)) ? " disabled" : ""}>${label(overwrite && count("conflict") ? "cachePrepareReplace" : "cacheConfirmImport")}</button><button type="button" data-cache-action="cancel"${busy ? " disabled" : ""}>${label("cacheCancel")}</button></div></div>`;
+        }
+      }
+      return (
+        markup +
+        `<p class="mwi-settings-status" data-cache-status role="status" aria-live="polite" aria-atomic="true">${notice.key ? label(notice.key, notice.values) : ""}</p></section>`
+      );
+    }
+    function refresh() {
+      const host = document.querySelector("[data-cache-transfer]");
+      if (!host) return;
+      const focused = document.activeElement;
+      const action = host.contains(focused) ? focused?.dataset?.cacheAction : null;
+      host.outerHTML = render();
+      if (action) document.querySelector(`[data-cache-action="${action}"]`)?.focus({ preventScroll: true });
+    }
+    function report(error) {
+      notice = {
+        key: ["cacheDataChanged", "cacheWrongOrigin", "cacheInvalidBackup", "cacheFileTooLarge"].includes(error?.code)
+          ? error.code
+          : "cacheAccessFailed",
+        values: {}
+      };
+    }
+    function download(backup) {
+      const text = JSON.stringify(backup, null, 2);
+      if (text.length > transferApi.MAX_TEXT) throw Object.assign(new Error(), { code: "cacheFileTooLarge" });
+      const url = pageWindow.URL.createObjectURL(new pageWindow.Blob([text], { type: "application/json" }));
+      try {
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = `mwi-guild-local-backup-${new Date(backup.exportedAt).toISOString().replace(/[:.]/g, "-")}.json`;
+        document.body.appendChild(anchor);
+        try {
+          anchor.click();
+        } finally {
+          anchor.remove();
+        }
+      } finally {
+        pageWindow.setTimeout(() => pageWindow.URL.revokeObjectURL(url), 1000);
+      }
+    }
+    function prepare(kind) {
+      if (kind !== "export") pauseWrites();
+      const backup = service.snapshot();
+      if (kind === "clear" && !backup.entries.length) {
+        notice = { key: "cacheEmpty", values: {} };
+        resume();
+        return;
+      }
+      download(backup);
+      if (kind === "export") {
+        notice = { key: "cacheDownloadStarted", values: {} };
+        return;
+      }
+      pending = { kind, backup, imported, plan };
+      verified = false;
+      phase = "verify";
+      notice = { key: "cacheDownloadVerify", values: {} };
+    }
+    function finish(result, kind) {
+      resume();
+      notice = {
+        key:
+          result.status === "applied"
+            ? kind === "clear"
+              ? "cacheCleared"
+              : "cacheImported"
+            : result.status === "stale"
+              ? "cacheDataChanged"
+              : result.status === "partial"
+                ? "cachePartial"
+                : "cacheSaveFailed",
+        values: { count: result.changed }
+      };
+      if (result.needsReload) {
+        phase = "done";
+        imported = pending = plan = null;
+        onFinished();
+      } else {
+        phase = "idle";
+        imported = pending = plan = null;
+      }
+    }
+    function onClick(event) {
+      const target = event.target?.closest?.("[data-cache-action]");
+      if (!target?.closest("[data-cache-transfer]") || target.disabled || busy) return;
+      const action = target.dataset.cacheAction;
+      if (action === "reload") {
+        pageWindow.location.reload();
+        return;
+      }
+      if (phase === "done") return;
+      try {
+        if (action === "export" || action === "export-clear") prepare(action === "export" ? "export" : "clear");
+        else if (action === "cancel") {
+          revision += 1;
+          phase = "idle";
+          resume();
+          imported = pending = plan = null;
+          verified = overwrite = false;
+          notice = { key: "cacheCancelled", values: {} };
+        } else if (action === "import" && plan) {
+          if (!transferApi.sameEntries(plan.current.entries, service.snapshot().entries))
+            throw Object.assign(new Error(), { code: "cacheDataChanged" });
+          if (overwrite && plan.entries.some((entry) => entry.status === "conflict")) prepare("replace");
+          else finish(service.restore(plan), "import");
+        } else if (action === "commit" && pending && verified) {
+          if (!transferApi.sameEntries(pending.backup.entries, service.snapshot().entries))
+            throw Object.assign(new Error(), { code: "cacheDataChanged" });
+          finish(
+            pending.kind === "clear" ? service.clear(pending.backup) : service.restore(pending.plan, true),
+            pending.kind
+          );
+        }
+      } catch (error) {
+        report(error);
+        if (phase === "idle") resume();
+        if (error?.code === "cacheDataChanged") {
+          resume();
+          phase = "idle";
+          imported = pending = plan = null;
+          verified = false;
+        }
+      }
+      refresh();
+    }
+    async function onChange(event) {
+      const input = event.target;
+      if (!input?.closest?.("[data-cache-transfer]") || busy || phase === "done") return;
+      if (input.matches("[data-cache-overwrite]")) {
+        overwrite = input.checked;
+        refresh();
+        return;
+      }
+      if (!input.dataset.cacheFile) return;
+      const file = input.files?.[0];
+      if (!file) return;
+      const mode = input.dataset.cacheFile;
+      const request = ++revision;
+      busy = true;
+      if (mode === "verify") verified = false;
+      notice = { key: "cacheReading", values: {} };
+      refresh();
+      try {
+        if (file.size > transferApi.MAX_FILE_BYTES) throw Object.assign(new Error(), { code: "cacheFileTooLarge" });
+        const text = await file.text();
+        if (request !== revision) return;
+        if (mode === "verify") {
+          if (!pending || !service.verifyFile(text, pending.backup))
+            throw Object.assign(new Error(), { code: "cacheInvalidBackup" });
+          verified = true;
+          notice = { key: "cacheVerified", values: {} };
+        } else {
+          imported = service.parse(text);
+          pauseWrites();
+          plan = service.preview(imported);
+          overwrite = false;
+          phase = "import";
+          notice = { key: "cachePreviewReady", values: {} };
+        }
+      } catch (error) {
+        if (request !== revision) return;
+        if (mode === "import") {
+          imported = plan = null;
+          phase = "idle";
+          resume();
+        }
+        report(error);
+      } finally {
+        if (request === revision) {
+          busy = false;
+          refresh();
+        }
+      }
+    }
+    document.addEventListener("click", onClick);
+    document.addEventListener("change", onChange);
+    return {
+      render,
+      dispose() {
+        revision += 1;
+        resume();
+        document.removeEventListener("click", onClick);
+        document.removeEventListener("change", onChange);
+      }
+    };
+  }
+  return { create };
+});
+
+
 // SOURCE: src/ui/settings-view.js
 (function (root, factory) {
   const api = factory(
@@ -16924,7 +18565,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       [
         ["guildPointStartingBalance", ["guildPointStartingBalanceHint"]],
         ["guildPointPlanningWeeks", ["guildPointPlanningWeeksHint"]],
-        ["guildPointForecastWeeks", ["guildPointForecastWeeksHint"]],
+        ["guildPointForecastStartWeek", ["guildPointForecastStartWeekHint"]],
         ["guildPointStatisticsHeading", ["guildPointTrendHint", "helpForecastEvidence", "helpForecastBacktest"]],
         ["guildPointHelpDataTitle", ["guildPointHelpData"]],
         ["guildPointHelpMethodTitle", ["guildPointHelpMethod"]],
@@ -17017,7 +18658,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       guildBuffLabel,
       guildBuildingSpriteBaseHref,
       guildBuildingIconMarkup,
-      updateRenderedMarkup
+      updateRenderedMarkup,
+      renderStorageTransfer = () => ""
     } = dependencies;
     const effects = effectApi.createFormatter({ core, t, ui });
     function renderGuildBuffEffects(detail) {
@@ -17100,17 +18742,13 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       <section class="mwi-settings-block" aria-labelledby="mwi-settings-interface-heading"><div class="mwi-settings-block-heading"><h4 id="mwi-settings-interface-heading">${escapeHtml(t("interfaceVisibility"))}</h4></div>
       <form class="mwi-settings-name" data-role="settings-sidebar-name-form"><label for="mwi-settings-sidebar-name">${escapeHtml(t("sidebarDisplayName"))}</label><div class="mwi-settings-name-controls"><input id="mwi-settings-sidebar-name" data-role="settings-sidebar-name" type="text" value="${escapeHtml(state.sidebarDisplayName || "")}" placeholder="${escapeHtml(t("sidebarCredit"))}" autocomplete="off"><button id="mwi-settings-sidebar-name-save" type="submit">${escapeHtml(t("sidebarNameSave"))}</button><button id="mwi-settings-sidebar-name-reset" type="button">${escapeHtml(t("sidebarNameReset"))}</button></div></form>
       <label class="mwi-settings-switch"><span class="mwi-settings-switch-copy"><strong>${escapeHtml(t("showConstructionView"))}</strong></span><input id="mwi-settings-show-construction" class="mwi-settings-switch-input" data-role="settings-show-construction" type="checkbox" role="switch"></label>
-      <label class="mwi-settings-switch"><span class="mwi-settings-switch-copy"><strong>${escapeHtml(t("showTrialHistoryView"))}</strong></span><input id="mwi-settings-show-trials" class="mwi-settings-switch-input" data-role="settings-show-trials" type="checkbox" role="switch"></label></section><div data-layu-usage-settings="mwi_guild" lang="${escapeHtml(ui().locale)}"></div>${renderHelp()}`;
+      <label class="mwi-settings-switch"><span class="mwi-settings-switch-copy"><strong>${escapeHtml(t("showTrialHistoryView"))}</strong></span><input id="mwi-settings-show-trials" class="mwi-settings-switch-input" data-role="settings-show-trials" type="checkbox" role="switch"></label></section>${renderStorageTransfer()}<div data-layu-usage-settings="mwi_guild" lang="${escapeHtml(ui().locale)}"></div>${renderHelp()}`;
     }
 
     function renderSettingsMarkup() {
       const snapshot = guildBuffSettingsSnapshot();
       const hidden = state.settingsOpen === true ? "" : " hidden";
-      return `<section id="mwi-settings-panel" class="mwi-settings-panel" data-role="settings-panel" aria-labelledby="mwi-settings-title" tabindex="-1"${hidden}><header class="mwi-settings-header"><span><h3 id="mwi-settings-title">${escapeHtml(
-        t("interfaceSettings")
-      )}</h3></span><button class="mwi-settings-close" data-role="settings-close" type="button" title="${escapeHtml(
-        t("backFromSettings")
-      )}" aria-label="${escapeHtml(t("backFromSettings"))}">${escapeHtml(t("backFromSettings"))}</button></header><div class="mwi-settings-content" data-role="settings-content">${renderSettingsContent(
+      return `<section id="mwi-settings-panel" class="mwi-settings-panel" data-role="settings-panel" aria-label="${escapeHtml(t("interfaceSettings"))}" tabindex="-1"${hidden}><div class="mwi-settings-content" data-role="settings-content">${renderSettingsContent(
         snapshot
       )}</div><p class="mwi-settings-status" data-role="settings-status" role="status" aria-live="polite" aria-atomic="true"></p></section>`;
     }
@@ -18571,7 +20209,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
           refreshedSettings &&
           (refreshedSettings.querySelector('[data-role="settings-shrine-autofill"]') ||
             refreshedSettings.querySelector('[data-role="settings-show-construction"]') ||
-            refreshedSettings.querySelector('[data-role="settings-close"]'));
+            refreshedSettings);
         if (firstControl) {
           try {
             firstControl.focus({ preventScroll: true });
@@ -18883,9 +20521,6 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       const settingsTrigger = panel.querySelector('[data-role="toggle-settings"]');
       const settingsPanel = panel.querySelector('[data-role="settings-panel"]');
       settingsTrigger.addEventListener("click", () => setSettingsOpen(panel, !state.settingsOpen));
-      settingsPanel.querySelector('[data-role="settings-close"]').addEventListener("click", () => {
-        setSettingsOpen(panel, false, { restoreFocus: true });
-      });
       settingsPanel.addEventListener("keydown", (event) => {
         if (event.key !== "Escape" || !state.settingsOpen) return;
         event.preventDefault();
@@ -19009,12 +20644,16 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         }
       });
       constructionResults.addEventListener("change", (event) => {
-        if (event.target.matches('[data-role="guild-point-forecast-weeks"]')) {
-          const weeks = Number(event.target.value);
-          state.guildPointForecastWeeks = Number.isSafeInteger(weeks) && weeks >= 2 && weeks <= 12 ? weeks : 6;
+        if (event.target.matches('[data-role="guild-point-forecast-start-week"]')) {
+          const valid = constructionView.setGuildPointForecastStartWeek(event.target.value);
+          const error = panel.querySelector("#mwi-guild-point-start-error");
+          if (error) error.hidden = valid;
+          if (!valid) {
+            event.target.setAttribute("aria-invalid", "true");
+            return;
+          }
           clearConstructionNotice(panel);
-          persistGuildBuildingPlannerState();
-          refreshConstructionAndFocus(panel, { role: "guild-point-forecast-weeks" }, null);
+          refreshConstructionAndFocus(panel, { role: "guild-point-forecast-start-week" }, null);
           return;
         }
         if (event.target.matches('[data-role="guild-point-planning-weeks"]')) {
@@ -19275,7 +20914,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         if (!button) return;
         event.preventDefault();
         event.stopPropagation();
-        openMarketplaceForItem(button.dataset.itemHrid, button.dataset.itemName);
+        openMarketplaceForItem(button.dataset.itemHrid, button.dataset.itemName, button.dataset.purchaseQuantity);
       });
       panel.querySelector('[data-role="add-upgrade-plan"]').addEventListener("click", () => {
         addGuildUpgradePlan(guildBuffEntries());
@@ -19641,6 +21280,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   const constructionViewApi = window.MwiGuildCreditConstructionView;
   const upgradeViewApi = window.MwiGuildCreditUpgradeView;
   const settingsViewApi = window.MwiGuildCreditSettingsView;
+  const storageTransferViewApi = window.MwiGuildStorageTransferView;
   const shrineGuideUiApi = window.MwiGuildCreditShrineGuideUi;
   const exchangeAdvisorApi = window.MwiGuildCreditExchangeAdvisor;
   const panelShellApi = window.MwiGuildCreditPanelShell;
@@ -19667,6 +21307,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     !constructionViewApi ||
     !upgradeViewApi ||
     !settingsViewApi ||
+    !storageTransferViewApi ||
     !shrineGuideUiApi ||
     !exchangeAdvisorApi ||
     !panelShellApi ||
@@ -19893,7 +21534,9 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     return storageApi.normalizePanelView(view, PANEL_VIEWS);
   }
   function persistGuildBuildingPlannerState() {
-    pluginStorage.persistGuildBuildingPlannerState(state);
+    const saved = pluginStorage.persistGuildBuildingPlannerState(state);
+    state.guildPointForecastSaveFailed = !saved;
+    return saved;
   }
   function persistPluginUiState() {
     return pluginStorage.persistPluginUiState(state);
@@ -20074,9 +21717,9 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     return `<span class="mwi-building-icon" data-icon-source="game"><svg aria-hidden="true" focusable="false" viewBox="0 0 50 50" width="100%" height="100%"><use href="${escapeHtml(href)}" width="50" height="50"></use></svg></span>`;
   }
 
-  function marketItemIconMarkup(itemHrid, label, className = "") {
+  function marketItemIconMarkup(itemHrid, label, className = "", purchaseQuantity = null) {
     const marketLabel = t("marketItem", { item: label });
-    return `<button class="mwi-market-item-link ${escapeHtml(className)}" data-role="market-item-link" data-item-hrid="${escapeHtml(itemHrid)}" data-item-name="${escapeHtml(label)}" type="button" title="${escapeHtml(marketLabel)}" aria-label="${escapeHtml(marketLabel)}">${iconMarkup(itemHrid, label)}</button>`;
+    return `<button class="mwi-market-item-link ${escapeHtml(className)}" data-role="market-item-link" data-item-hrid="${escapeHtml(itemHrid)}" data-item-name="${escapeHtml(label)}" data-purchase-quantity="${Number.isSafeInteger(purchaseQuantity) && purchaseQuantity > 0 ? purchaseQuantity : ""}" type="button" title="${escapeHtml(marketLabel)}" aria-label="${escapeHtml(marketLabel)}">${iconMarkup(itemHrid, label)}</button>`;
   }
 
   function marketplaceSearchInput() {
@@ -20115,13 +21758,17 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     window.setTimeout(search, navigate ? 80 : 0);
   }
 
-  function openMarketplaceForItem(itemHrid, itemName) {
+  function openMarketplaceForItem(itemHrid, itemName, purchaseQuantity) {
     const bridge = window.__mwiGuildCreditBridge;
+    bridge?.cancelPurchasePrefill?.();
     try {
       // Our recommendation rows are unenhanced materials. Mirror the native
       // inventory action by explicitly using level 0 instead of leaving the
       // market order-book selection undefined.
-      if (bridge && typeof bridge.goToMarketplace === "function" && bridge.goToMarketplace(itemHrid, 0)) return;
+      if (bridge && typeof bridge.goToMarketplace === "function" && bridge.goToMarketplace(itemHrid, 0)) {
+        bridge.armPurchasePrefill?.(itemHrid, Number(purchaseQuantity));
+        return;
+      }
     } catch (_) {
       // Fall through to the compatibility path if the game changes its React internals.
     }
@@ -20214,7 +21861,33 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     refreshGuildUpgrade
   } = upgradeView;
 
+  let disposeUpgradePlanning = null;
+  if (window.MwiGuildUpgradePlanning) {
+    const planningProvider = window.MwiGuildUpgradePlanning.create({
+      core,
+      capture: upgradeView.captureUpgradePlanning,
+      owner: () => state.planningCharacterId,
+      hostname: pageWindow.location.hostname,
+      version: PLUGIN_VERSION
+    });
+    disposeUpgradePlanning = window.MwiGuildUpgradePlanning.install(pageWindow, planningProvider);
+  }
+
+  const storageTransferView = storageTransferViewApi.create({
+    document,
+    pageWindow,
+    storage: pageWindow.localStorage,
+    version: PLUGIN_VERSION,
+    t,
+    escapeHtml,
+    // Keep the success/reload controls reachable; persisted writes are already
+    // blocked by the generation guard until this page is refreshed.
+    onFinished: () => {
+      stopShrineGuideObserver();
+    }
+  });
   const settingsView = settingsViewApi.createSettingsView({
+    renderStorageTransfer: () => storageTransferView.render(),
     core,
     guildBuildingSpriteBaseHref,
     guildBuildingIconMarkup,
@@ -20229,6 +21902,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   const { renderSettingsMarkup, refreshSettings } = settingsView;
   const constructionView = constructionViewApi.createConstructionView({
     getTrialPointEstimate: () => trialHistoryView.estimateCurrentTrialPoints(),
+    getTrialContext: () => window.__mwiGuildCreditBridge?.trialHistoryContext,
     state,
     buildingDataApi,
     t,
@@ -20486,12 +22160,18 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       scheduleGuildExchangeAdvisor();
   }
 
-  function disposeRuntime() {
+  function disposeRuntime(event) {
+    // A cached page resumes with its live runtime; dispose only on a real exit.
+    if (event?.persisted) return;
+    window.removeEventListener("pagehide", disposeRuntime);
+    storageTransferView.dispose();
+    disposeUpgradePlanning?.();
     trialHistoryView.dispose();
     disposePanelShell();
     disposeConstructionView();
     guildTokenBudgetRefreshTask.dispose();
     marketDataRefreshTask.dispose();
+    window.__mwiGuildCreditBridge?.cancelPurchasePrefill?.();
     inventoryDataRefreshTask.dispose();
     guildDataRefreshTask.dispose();
     sidebarController.destroy();
@@ -20516,7 +22196,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   hydrateLocalInitData();
   document.addEventListener("input", exchangeModalInteractionHandler, true);
   document.addEventListener("click", exchangeModalInteractionHandler, true);
-  window.addEventListener("pagehide", disposeRuntime, { once: true });
+  window.addEventListener("pagehide", disposeRuntime);
   if (document.body) startGuildExchangeAdvisor();
   else document.addEventListener("DOMContentLoaded", startGuildExchangeAdvisor, { once: true });
   sidebarController.start();
