@@ -2,7 +2,7 @@
 // @name         公會助手
 // @name:en      Milky Way Idle Guild Assistant
 // @namespace    https://www.milkywayidle.com/
-// @version      1.2.75
+// @version      1.2.76
 // @author       柆雨
 // @license      MIT
 // @homepageURL  https://github.com/LaYuDr/milky-way-idle-guild-credit-optimizer
@@ -507,7 +507,7 @@
     return { dispose, report, client };
   }
   if (typeof module !== "undefined" && module.exports) module.exports = { createUsageClient, boot };
-  try { boot({"pluginId":"mwi_guild","name":"公會助手","version":"1.2.75","endpoint":"https://ukpyedhl.cn-hk1.rainapp.top","development":false,"defaultEnabled":true,"reportOptOut":true}, {getValue: typeof GM_getValue === "function" ? GM_getValue : null,
+  try { boot({"pluginId":"mwi_guild","name":"公會助手","version":"1.2.76","endpoint":"https://ukpyedhl.cn-hk1.rainapp.top","development":false,"defaultEnabled":true,"reportOptOut":true}, {getValue: typeof GM_getValue === "function" ? GM_getValue : null,
 setValue: typeof GM_setValue === "function" ? GM_setValue : null,
 listen: typeof GM_addValueChangeListener === "function" ? GM_addValueChangeListener : null,
 unlisten: typeof GM_removeValueChangeListener === "function" ? GM_removeValueChangeListener : null,
@@ -516,7 +516,7 @@ request: typeof GM_xmlhttpRequest === "function" ? GM_xmlhttpRequest : null}); }
 
 // LAYU_USAGE_END mwi_guild
 // MWI_GUILD_CREDIT_RUNTIME
-window.MwiGuildCreditVersion = "1.2.75";
+window.MwiGuildCreditVersion = "1.2.76";
 
 // SOURCE: src/vendor/lz-string.js
 /*
@@ -9267,6 +9267,7 @@ window.MwiGuildCreditVersion = "1.2.75";
       const fallback = {
         collapsedCreditSections: [],
         guildTokenValuesCollapsed: false,
+        guildTokenValuesUpgradeCollapsed: false,
         guildTokenCreditHrids: [],
         autoGuildTokenBudget: null,
         shrineGuideEnabled: false,
@@ -9331,6 +9332,7 @@ window.MwiGuildCreditVersion = "1.2.75";
         return {
           collapsedCreditSections,
           guildTokenValuesCollapsed: stored.guildTokenValuesCollapsed === true,
+          guildTokenValuesUpgradeCollapsed: stored.guildTokenValuesUpgradeCollapsed === true,
           guildTokenCreditHrids,
           autoGuildTokenBudget,
           shrineGuideEnabled: stored.shrineGuideEnabled === true,
@@ -9531,6 +9533,7 @@ window.MwiGuildCreditVersion = "1.2.75";
           JSON.stringify({
             collapsedCreditSections: Array.from(state.collapsedCreditSections),
             guildTokenValuesCollapsed: state.guildTokenValuesCollapsed,
+            guildTokenValuesUpgradeCollapsed: state.guildTokenValuesUpgradeCollapsed === true,
             guildTokenCreditHrids: Array.from(state.guildTokenCreditHrids),
             autoGuildTokenBudget: state.autoGuildTokenBudget,
             shrineGuideEnabled: state.shrineGuideEnabled,
@@ -12832,6 +12835,8 @@ window.MwiGuildCreditVersion = "1.2.75";
         /* Credit icons navigate independently of section disclosure controls. */
         #mwi-credit-optimizer .mwi-credit-icon-link{display:inline-flex;align-items:center;justify-content:center;flex:0 0 24px;width:24px;min-width:24px;height:24px;min-height:24px!important;padding:0!important;border:1px solid transparent;border-radius:4px;background:transparent;color:inherit;vertical-align:middle;cursor:pointer}
         #mwi-credit-optimizer .mwi-credit-icon-link .mwi-item-icon{display:block;width:100%;height:100%}
+        #mwi-credit-optimizer .mwi-material-credit>.mwi-credit-icon-link{flex-basis:40px;width:40px;min-width:40px;height:40px;min-height:40px!important}
+        #mwi-credit-optimizer .mwi-material-credit>.mwi-credit-icon-link .mwi-item-icon{flex-basis:38px;width:38px;height:38px}
         #mwi-credit-optimizer .mwi-credit-icon-link:hover{background:#34514e;border-color:#91dfcb}
         #mwi-credit-optimizer .mwi-credit-icon-link:focus-visible{outline:2px solid #91dfcb;outline-offset:2px}
         #mwi-credit-optimizer .mwi-shrine-materials .mwi-credit-icon-link{flex-basis:20px;width:20px;min-width:20px;height:20px;min-height:20px!important}
@@ -17451,7 +17456,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       refreshOfficialItemNameCatalog,
       scheduleShrineGuide,
       scheduleGuildExchangeAdvisor,
-      guildTokenBudgetRefreshTask
+      guildTokenBudgetRefreshTask,
+      refreshGuildTokenValuesCopy = () => {}
     } = dependencies;
 
     const effects = effectApi.createFormatter({ core, t, ui });
@@ -17729,7 +17735,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         id: `plan-${state.nextUpgradePlanId++}`,
         guildBuffHrid: entry.hrid,
         startLevel,
-        targetLevel: startLevel + 1
+        targetLevel: startLevel + 1,
+        collapsed: true
       });
       state.upgradePresetNotice = "";
       return true;
@@ -18182,6 +18189,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       const status = panel.querySelector('[data-role="upgrade-status"]');
       const results = panel.querySelector('[data-role="upgrade-results"]');
       const entries = guildBuffEntries();
+      refreshGuildTokenValuesCopy(panel);
       if (!entries.length) {
         setShrineGuideContext(null);
         updateGuildTokenBudgetControl(panel, null, false);
@@ -20531,6 +20539,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
           ${renderGuildTokenCreditPlanToggle()}
           <div class="mwi-status" data-role="upgrade-status">${escapeHtml(t("waitingUpgradeRules"))}</div>
           <div data-role="upgrade-results"></div>
+          <div data-role="upgrade-token-values"></div>
         </div>
         <div id="mwi-view-panel-construction" data-role="construction-view" role="tabpanel" aria-labelledby="mwi-view-tab-construction"${state.activeView === "construction" ? "" : " hidden"}>
           <div class="mwi-status mwi-construction-status" data-role="construction-status" hidden><span data-role="construction-status-text" role="status" aria-live="polite" aria-atomic="true"></span><button data-role="undo-clear-building-plans" type="button" hidden>${escapeHtml(t("undoClearBuildingPlans"))}</button></div>
@@ -20641,20 +20650,6 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       panel.querySelector('[data-role="results"]').addEventListener("click", (event) => {
         const target = event.target && (event.target.nodeType === 1 ? event.target : event.target.parentElement);
         if (!target) return;
-        const tokenToggle = target.closest('[data-role="toggle-token-values"]');
-        if (tokenToggle) {
-          const tokenSection = tokenToggle.closest(".mwi-token-value-section");
-          const tokenBody = tokenSection && tokenSection.querySelector(".mwi-token-value-body");
-          if (!tokenSection || !tokenBody) return;
-          state.guildTokenValuesCollapsed = !state.guildTokenValuesCollapsed;
-          tokenSection.dataset.collapsed = String(state.guildTokenValuesCollapsed);
-          tokenToggle.setAttribute("aria-expanded", String(!state.guildTokenValuesCollapsed));
-          const tokenIcon = tokenToggle.querySelector(".mwi-collapse-icon");
-          if (tokenIcon) tokenIcon.textContent = state.guildTokenValuesCollapsed ? "▸" : "▾";
-          tokenBody.hidden = state.guildTokenValuesCollapsed;
-          persistPluginUiState();
-          return;
-        }
         const toggle = target.closest('[data-role="toggle-credit-section"]');
         const section = toggle && toggle.closest("[data-credit-item-hrid]");
         if (!section) return;
@@ -20966,6 +20961,23 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         );
       });
       panel.addEventListener("click", (event) => {
+        const tokenToggle = event.target.closest('[data-role="toggle-token-values"]');
+        if (tokenToggle) {
+          const section = tokenToggle.closest(".mwi-token-value-section");
+          const body = section?.querySelector(".mwi-token-value-body");
+          if (!body) return;
+          const key =
+            section.dataset.tokenValuesContext === "upgrade"
+              ? "guildTokenValuesUpgradeCollapsed"
+              : "guildTokenValuesCollapsed";
+          state[key] = !state[key];
+          section.dataset.collapsed = String(state[key]);
+          tokenToggle.setAttribute("aria-expanded", String(!state[key]));
+          tokenToggle.querySelector(".mwi-collapse-icon").textContent = state[key] ? "▸" : "▾";
+          body.hidden = state[key];
+          persistPluginUiState();
+          return;
+        }
         const creditLink = event.target.closest('[data-role="guild-credit-link"]');
         if (creditLink) {
           event.preventDefault();
@@ -21208,6 +21220,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       loadSnapshot,
       creditConversionGroups,
       snapshotOrderBook,
+      updateRenderedMarkup,
       refreshOfficialItemNameCatalog
     } = dependencies;
 
@@ -21233,7 +21246,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       return `<section class="mwi-credit-section" data-credit-item-hrid="${escapeHtml(creditItemHrid)}" data-collapsed="${String(collapsed)}" style="--mwi-credit-color:${color}">${heading}<div class="mwi-credit-body"${collapsed ? " hidden" : ""}><table><colgroup><col class="mwi-credit-item-column"><col class="mwi-credit-exchange-column"><col class="mwi-credit-unit-cost-column"><col class="mwi-credit-target-cost-column"></colgroup><thead><tr><th>${itemLabel}</th><th>${exchangeLabel}</th><th>${perCreditLabel}</th><th>${targetCostLabel}</th></tr></thead><tbody>${available.map((row) => `<tr><td data-label="${itemLabel}" title="${escapeHtml(row.itemName)}"><span class="mwi-item">${marketItemIconMarkup(row.itemHrid, row.itemName)}<span class="mwi-item-name">${escapeHtml(row.itemName)}</span></span></td><td data-label="${exchangeLabel}">${escapeHtml(t("exchangeRate", { items: itemQuantity(row.itemCount), credits: creditQuantity(row.creditCount) }))}</td><td class="mwi-cost" data-label="${perCreditLabel}">${formatNumber(row.costPerCredit, 2)}</td><td data-label="${targetCostLabel}">${core.formatCompactCost(row.cost)}</td></tr>`).join("")}</tbody></table></div></section>`;
     }
 
-    function renderGuildTokenValues(values) {
+    function renderGuildTokenValues(values, context = "credit") {
       const valuesByCredit = new Map(values.map((value) => [value.creditItemHrid, value]));
       const rows = GUILD_TOKEN_CREDIT_CONVERSIONS.map((rule) => {
         const value = valuesByCredit.get(rule.creditItemHrid) || { status: "unpriced", ...rule };
@@ -21247,10 +21260,60 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         }
         return `<div class="mwi-token-value-row"><span class="mwi-item">${iconMarkup(value.creditItemHrid, creditName)}<span class="mwi-item-name">${escapeHtml(creditName)}</span></span><span class="mwi-token-value-exchange">${escapeHtml(exchange)}</span><span class="mwi-cost">${core.formatCompactCost(value.goldValuePerToken)} ${escapeHtml(t("gold"))}</span></div>`;
       }).join("");
-      const collapsed = state.guildTokenValuesCollapsed;
+      const collapsed =
+        context === "upgrade" ? state.guildTokenValuesUpgradeCollapsed : state.guildTokenValuesCollapsed;
       const guildTokenName = itemNameForMaterial("/items/guild_token");
       const heading = `<button class="mwi-credit-heading mwi-token-value-heading" data-role="toggle-token-values" type="button" aria-expanded="${String(!collapsed)}">${iconMarkup("/items/guild_token", guildTokenName)}<span>${escapeHtml(t("tokenExchangeValue", { token: guildTokenName }))}</span><span class="mwi-collapse-icon" aria-hidden="true">${collapsed ? "▸" : "▾"}</span></button>`;
-      return `<section class="mwi-token-value-section" data-collapsed="${String(collapsed)}">${heading}<div class="mwi-token-value-body mwi-token-value-list"${collapsed ? " hidden" : ""}>${rows}</div></section>`;
+      return `<section class="mwi-token-value-section" data-token-values-context="${context}" data-collapsed="${String(collapsed)}">${heading}<div class="mwi-token-value-body mwi-token-value-list"${collapsed ? " hidden" : ""}>${rows}</div></section>`;
+    }
+
+    function guildTokenValues(groups = creditConversionGroups()) {
+      const ranked = groups.map((group) => {
+        const rule = GUILD_TOKEN_CREDIT_CONVERSIONS.find(
+          (candidate) => candidate.creditItemHrid === group.creditItemHrid
+        );
+        const books = Object.fromEntries(
+          group.conversions.map((conversion) => [conversion.itemHrid, snapshotOrderBook(conversion.itemHrid)])
+        );
+        return [group.creditItemHrid, core.rankConversions(group.conversions, books, rule.creditCount)];
+      });
+      return core.rankGuildTokenCreditValues(GUILD_TOKEN_CREDIT_CONVERSIONS, Object.fromEntries(ranked));
+    }
+
+    let copyRefreshId = 0;
+    async function refreshGuildTokenValuesCopy(panel) {
+      const host = panel.querySelector('[data-role="upgrade-token-values"]');
+      if (!host) return;
+      const refreshId = ++copyRefreshId;
+      let failed = false;
+      const render = () => {
+        if (refreshId !== copyRefreshId || !host.isConnected) return;
+        const active = host.contains(window.document.activeElement) ? window.document.activeElement : null;
+        const focusedRole = active?.dataset.role;
+        const focusedCredit = active?.dataset.creditHrid;
+        const notice = failed
+          ? t("snapshotFailed")
+          : state.marketSnapshotFallbackActive
+            ? t("snapshotFallbackNotice")
+            : "";
+        const replaced = updateRenderedMarkup(
+          host,
+          renderGuildTokenValues(guildTokenValues(), "upgrade") +
+            (notice ? `<p class="mwi-status">${escapeHtml(notice)}</p>` : "")
+        );
+        if (replaced && focusedRole) {
+          [...host.querySelectorAll("[data-role]")]
+            .find((node) => node.dataset.role === focusedRole && node.dataset.creditHrid === focusedCredit)
+            ?.focus({ preventScroll: true });
+        }
+      };
+      render();
+      try {
+        await loadSnapshot(false);
+      } catch (_) {
+        failed = true;
+      }
+      render();
     }
 
     async function refreshPanel(panel, forceSnapshot) {
@@ -21288,18 +21351,13 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
           const books = Object.fromEntries(
             group.conversions.map((conversion) => [conversion.itemHrid, snapshotOrderBook(conversion.itemHrid)])
           );
-          const tokenRule = GUILD_TOKEN_CREDIT_CONVERSIONS.find((rule) => rule.creditItemHrid === group.creditItemHrid);
           return {
             ...group,
             priceLimited: group.conversions.length < (unfilteredConversionCounts.get(group.creditItemHrid) || 0),
-            ranked: core.rankConversions(group.conversions, books, target),
-            tokenRanked: core.rankConversions(group.conversions, books, tokenRule.creditCount)
+            ranked: core.rankConversions(group.conversions, books, target)
           };
         });
-        const tokenValues = core.rankGuildTokenCreditValues(
-          GUILD_TOKEN_CREDIT_CONVERSIONS,
-          Object.fromEntries(rankedGroups.map((group) => [group.creditItemHrid, group.tokenRanked]))
-        );
+        const tokenValues = guildTokenValues(creditGroups);
         status.textContent = "";
         status.hidden = true;
         results.innerHTML = `${renderGuildTokenValues(tokenValues)}<div class="mwi-credit-grid">${rankedGroups.map((group) => renderCreditSection(group.creditItemHrid, group.color, group.ranked, group.priceLimited)).join("")}</div>`;
@@ -21325,7 +21383,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       state.refreshTimer = window.setTimeout(() => refreshPanel(panel), 250);
     }
 
-    return { refreshPanel };
+    return { refreshPanel, refreshGuildTokenValuesCopy };
   }
 
   return { createCreditView };
@@ -21493,6 +21551,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     refreshQueued: false,
     collapsedCreditSections: new Set(savedUiState.collapsedCreditSections),
     guildTokenValuesCollapsed: savedUiState.guildTokenValuesCollapsed,
+    guildTokenValuesUpgradeCollapsed: savedUiState.guildTokenValuesUpgradeCollapsed,
     upgradeRefreshId: 0,
     exchangeAdvisorUi: null,
     exchangeAdvisorRootObserver: null,
@@ -21903,6 +21962,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   }
 
   const upgradeView = upgradeViewApi.createUpgradeView({
+    refreshGuildTokenValuesCopy: (panel) => creditView.refreshGuildTokenValuesCopy(panel),
     core,
     state,
     t,
@@ -22166,6 +22226,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     loadSnapshot,
     creditConversionGroups,
     snapshotOrderBook,
+    updateRenderedMarkup,
     refreshOfficialItemNameCatalog
   });
   const { refreshPanel } = creditView;
