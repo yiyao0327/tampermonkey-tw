@@ -2,7 +2,7 @@
 // @name         公會助手
 // @name:en      Milky Way Idle Guild Assistant
 // @namespace    https://www.milkywayidle.com/
-// @version      1.2.77
+// @version      1.2.78
 // @author       柆雨
 // @license      MIT
 // @homepageURL  https://github.com/LaYuDr/milky-way-idle-guild-credit-optimizer
@@ -507,7 +507,7 @@
     return { dispose, report, client };
   }
   if (typeof module !== "undefined" && module.exports) module.exports = { createUsageClient, boot };
-  try { boot({"pluginId":"mwi_guild","name":"公會助手","version":"1.2.77","endpoint":"https://ukpyedhl.cn-hk1.rainapp.top","development":false,"defaultEnabled":true,"reportOptOut":true}, {getValue: typeof GM_getValue === "function" ? GM_getValue : null,
+  try { boot({"pluginId":"mwi_guild","name":"公會助手","version":"1.2.78","endpoint":"https://ukpyedhl.cn-hk1.rainapp.top","development":false,"defaultEnabled":true,"reportOptOut":true}, {getValue: typeof GM_getValue === "function" ? GM_getValue : null,
 setValue: typeof GM_setValue === "function" ? GM_setValue : null,
 listen: typeof GM_addValueChangeListener === "function" ? GM_addValueChangeListener : null,
 unlisten: typeof GM_removeValueChangeListener === "function" ? GM_removeValueChangeListener : null,
@@ -516,7 +516,7 @@ request: typeof GM_xmlhttpRequest === "function" ? GM_xmlhttpRequest : null}); }
 
 // LAYU_USAGE_END mwi_guild
 // MWI_GUILD_CREDIT_RUNTIME
-window.MwiGuildCreditVersion = "1.2.77";
+window.MwiGuildCreditVersion = "1.2.78";
 
 // SOURCE: src/vendor/lz-string.js
 /*
@@ -1704,7 +1704,7 @@ window.MwiGuildCreditVersion = "1.2.77";
     DEFAULT_PANEL_ORDER: ["upgrade", "credit", "construction", "trials"],
     CREDIT_TYPES,
     GUILD_TOKEN_CREDIT_CONVERSIONS,
-    SELLER_TAX_RATE: 0.05,
+    SELLER_TAX_RATE: 0.04,
     GUILD_SHRINE_NAME_KEYS: {
       "/guild_shrines/force": "shrineForce",
       "/guild_shrines/tempo": "shrineTempo",
@@ -4895,9 +4895,6 @@ window.MwiGuildCreditVersion = "1.2.77";
 
   const STRINGS = {
     "zh-CN": {
-      labyrinthPrefillToggle: "編輯時填入推薦等級",
-      labyrinthPrefillHint: "點選編輯時填入當前行推薦等級，儲存仍需手動點選。",
-      labyrinthPrefillSaveFailed: "設定僅對本次頁面生效，未能儲存到瀏覽器。",
       settingsHelp: "幫助",
       helpRankingOrder: "榜單順序",
       helpSettingsAndMarket: "設定與市場參考",
@@ -5752,9 +5749,6 @@ window.MwiGuildCreditVersion = "1.2.77";
       sidebarCredit: "公會"
     },
     en: {
-      labyrinthPrefillToggle: "Fill recommended level when editing",
-      labyrinthPrefillHint: "Fill this row’s recommended level when you click Edit. Click Save yourself to apply it.",
-      labyrinthPrefillSaveFailed: "This setting applies to this page only; it could not be saved in the browser.",
       settingsHelp: "Help",
       helpRankingOrder: "Ranking order",
       helpSettingsAndMarket: "Settings and market reference",
@@ -9276,7 +9270,6 @@ window.MwiGuildCreditVersion = "1.2.77";
         guildTokenValuesUpgradeCollapsed: false,
         guildTokenCreditHrids: [],
         autoGuildTokenBudget: null,
-        labyrinthPrefillEnabled: true,
         shrineGuideEnabled: false,
         maxConversionItemUnitPrice: null,
         guildShrineAutofillExcludedBuffHrids: [],
@@ -9342,7 +9335,6 @@ window.MwiGuildCreditVersion = "1.2.77";
           guildTokenValuesUpgradeCollapsed: stored.guildTokenValuesUpgradeCollapsed === true,
           guildTokenCreditHrids,
           autoGuildTokenBudget,
-          labyrinthPrefillEnabled: stored.labyrinthPrefillEnabled !== false,
           shrineGuideEnabled: stored.shrineGuideEnabled === true,
           maxConversionItemUnitPrice,
           guildShrineAutofillExcludedBuffHrids: normalizeGuildShrineAutofillExcludedBuffHrids(
@@ -9544,7 +9536,6 @@ window.MwiGuildCreditVersion = "1.2.77";
             guildTokenValuesUpgradeCollapsed: state.guildTokenValuesUpgradeCollapsed === true,
             guildTokenCreditHrids: Array.from(state.guildTokenCreditHrids),
             autoGuildTokenBudget: state.autoGuildTokenBudget,
-            labyrinthPrefillEnabled: state.labyrinthPrefillEnabled !== false,
             shrineGuideEnabled: state.shrineGuideEnabled,
             maxConversionItemUnitPrice:
               Number.isSafeInteger(state.maxConversionItemUnitPrice) && state.maxConversionItemUnitPrice > 0
@@ -11122,163 +11113,6 @@ window.MwiGuildCreditVersion = "1.2.77";
 });
 
 
-// SOURCE: src/ui/labyrinth-prefill.js
-(function (root, factory) {
-  const api = factory();
-  if (typeof module !== "undefined" && module.exports) module.exports = api;
-  root.MwiGuildLabyrinthPrefill = api;
-})(typeof globalThis !== "undefined" ? globalThis : this, function () {
-  "use strict";
-
-  const TABLE = 'table[class*="LabyrinthPanel_automationTable"]';
-  const THRESHOLD = '[class*="LabyrinthPanel_skipThreshold"]';
-  const INPUT = '[class*="LabyrinthPanel_thresholdInputContainer"] input';
-  const RECOMMEND = "td.mwi-lab-auto-recommend-cell";
-
-  function readRecommendation(row) {
-    const cells = row.querySelectorAll(RECOMMEND);
-    if (cells.length !== 1) return null;
-    const cell = cells[0];
-    const text = cell.textContent.trim();
-    const token = cell.getAttribute("data-mwi-auto-recommend-token");
-    if (!/^[+-]?\d+$/.test(text) || (token && !token.startsWith("ready:"))) return null;
-    const value = Number(text);
-    // Match the native threshold handler. Do not clamp a recommendation silently.
-    if (!Number.isSafeInteger(value) || value < -999 || value > 999) return null;
-    return { value: String(value), text, token, key: cell.getAttribute("data-mwi-auto-room-key") };
-  }
-
-  function create({ document, pageWindow, t, getEnabled = () => true, setEnabled = () => true }) {
-    const controls = new Map();
-    let mountObserver = null;
-    let enabled = getEnabled() !== false;
-    let pending = null;
-    let active = false;
-    function cancel() {
-      if (!pending) return;
-      pending.observer.disconnect();
-      pageWindow.clearTimeout(pending.timer);
-      pending = null;
-    }
-    function refreshControls() {
-      for (const [table, label] of controls) {
-        if (!table.isConnected || !label.isConnected) {
-          label.remove();
-          controls.delete(table);
-        }
-      }
-      for (const table of document.querySelectorAll(TABLE)) {
-        if (controls.has(table)) continue;
-        const label = document.createElement("label");
-        label.className = "mwi-labyrinth-prefill-toggle";
-        label.style.cssText =
-          "display:flex;align-items:center;gap:8px;max-width:100%;min-height:36px;margin:8px 0;font-size:14px;font-weight:400;line-height:1.45;cursor:pointer;color:inherit;";
-        const checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.checked = enabled;
-        checkbox.style.cssText = "flex:0 0 auto;width:18px;height:18px;margin:0;accent-color:#a4afff;";
-        const text = document.createElement("span");
-        text.textContent = t("labyrinthPrefillToggle");
-        text.style.cssText = "min-width:0;overflow-wrap:anywhere;";
-        label.title = t("labyrinthPrefillHint");
-        label.append(checkbox, text);
-        checkbox.addEventListener("change", () => {
-          enabled = checkbox.checked;
-          cancel();
-          const saved = setEnabled(enabled);
-          for (const control of controls.values()) {
-            control.querySelector("input").checked = enabled;
-            control.title = t(saved === false ? "labyrinthPrefillSaveFailed" : "labyrinthPrefillHint");
-          }
-        });
-        controls.set(table, label);
-        table.before(label);
-      }
-    }
-    function fill() {
-      if (!pending) return;
-      if (!enabled) {
-        cancel();
-        return;
-      }
-      const { row, recommendation } = pending;
-      const current = readRecommendation(row);
-      if (!row.isConnected || !current || JSON.stringify(current) !== JSON.stringify(recommendation)) {
-        cancel();
-        return;
-      }
-      const inputs = row.querySelectorAll(INPUT);
-      if (inputs.length !== 1) return;
-      const input = inputs[0];
-      cancel(); // One edit, one write. Later typing/calculation must never overwrite it.
-      if (input.disabled || input.readOnly || input.type !== "number") return;
-      const value = Number(recommendation.value);
-      if ((input.min !== "" && value < Number(input.min)) || (input.max !== "" && value > Number(input.max))) return;
-      // Bypass React's per-element value tracker, then let its onChange update
-      // the unsaved native draft. Never call save handlers or game APIs.
-      const setter = Object.getOwnPropertyDescriptor(pageWindow.HTMLInputElement.prototype, "value")?.set;
-      if (!setter) return;
-      setter.call(input, recommendation.value);
-      input.dispatchEvent(new pageWindow.Event("input", { bubbles: true }));
-    }
-    function onClick(event) {
-      cancel();
-      if (!enabled) return;
-      const button = event.target?.closest?.('button, [role="button"], [class*="Button_button__"]');
-      if (!button || button.disabled || button.getAttribute("aria-disabled") === "true") return;
-      if (!/^(編輯|Edit)$/i.test(button.textContent.trim())) return;
-      const threshold = button.closest(THRESHOLD);
-      const row = threshold?.closest("tr");
-      if (!row?.closest(TABLE) || row.querySelector(INPUT)) return;
-      const recommendation = readRecommendation(row);
-      if (!recommendation) return;
-      const observer = new pageWindow.MutationObserver(fill);
-      pending = { row, recommendation, observer, timer: pageWindow.setTimeout(cancel, 1000) };
-      observer.observe(row, { childList: true, subtree: true, characterData: true, attributes: true });
-    }
-    function onInput(event) {
-      if (pending?.row.contains(event.target)) cancel();
-    }
-    return {
-      start() {
-        if (active) return;
-        active = true;
-        enabled = getEnabled() !== false;
-        refreshControls();
-        mountObserver = new pageWindow.MutationObserver((mutations) => {
-          // Ignore ordinary game updates; only reconcile table mounts/removals
-          // and React replacing our local control.
-          if (
-            [...controls].some(([table, label]) => !table.isConnected || !label.isConnected) ||
-            mutations.some((mutation) =>
-              [...mutation.addedNodes].some(
-                (node) => node.nodeType === 1 && (node.matches(TABLE) || node.querySelector(TABLE))
-              )
-            )
-          )
-            refreshControls();
-        });
-        mountObserver.observe(document, { childList: true, subtree: true });
-        document.addEventListener("click", onClick, true);
-        document.addEventListener("input", onInput, true);
-      },
-      dispose() {
-        active = false;
-        mountObserver?.disconnect();
-        mountObserver = null;
-        for (const label of controls.values()) label.remove();
-        controls.clear();
-        cancel();
-        document.removeEventListener("click", onClick, true);
-        document.removeEventListener("input", onInput, true);
-      }
-    };
-  }
-
-  return { create, readRecommendation };
-});
-
-
 // SOURCE: src/ui/sidebar-dom.js
 (function (root, factory) {
   const api = factory();
@@ -11875,7 +11709,7 @@ window.MwiGuildCreditVersion = "1.2.77";
       restoreFocusWrites();
     }
 
-    function mutations(records) {
+    function processMutations(records) {
       if (destroyed) return;
       if (state.creditTab?.dataset.mwiCreditSuperseded === "true") return onChange();
       if (!integration || !state.creditTab?.isConnected || !state.panel?.isConnected) return onChange();
@@ -11898,6 +11732,20 @@ window.MwiGuildCreditVersion = "1.2.77";
       onChange();
     }
 
+    let reconciling = false;
+    function mutations(records) {
+      if (destroyed) return;
+      observer.disconnect();
+      reconciling = true;
+      try {
+        processMutations(records);
+      } finally {
+        reconciling = false;
+        observedRoot = null;
+        watch(integration);
+      }
+    }
+
     function watch(found) {
       if (destroyed) return;
       if (integration?.tabBar !== found?.tabBar) {
@@ -11908,10 +11756,11 @@ window.MwiGuildCreditVersion = "1.2.77";
       }
       integration = found;
       const root = found?.panelHost.parentElement?.parentElement || documentRef.documentElement;
-      if (observedRoot === root) return;
+      if (reconciling || observedRoot === root) return;
       observer?.disconnect();
       observedRoot = root;
-      observer = new windowRef.MutationObserver(mutations);
+      observer ||= new windowRef.MutationObserver(mutations);
+      observer.observe(documentRef.documentElement, { childList: true, subtree: true });
       observer.observe(root, {
         childList: true,
         subtree: true,
@@ -11946,7 +11795,7 @@ window.MwiGuildCreditVersion = "1.2.77";
       state,
       onActivate: show,
       onDeactivate: selection.hide,
-      onChange: schedule
+      onChange: refresh
     });
     let pending = null;
     let interval = null;
@@ -21584,10 +21433,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   const panelShellApi = window.MwiGuildCreditPanelShell;
   const trialHistoryApi = window.MwiGuildTrialHistory;
   const trialHistoryViewApi = window.MwiGuildTrialHistoryView;
-  const labyrinthPrefillApi = window.MwiGuildLabyrinthPrefill;
   const creditViewApi = window.MwiGuildCreditCreditView;
   if (
-    !labyrinthPrefillApi ||
     !core ||
     !marketDataApi ||
     !itemNameCatalogApi ||
@@ -21681,7 +21528,6 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     upgradePresetNotice: "",
     guildTokenCreditHrids: new Set(savedUiState.guildTokenCreditHrids),
     autoGuildTokenBudget: savedUiState.autoGuildTokenBudget,
-    labyrinthPrefillEnabled: savedUiState.labyrinthPrefillEnabled,
     shrineGuideEnabled: savedUiState.shrineGuideEnabled,
     maxConversionItemUnitPrice: savedUiState.maxConversionItemUnitPrice,
     guildShrineAutofillExcludedBuffHrids: new Set(savedUiState.guildShrineAutofillExcludedBuffHrids),
@@ -21851,16 +21697,6 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     state.priceReference = reference;
     pluginStorage.persistPriceReference(reference);
   }
-  const labyrinthPrefill = labyrinthPrefillApi.create({
-    document,
-    pageWindow,
-    t,
-    getEnabled: () => state.labyrinthPrefillEnabled,
-    setEnabled: (enabled) => {
-      state.labyrinthPrefillEnabled = enabled;
-      return persistPluginUiState();
-    }
-  });
 
   function ui() {
     return localizationApi.createLocalizer(currentGameLocale());
@@ -22502,7 +22338,6 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     // A cached page resumes with its live runtime; dispose only on a real exit.
     if (event?.persisted) return;
     window.removeEventListener("pagehide", disposeRuntime);
-    labyrinthPrefill.dispose();
     storageTransferView.dispose();
     disposeUpgradePlanning?.();
     trialHistoryView.dispose();
@@ -22531,7 +22366,6 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     document.removeEventListener("click", exchangeModalInteractionHandler, true);
   }
 
-  labyrinthPrefill.start();
   trialHistoryView.start();
   hydrateBridgeData();
   extractItemDetailsFromReact();
