@@ -2,7 +2,7 @@
 // @name         公會助手
 // @name:en      Milky Way Idle Guild Assistant
 // @namespace    https://www.milkywayidle.com/
-// @version      1.2.78
+// @version      1.2.80
 // @author       柆雨
 // @license      MIT
 // @homepageURL  https://github.com/LaYuDr/milky-way-idle-guild-credit-optimizer
@@ -402,31 +402,36 @@
       }
       root.addEventListener("click", click);
       settings.set(host, binding);
+      return true;
     }
-    function discover(nodes) {
+    function discover(nodes, initial = false) {
       if (disposed) return;
+      let changed = initial;
       for (const [host, binding] of settings) {
         if (!host.isConnected) {
           binding.dispose();
           settings.delete(host);
+          changed = true;
         }
       }
       for (const node of nodes) {
-        if (node.matches?.(selector)) mountSettings(node);
-        for (const host of node.querySelectorAll?.(selector) || []) mountSettings(host);
+        if (node.matches?.(selector) && mountSettings(node)) changed = true;
+        for (const host of node.querySelectorAll?.(selector) || []) {
+          if (mountSettings(host)) changed = true;
+        }
       }
-      update();
+      if (changed) update();
     }
     function update() {
       if (disposed) return;
       try {
         const on = gm.getValue(`${client.key}_consent`, config.defaultEnabled === true) === true;
         for (const binding of settings.values()) binding.render(on);
-        if (timer !== null) {
+        if ((!on || suspended) && timer !== null) {
           env.clearInterval(timer);
           timer = null;
         }
-        if (on && !suspended) timer = env.setInterval(report, 15 * 60000);
+        if (on && !suspended && timer === null) timer = env.setInterval(report, 15 * 60000);
         if (!on) cancelPending();
       } catch (_) {
         cancelPending();
@@ -499,7 +504,7 @@
           subtree: true
         });
       }
-      discover([env.document]);
+      discover([env.document], true);
       report();
     } catch (_) {
       dispose();
@@ -507,7 +512,7 @@
     return { dispose, report, client };
   }
   if (typeof module !== "undefined" && module.exports) module.exports = { createUsageClient, boot };
-  try { boot({"pluginId":"mwi_guild","name":"公會助手","version":"1.2.78","endpoint":"https://ukpyedhl.cn-hk1.rainapp.top","development":false,"defaultEnabled":true,"reportOptOut":true}, {getValue: typeof GM_getValue === "function" ? GM_getValue : null,
+  try { boot({"pluginId":"mwi_guild","name":"公會助手","version":"1.2.80","endpoint":"https://ukpyedhl.cn-hk1.rainapp.top","development":false,"defaultEnabled":true,"reportOptOut":true}, {getValue: typeof GM_getValue === "function" ? GM_getValue : null,
 setValue: typeof GM_setValue === "function" ? GM_setValue : null,
 listen: typeof GM_addValueChangeListener === "function" ? GM_addValueChangeListener : null,
 unlisten: typeof GM_removeValueChangeListener === "function" ? GM_removeValueChangeListener : null,
@@ -516,7 +521,7 @@ request: typeof GM_xmlhttpRequest === "function" ? GM_xmlhttpRequest : null}); }
 
 // LAYU_USAGE_END mwi_guild
 // MWI_GUILD_CREDIT_RUNTIME
-window.MwiGuildCreditVersion = "1.2.78";
+window.MwiGuildCreditVersion = "1.2.80";
 
 // SOURCE: src/vendor/lz-string.js
 /*
@@ -3264,6 +3269,16 @@ window.MwiGuildCreditVersion = "1.2.78";
     window.addEventListener("DOMContentLoaded", publishBridgeDiagnostics, { once: true });
   }
 
+  let diagnosticsTimer = null;
+  function scheduleBridgeDiagnostics() {
+    if (diagnosticsTimer !== null) return;
+    if (typeof window.setTimeout !== "function") return publishBridgeDiagnostics();
+    diagnosticsTimer = window.setTimeout(() => {
+      diagnosticsTimer = null;
+      publishBridgeDiagnostics();
+    }, 250);
+  }
+
   function keepMarketData(message, source) {
     if (!marketDataApi || !message || String(message.type || "") !== "market_item_order_books_updated") return;
     const update = marketDataApi.normalizeMarketOrderBooksUpdate(message);
@@ -3282,7 +3297,7 @@ window.MwiGuildCreditVersion = "1.2.78";
     diagnostics.lastMarketLevels = update.levels;
     diagnostics.lastMarketReceivedAt = receivedAt;
     diagnostics.lastMarketSource = normalizedSource;
-    publishBridgeDiagnostics();
+    scheduleBridgeDiagnostics();
     if (typeof bridge.onMarketOrderBooksUpdated === "function") {
       try {
         bridge.onMarketOrderBooksUpdated();
@@ -3571,7 +3586,7 @@ window.MwiGuildCreditVersion = "1.2.78";
     bridge.characterItemsRevision = Math.min(Number.MAX_SAFE_INTEGER, bridge.characterItemsRevision + 1);
     diagnostics.lastCharacterItemsUpdatedAt = Date.now();
     diagnostics.lastCharacterItemsSource = source;
-    publishBridgeDiagnostics();
+    scheduleBridgeDiagnostics();
     if (typeof bridge.onCharacterItemsUpdated === "function") {
       try {
         bridge.onCharacterItemsUpdated();
@@ -3592,7 +3607,7 @@ window.MwiGuildCreditVersion = "1.2.78";
   function publishGuildBuffLevelsUpdate() {
     bridge.guildBuffLevelsRevision = Math.min(Number.MAX_SAFE_INTEGER, bridge.guildBuffLevelsRevision + 1);
     diagnostics.lastGuildBuffLevelsUpdatedAt = Date.now();
-    publishBridgeDiagnostics();
+    scheduleBridgeDiagnostics();
     if (typeof bridge.onGuildBuffLevelsUpdated === "function") {
       try {
         bridge.onGuildBuffLevelsUpdated();
@@ -3604,7 +3619,7 @@ window.MwiGuildCreditVersion = "1.2.78";
 
   function publishGuildPointSummaryUpdate() {
     bridge.guildPointSummaryRevision = Math.min(Number.MAX_SAFE_INTEGER, bridge.guildPointSummaryRevision + 1);
-    publishBridgeDiagnostics();
+    scheduleBridgeDiagnostics();
     if (typeof bridge.onGuildPointSummaryUpdated === "function") {
       try {
         bridge.onGuildPointSummaryUpdated();
@@ -3773,7 +3788,13 @@ window.MwiGuildCreditVersion = "1.2.78";
       const message = JSON.parse(rawMessage);
       diagnostics.lastMessageType = String((message && message.type) || "");
       keepMarketData(message, "websocket");
-      keepGuildData(message);
+      // All fields read by keepGuildData contain one of these markers. This
+      // conservative raw-text gate also accepts unknown message types/nesting.
+      // Escaped keys take the full path so JSON Unicode escapes cannot hide data.
+      if (
+        ["guild", "Guild", "itemDetail", "haracterItems", "currentWeek", "\\"].some((key) => rawMessage.includes(key))
+      )
+        keepGuildData(message);
       const trialApi = window.MwiGuildTrialHistory;
       if (trialApi) {
         const previousContext = bridge.trialHistoryContext;
@@ -3793,23 +3814,48 @@ window.MwiGuildCreditVersion = "1.2.78";
       diagnostics.lastMessageType = "non_json";
       // Ignore non-JSON protocol frames.
     }
-    publishBridgeDiagnostics();
+    scheduleBridgeDiagnostics();
   }
 
   let lastMarketDomSignature = "";
   let marketDomScanScheduled = false;
   let marketDomObserver = null;
+  let marketDomDirty = true;
+  const guildPointSubtrees = new Set();
+  const guildPointNodes = new Set();
+  const MARKET_DOM_SELECTOR = '[class*="MarketplacePanel_"]';
 
-  function currentWeekGuildPointsFromDom(documentRef) {
-    if (!documentRef || typeof documentRef.querySelectorAll !== "function") return null;
+  function shortGuildPointText(root) {
+    if (!root) return "";
+    if (typeof window.document.createTreeWalker !== "function")
+      return String(root.textContent || "")
+        .replace(/\s+/g, " ")
+        .trim();
+    const walker = window.document.createTreeWalker(root, 4); // SHOW_TEXT
+    let text = "";
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      text = (text + node.nodeValue).replace(/\s+/g, " ");
+      // A matching label is at most 80 characters. Do not concatenate a whole
+      // chat/member/icon panel just because one descendant changed its text.
+      if (text.trim().length > 80) return "";
+    }
+    return text.trim();
+  }
+
+  function currentWeekGuildPointsFromDom(root, descendants = true) {
+    if (!root) return null;
     const patterns = [
       /^本週公會點數\s*[:：]\s*([\d,]+)$/,
       /^(?:Guild Points This Week|This Week(?:'s)? Guild Points)\s*[:：]\s*([\d,]+)$/i
     ];
-    for (const element of documentRef.querySelectorAll("div, span, p")) {
-      const text = String(element && element.textContent ? element.textContent : "")
-        .replace(/\s+/g, " ")
-        .trim();
+    const textRoot = root === window.document ? root.body || root.documentElement : root;
+    const rootText = descendants ? String(textRoot?.textContent || "") : shortGuildPointText(textRoot);
+    // Switching native guild tabs can insert thousands of icon/member nodes.
+    // Without a possible label, no descendant can match: avoid enumerating them.
+    if (!/本週公會點數|Guild\s+Points\s+This\s+Week|This\s+Week(?:'s)?\s+Guild\s+Points/i.test(rootText)) return null;
+    const elements = descendants && root.querySelectorAll ? root.querySelectorAll("div, span, p") : [];
+    for (const element of [root, ...elements]) {
+      const text = (element === root ? rootText : shortGuildPointText(element)).replace(/\s+/g, " ").trim();
       if (!text || text.length > 80) continue;
       for (const pattern of patterns) {
         const match = text.match(pattern);
@@ -3824,7 +3870,7 @@ window.MwiGuildCreditVersion = "1.2.78";
   function scanMarketDom() {
     marketDomScanScheduled = false;
     let changed = false;
-    if (marketDomApi && typeof marketDomApi.readMarketDomSnapshot === "function") {
+    if (marketDomDirty && marketDomApi && typeof marketDomApi.readMarketDomSnapshot === "function") {
       const snapshot = marketDomApi.readMarketDomSnapshot(window.document);
       if (snapshot && snapshot.signature !== lastMarketDomSignature) {
         const message = marketDomApi.createMarketMessage(snapshot);
@@ -3836,7 +3882,27 @@ window.MwiGuildCreditVersion = "1.2.78";
         }
       }
     }
-    const currentWeekPoints = currentWeekGuildPointsFromDom(window.document);
+    marketDomDirty = false;
+    let currentWeekPoints = null;
+    // Initial discovery scans once. Later mutations inspect only inserted
+    // subtrees and changed text/ancestors, never every div on an unrelated click.
+    for (const root of guildPointSubtrees) {
+      if (root.isConnected === false) continue;
+      let parent = root.parentNode;
+      while (parent && !guildPointSubtrees.has(parent)) parent = parent.parentNode;
+      if (parent) continue;
+      currentWeekPoints = currentWeekGuildPointsFromDom(root);
+      if (currentWeekPoints !== null) break;
+    }
+    if (currentWeekPoints === null) {
+      for (const node of guildPointNodes) {
+        if (node.isConnected === false) continue;
+        currentWeekPoints = currentWeekGuildPointsFromDom(node, false);
+        if (currentWeekPoints !== null) break;
+      }
+    }
+    guildPointSubtrees.clear();
+    guildPointNodes.clear();
     if (currentWeekPoints !== null && currentWeekPoints !== bridge.guildCurrentWeekPoints) {
       bridge.guildCurrentWeekPoints = currentWeekPoints;
       if (bridge.guildPointSummary) bridge.guildPointSummary = { ...bridge.guildPointSummary, currentWeekPoints };
@@ -3854,16 +3920,35 @@ window.MwiGuildCreditVersion = "1.2.78";
     schedule(scanMarketDom, 40);
   }
 
+  function collectDomChanges(records) {
+    for (const record of records) {
+      let element = record.target.nodeType === 1 ? record.target : record.target.parentElement;
+      if (element?.closest?.(MARKET_DOM_SELECTOR)) marketDomDirty = true;
+      // Include parents for labels and values split across adjacent spans.
+      for (let depth = 0; element && depth < 3; depth += 1, element = element.parentElement) {
+        if (element === window.document.body || element === window.document.documentElement) break;
+        guildPointNodes.add(element);
+      }
+      for (const node of record.addedNodes || []) {
+        if (node.nodeType !== 1) continue;
+        guildPointSubtrees.add(node);
+        if (node.matches?.(MARKET_DOM_SELECTOR) || node.querySelector?.(MARKET_DOM_SELECTOR)) marketDomDirty = true;
+      }
+    }
+    if (marketDomDirty || guildPointNodes.size || guildPointSubtrees.size) scheduleMarketDomScan();
+  }
+
   function installMarketDomObserver() {
     if (marketDomObserver || !window.document) return false;
     const root = window.document.documentElement;
     const Observer = window.MutationObserver || (typeof MutationObserver === "function" ? MutationObserver : null);
     if (!root || typeof Observer !== "function") return false;
-    marketDomObserver = new Observer(scheduleMarketDomScan);
+    marketDomObserver = new Observer(collectDomChanges);
     marketDomObserver.observe(root, { subtree: true, childList: true, characterData: true });
     bridge.marketDomObserverActive = true;
     diagnostics.domObserverActive = true;
     publishBridgeDiagnostics();
+    guildPointSubtrees.add(window.document);
     scheduleMarketDomScan();
     return true;
   }
@@ -9956,25 +10041,34 @@ window.MwiGuildCreditVersion = "1.2.78";
   "use strict";
 
   function createDebouncedTask(options) {
-    const { task, delay = 0, setTimer = setTimeout, clearTimer = clearTimeout } = options;
+    const { task, delay = 0, maxWait = 0, setTimer = setTimeout, clearTimer = clearTimeout } = options;
     let timer = null;
+    let deadline = null;
     let latestArgs = [];
     let disposed = false;
 
     function cancel() {
-      if (timer === null) return;
-      clearTimer(timer);
+      if (timer !== null) clearTimer(timer);
+      if (deadline !== null) clearTimer(deadline);
       timer = null;
+      deadline = null;
+      latestArgs = [];
+    }
+
+    function flush() {
+      if (disposed || timer === null) return false;
+      const args = latestArgs;
+      cancel();
+      task(...args);
+      return true;
     }
 
     function schedule(...args) {
       if (disposed) return false;
       latestArgs = args;
-      cancel();
-      timer = setTimer(() => {
-        timer = null;
-        task(...latestArgs);
-      }, delay);
+      if (timer !== null) clearTimer(timer);
+      timer = setTimer(flush, delay);
+      if (maxWait > 0 && deadline === null) deadline = setTimer(flush, maxWait);
       return true;
     }
 
@@ -9987,6 +10081,7 @@ window.MwiGuildCreditVersion = "1.2.78";
     return {
       schedule,
       cancel,
+      flush,
       dispose,
       pending: () => timer !== null,
       disposed: () => disposed
@@ -10391,6 +10486,8 @@ window.MwiGuildCreditVersion = "1.2.78";
       MARKETPLACE_SNAPSHOT_FORBIDDEN_BACKOFF_MS
     } = runtimeConfig;
     let snapshotLoadPromise = null;
+    let initDataRaw = null;
+    let initData = null;
 
     function scanGuildPointFields(rootValue, maxDepth = 8, maxScanned = 400) {
       const pending = [{ value: rootValue, depth: 0 }];
@@ -10506,15 +10603,24 @@ window.MwiGuildCreditVersion = "1.2.78";
       } catch (_) {
         return false;
       }
-      if (!raw) return false;
+      if (!raw) {
+        initDataRaw = null;
+        initData = null;
+        return false;
+      }
       try {
-        const decoded = decompressFromUtf16(raw);
-        let data;
-        try {
-          data = JSON.parse(decoded || raw);
-        } catch (_) {
-          data = JSON.parse(raw);
+        if (raw !== initDataRaw) {
+          initDataRaw = raw;
+          initData = null;
+          // Some clients store plain JSON. Do not try to decompress that text.
+          try {
+            initData = JSON.parse(raw);
+          } catch (_) {
+            initData = JSON.parse(decompressFromUtf16(raw) || raw);
+          }
         }
+        const data = initData;
+        if (!data || typeof data !== "object") return false;
         // initClientData is a durable fallback and can outlive a game data update.
         // Never let it overwrite values already captured from the current session.
         const hasItems = !state.itemDetails && setItemDetails(data.itemDetailMap || data.itemDetailDict);
@@ -10656,10 +10762,6 @@ window.MwiGuildCreditVersion = "1.2.78";
         receivedAt: observedAt || Date.now(),
         snapshotTimestamp: state.snapshotTimestamp
       });
-      if (changed) {
-        persistLiveMarketData();
-        scheduleMarketDataRefresh();
-      }
       return changed;
     }
 
@@ -10749,6 +10851,10 @@ window.MwiGuildCreditVersion = "1.2.78";
             // Ignore non-JSON protocol frames.
           }
         }
+      }
+      if (marketChanged) {
+        persistLiveMarketData();
+        scheduleMarketDataRefresh();
       }
       return marketChanged;
     }
@@ -11709,11 +11815,10 @@ window.MwiGuildCreditVersion = "1.2.78";
       restoreFocusWrites();
     }
 
-    function processMutations(records) {
-      if (destroyed) return;
-      if (state.creditTab?.dataset.mwiCreditSuperseded === "true") return onChange();
-      if (!integration || !state.creditTab?.isConnected || !state.panel?.isConnected) return onChange();
-      const relevant = records.some(({ target }) => {
+    function needsReconcile(records) {
+      if (state.creditTab?.dataset.mwiCreditSuperseded === "true") return true;
+      if (!integration || !state.creditTab?.isConnected || !state.panel?.isConnected) return true;
+      return records.some(({ target }) => {
         const element = target.nodeType === 1 ? target : target.parentElement;
         return (
           element === integration.panelHost ||
@@ -11724,7 +11829,11 @@ window.MwiGuildCreditVersion = "1.2.78";
           element?.contains(integration.tabBar)
         );
       });
-      if (!relevant) return;
+    }
+
+    function processMutations() {
+      if (state.creditTab?.dataset.mwiCreditSuperseded === "true") return onChange();
+      if (!integration || !state.creditTab?.isConnected || !state.panel?.isConnected) return onChange();
       const others = Array.from(integration.tabBar.children).some(
         (tab) => tab !== state.creditTab && !tab.hidden && isSelected(tab)
       );
@@ -11734,11 +11843,11 @@ window.MwiGuildCreditVersion = "1.2.78";
 
     let reconciling = false;
     function mutations(records) {
-      if (destroyed) return;
+      if (destroyed || !needsReconcile(records)) return;
       observer.disconnect();
       reconciling = true;
       try {
-        processMutations(records);
+        processMutations();
       } finally {
         reconciling = false;
         observedRoot = null;
@@ -12323,8 +12432,9 @@ window.MwiGuildCreditVersion = "1.2.78";
         #mwi-credit-optimizer .mwi-status[data-role="upgrade-status"]{margin:7px 0 3px;color:#c9cbeb;font-size:11px;text-align:center}
         #mwi-credit-optimizer .mwi-plan-summary{justify-content:flex-start;gap:5px;margin:6px 0}
         #mwi-credit-optimizer .mwi-upgrade-cost-summary{display:flex;align-items:center;flex-wrap:wrap;gap:6px 18px;margin:7px 0;padding:8px 10px;box-shadow:none}
-        #mwi-credit-optimizer .mwi-upgrade-cost-summary>div:not(.mwi-upgrade-cost-note):not(.mwi-upgrade-cost-title){display:flex;align-items:baseline;gap:6px}
+        #mwi-credit-optimizer .mwi-upgrade-cost-summary>div:not(.mwi-upgrade-cost-note):not(.mwi-upgrade-cost-title){display:flex;flex-wrap:wrap;align-items:baseline;gap:6px}
         #mwi-credit-optimizer .mwi-upgrade-cost-summary strong{font-size:14px}
+        #mwi-credit-optimizer .mwi-upgrade-cost-summary>div>span{min-width:0;white-space:normal;overflow-wrap:anywhere}
         #mwi-credit-optimizer .mwi-upgrade-cost-note{flex:0 1 auto}
         #mwi-credit-optimizer .mwi-material-list{display:grid;grid-template-columns:minmax(0,1fr);gap:7px;margin-top:7px}
         #mwi-credit-optimizer .mwi-material-row{display:grid;grid-template-columns:minmax(125px,1.05fr) 62px 58px minmax(280px,1.8fr);align-items:center;gap:5px;padding:6px 7px;box-shadow:none}
@@ -17516,11 +17626,13 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     }
 
     function itemNameForMaterial(itemHrid) {
-      const details = Array.isArray(state.itemDetails)
-        ? state.itemDetails.map((detail) => [detail && (detail.itemHrid || detail.hrid), detail])
-        : Object.entries(state.itemDetails || {});
-      const detail = details.find(([hrid]) => hrid === itemHrid);
-      return resolveItemName(itemHrid, detail && detail[1] && detail[1].name);
+      const details = state.itemDetails;
+      const detail = Array.isArray(details)
+        ? details.find((item) => item && (item.itemHrid || item.hrid) === itemHrid)
+        : details && Object.hasOwn(details, itemHrid)
+          ? details[itemHrid]
+          : null;
+      return resolveItemName(itemHrid, detail && detail.name);
     }
 
     function materialOrder(left, right) {
@@ -21613,6 +21725,13 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   const escapeHtml = domApi.escapeHtml;
   const itemHridFromIcon = domApi.itemHridFromIcon;
   const enhancementLevelFromIcon = domApi.enhancementLevelFromIcon;
+  const marketStorageTask = schedulerApi.createDebouncedTask({
+    task: () => pluginStorage.persistLiveMarketData(state.marketLiveData, state.marketLiveRevision),
+    delay: 250,
+    maxWait: 2000,
+    setTimer: window.setTimeout.bind(window),
+    clearTimer: window.clearTimeout.bind(window)
+  });
   const guildTokenBudgetRefreshTask = schedulerApi.createDebouncedTask({
     task: (panel) => refreshGuildUpgrade(panel),
     delay: 80,
@@ -21690,7 +21809,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     return pluginStorage.persistPluginUiState(state);
   }
   function persistLiveMarketData() {
-    pluginStorage.persistLiveMarketData(state.marketLiveData, state.marketLiveRevision);
+    marketStorageTask.schedule();
   }
   function setPriceReference(reference) {
     if (!PRICE_REFERENCES[reference]) return;
@@ -22334,10 +22453,17 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       scheduleGuildExchangeAdvisor();
   }
 
+  function flushMarketStorage() {
+    if (document.hidden) marketStorageTask.flush();
+  }
+
   function disposeRuntime(event) {
+    marketStorageTask.flush();
     // A cached page resumes with its live runtime; dispose only on a real exit.
     if (event?.persisted) return;
     window.removeEventListener("pagehide", disposeRuntime);
+    document.removeEventListener("visibilitychange", flushMarketStorage);
+    marketStorageTask.dispose();
     storageTransferView.dispose();
     disposeUpgradePlanning?.();
     trialHistoryView.dispose();
@@ -22373,6 +22499,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   document.addEventListener("input", exchangeModalInteractionHandler, true);
   document.addEventListener("click", exchangeModalInteractionHandler, true);
   window.addEventListener("pagehide", disposeRuntime);
+  document.addEventListener("visibilitychange", flushMarketStorage);
   if (document.body) startGuildExchangeAdvisor();
   else document.addEventListener("DOMContentLoaded", startGuildExchangeAdvisor, { once: true });
   sidebarController.start();
