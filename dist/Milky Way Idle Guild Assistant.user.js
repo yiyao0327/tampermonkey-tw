@@ -2,12 +2,12 @@
 // @name         公會助手
 // @name:en      Milky Way Idle Guild Assistant
 // @namespace    https://www.milkywayidle.com/
-// @version      1.2.80
+// @version      1.2.81
 // @author       柆雨
 // @license      MIT
 // @homepageURL  https://github.com/LaYuDr/milky-way-idle-guild-credit-optimizer
-// @description  銀河奶牛公會助手：比較信用點兌換成本、規劃神龕升級與公會建設、儲存歷史試煉統計。
-// @description:en Read-only guild assistant for credit exchange comparisons, shrine and construction planning, and trial history.
+// @description  銀河奶牛公會助手：比較信用點兌換成本，規劃神龕升級與公會建設，儲存歷史試煉統計。
+// @description:en Milky Way Idle Guild Assistant: compare credit exchange costs, plan shrine upgrades and guild construction, and save trial statistics.
 // @match        https://www.milkywayidle.com/*
 // @match        https://www.milkywayidlecn.com/*
 // @grant        GM_getValue
@@ -512,7 +512,7 @@
     return { dispose, report, client };
   }
   if (typeof module !== "undefined" && module.exports) module.exports = { createUsageClient, boot };
-  try { boot({"pluginId":"mwi_guild","name":"公會助手","version":"1.2.80","endpoint":"https://ukpyedhl.cn-hk1.rainapp.top","development":false,"defaultEnabled":true,"reportOptOut":true}, {getValue: typeof GM_getValue === "function" ? GM_getValue : null,
+  try { boot({"pluginId":"mwi_guild","name":"公會助手","version":"1.2.81","endpoint":"https://ukpyedhl.cn-hk1.rainapp.top","development":false,"defaultEnabled":true,"reportOptOut":true}, {getValue: typeof GM_getValue === "function" ? GM_getValue : null,
 setValue: typeof GM_setValue === "function" ? GM_setValue : null,
 listen: typeof GM_addValueChangeListener === "function" ? GM_addValueChangeListener : null,
 unlisten: typeof GM_removeValueChangeListener === "function" ? GM_removeValueChangeListener : null,
@@ -521,7 +521,7 @@ request: typeof GM_xmlhttpRequest === "function" ? GM_xmlhttpRequest : null}); }
 
 // LAYU_USAGE_END mwi_guild
 // MWI_GUILD_CREDIT_RUNTIME
-window.MwiGuildCreditVersion = "1.2.80";
+window.MwiGuildCreditVersion = "1.2.81";
 
 // SOURCE: src/vendor/lz-string.js
 /*
